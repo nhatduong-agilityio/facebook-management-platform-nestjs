@@ -1,0 +1,460 @@
+## Facebook Creator Platform
+
+## D2 SQL Tables Diagram (Final v1.1)
+
+direction: right
+
+core: {
+label: "core"
+
+users: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+clerk_user_id: varchar(255) {constraint: unique}
+email: varchar(255) {constraint: unique}
+full_name: varchar(255)
+avatar_url: varchar(2048)
+status: varchar(50)
+created_at: timestamptz
+updated_at: timestamptz
+deleted_at: timestamptz
+```
+
+}
+
+workspaces: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+name: varchar(150)
+slug: varchar(150) {constraint: unique}
+description: text
+status: varchar(50)
+
+owner_user_id: uuid {constraint: foreign_key}
+
+created_at: timestamptz
+updated_at: timestamptz
+deleted_at: timestamptz
+```
+
+}
+
+workspace_members: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+workspace_id: uuid {constraint: foreign_key}
+user_id: uuid {constraint: foreign_key}
+
+role: enum(owner, editor, viewer)
+
+invited_at: timestamptz
+accepted_at: timestamptz
+joined_at: timestamptz
+
+created_at: timestamptz
+```
+
+}
+
+invitations: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+workspace_id: uuid {constraint: foreign_key}
+
+email: varchar(255)
+
+role: enum(editor, viewer)
+
+token: varchar(255) {constraint: unique}
+
+invited_by_user_id: uuid {constraint: foreign_key}
+
+status: enum(
+  pending,
+  accepted,
+  expired,
+  revoked
+)
+
+expires_at: timestamptz
+accepted_at: timestamptz
+
+created_at: timestamptz
+```
+
+}
+
+facebook_accounts: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+workspace_id: uuid {constraint: foreign_key}
+
+connected_by_user_id: uuid {constraint: foreign_key}
+
+facebook_page_id: varchar(255) {constraint: unique}
+facebook_page_name: varchar(255)
+
+page_access_token: text
+
+token_expires_at: timestamptz
+
+connected_at: timestamptz
+
+created_at: timestamptz
+updated_at: timestamptz
+```
+
+}
+
+posts: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+workspace_id: uuid {constraint: foreign_key}
+
+created_by_user_id: uuid {constraint: foreign_key}
+
+facebook_account_id: uuid {constraint: foreign_key}
+
+title: varchar(255)
+content: text
+media_url: varchar(2048)
+
+status: enum(
+  draft,
+  scheduled,
+  published,
+  failed
+)
+
+facebook_post_id: varchar(255)
+
+scheduled_at: timestamptz
+published_at: timestamptz
+
+last_error: text
+
+created_at: timestamptz
+updated_at: timestamptz
+```
+
+}
+
+audit_logs: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+workspace_id: uuid {constraint: foreign_key}
+
+actor_user_id: uuid {constraint: foreign_key}
+
+action: varchar(150)
+
+entity_type: varchar(150)
+
+entity_id: uuid
+
+old_values: jsonb
+new_values: jsonb
+
+metadata: jsonb
+
+created_at: timestamptz
+```
+
+}
+}
+
+billing: {
+label: "billing"
+
+plans: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+code: enum(
+  free,
+  pro,
+  team
+)
+
+name: varchar(100)
+
+stripe_price_id: varchar(255)
+
+monthly_price: numeric(10,2)
+yearly_price: numeric(10,2)
+
+post_limit: int
+scheduled_post_limit: int
+
+analytics_retention_days: int
+
+created_at: timestamptz
+updated_at: timestamptz
+```
+
+}
+
+subscriptions: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+workspace_id: uuid {constraint: unique}
+
+plan_id: uuid {constraint: foreign_key}
+
+stripe_customer_id: varchar(255)
+
+stripe_subscription_id: varchar(255) {constraint: unique}
+
+status: enum(
+  trialing,
+  active,
+  grace_period,
+  cancelled
+)
+
+current_period_start: timestamptz
+current_period_end: timestamptz
+grace_period_end: timestamptz
+
+created_at: timestamptz
+updated_at: timestamptz
+```
+
+}
+
+billing_events: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+subscription_id: uuid {constraint: foreign_key}
+
+stripe_event_id: varchar(255) {constraint: unique}
+
+event_type: varchar(100)
+
+event_payload: jsonb
+
+occurred_at: timestamptz
+```
+
+}
+}
+
+analytics: {
+label: "analytics"
+
+post_metrics: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+post_id: uuid
+
+metric_date: date
+
+reach: int
+impressions: int
+likes: int
+comments: int
+shares: int
+
+fetched_at: timestamptz
+
+created_at: timestamptz
+updated_at: timestamptz
+```
+
+}
+}
+
+notification: {
+label: "notification"
+
+notifications: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+workspace_id: uuid
+
+type: varchar(100)
+
+title: varchar(255)
+
+message: text
+
+payload: jsonb
+
+created_at: timestamptz
+```
+
+}
+
+notification_recipients: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+notification_id: uuid
+
+user_id: uuid
+
+read_status: boolean
+
+read_at: timestamptz
+```
+
+}
+}
+
+email: {
+label: "email"
+
+email_logs: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+email_type: varchar(100)
+
+recipient_email: varchar(255)
+
+template_name: varchar(255)
+
+provider: varchar(50)
+
+status: varchar(50)
+
+dedupe_key: varchar(255)
+
+retry_count: int
+
+sent_at: timestamptz
+
+workspace_id: uuid
+user_id: uuid
+
+created_at: timestamptz
+```
+
+}
+}
+
+infrastructure: {
+label: "rabbitmq"
+
+event_message_logs: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+event_id: uuid
+
+event_type: varchar(100)
+
+exchange_name: varchar(100)
+
+routing_key: varchar(100)
+
+processing_status: varchar(50)
+
+retry_count: int
+
+payload: jsonb
+
+result: jsonb
+
+processed_at: timestamptz
+
+created_at: timestamptz
+```
+
+}
+
+dead_letter_messages: {
+shape: sql_table
+
+```
+id: uuid {constraint: primary_key}
+
+event_id: uuid
+
+error_message: text
+
+retry_count: int
+
+failed_at: timestamptz
+
+reprocessed_at: timestamptz
+
+created_at: timestamptz
+```
+
+}
+}
+
+core.users.id -> core.workspaces.owner_user_id
+
+core.workspaces.id -> core.workspace_members.workspace_id
+core.users.id -> core.workspace_members.user_id
+
+core.workspaces.id -> core.invitations.workspace_id
+core.users.id -> core.invitations.invited_by_user_id
+
+core.workspaces.id -> core.facebook_accounts.workspace_id
+core.users.id -> core.facebook_accounts.connected_by_user_id
+
+core.workspaces.id -> core.posts.workspace_id
+core.users.id -> core.posts.created_by_user_id
+core.facebook_accounts.id -> core.posts.facebook_account_id
+
+core.workspaces.id -> core.audit_logs.workspace_id
+core.users.id -> core.audit_logs.actor_user_id
+
+billing.plans.id -> billing.subscriptions.plan_id
+billing.subscriptions.id -> billing.billing_events.subscription_id
+
+notification.notifications.id -> notification.notification_recipients.notification_id
+
+analytics.post_metrics.post_id -> core.posts.id {
+style.stroke-dash: 4
+}
+
+notification.notification_recipients.user_id -> core.users.id {
+style.stroke-dash: 4
+}
+
+billing.subscriptions.workspace_id -> core.workspaces.id {
+style.stroke-dash: 4
+}
