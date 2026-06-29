@@ -17,7 +17,7 @@ vars: {
 
 title: |md
   # Database ERD — Facebook Creator Platform (NestJS Practice)
-  16 tables across 7 schema-owning groups
+  15 tables across 6 schema-owning groups (audit moved to MongoDB — CR-01 R6)
 |
 
 # ---------------------------------------------------------------------------
@@ -38,6 +38,8 @@ core: {
     status: varchar(15)
     created_at: timestamptz
     updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
   workspaces: {
@@ -50,6 +52,8 @@ core: {
     owner_user_id: uuid {constraint: FK}
     created_at: timestamptz
     updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
   workspace_members: {
@@ -61,6 +65,9 @@ core: {
     invited_at: timestamptz
     accepted_at: timestamptz
     joined_at: timestamptz
+    updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
   invitations: {
@@ -74,6 +81,9 @@ core: {
     invited_by_user_id: uuid {constraint: FK}
     expires_at: timestamptz
     created_at: timestamptz
+    updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
   facebook_accounts: {
@@ -86,6 +96,8 @@ core: {
     token_expires_at: timestamptz
     connected_at: timestamptz
     updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
   posts: {
@@ -104,20 +116,10 @@ core: {
     last_error: text
     created_at: timestamptz
     updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
-  audit_logs: {
-    shape: sql_table
-    id: uuid {constraint: PK}
-    actor_user_id: uuid {constraint: FK}
-    action: varchar(150)
-    entity_type: varchar(150)
-    entity_id: uuid
-    old_values: jsonb
-    new_values: jsonb
-    metadata: jsonb
-    created_at: timestamptz
-  }
 }
 
 # ---------------------------------------------------------------------------
@@ -141,6 +143,8 @@ billing: {
     analytics_retention_days: integer
     created_at: timestamptz
     updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
   subscriptions: {
@@ -156,6 +160,8 @@ billing: {
     grace_period_end: timestamptz
     created_at: timestamptz
     updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
   billing_events: {
@@ -167,6 +173,9 @@ billing: {
     occurred_at: timestamptz
     subscription_id: uuid {constraint: FK}
     created_at: timestamptz
+    updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 }
 
@@ -189,6 +198,9 @@ analytics: {
     comments: integer
     shares: integer
     created_at: timestamptz
+    updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 }
 
@@ -209,6 +221,9 @@ notification: {
     message: text
     payload: jsonb
     created_at: timestamptz
+    updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 
   notification_recipients: {
@@ -219,6 +234,9 @@ notification: {
     read_status: boolean
     read_at: timestamptz
     created_at: timestamptz
+    updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 }
 
@@ -246,6 +264,9 @@ email: {
     related_entity_id: uuid
     sent_at: timestamptz
     created_at: timestamptz
+    updated_at: timestamptz
+    deleted_at: timestamptz
+
   }
 }
 
@@ -360,14 +381,6 @@ core.facebook_accounts.id <-> core.posts.facebook_account_id {
   }
 }
 core.users.id <-> core.posts.created_by_user_id {
-  source-arrowhead: 1 {
-    shape: cf-one-required
-  }
-  target-arrowhead: * {
-    shape: cf-many
-  }
-}
-core.users.id <-> core.audit_logs.actor_user_id {
   source-arrowhead: 1 {
     shape: cf-one-required
   }
