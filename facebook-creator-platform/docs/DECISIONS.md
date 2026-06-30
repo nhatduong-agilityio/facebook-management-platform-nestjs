@@ -71,9 +71,25 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 - ADR-017 Guarded billing state machine with transition log
 - ADR-018 Index all foreign keys (real + logical)
 
+## Additional dev tooling (added T1.1, verified 2026-06-30)
+| Package | Version | Purpose |
+|---|---|---|
+| husky | ^9.1.7 | git hooks manager |
+| lint-staged | ^17.0.8 | run linters on staged files |
+| @eslint/js | ^9.39.4 | ESLint 9 base rules (pinned to 9.x — 10.x requires eslint 10) |
+| globals | ^17.7.0 | browser/node globals for ESLint flat config |
+
+> **ADR-020 `unplugin-swc` warning with vitest 4:** `unplugin-swc@1.5.9` internally
+> sets `esbuild: false` in the Vite config. Vitest 4 replaced esbuild with oxc and
+> prints a warning that `esbuild: false` is deprecated (oxc: false should be used).
+> The SWC transform still works — tests pass and decorator metadata is supported.
+> This is a cosmetic warning from `unplugin-swc` not yet updating for vitest 4.
+> Revisit when a newer `unplugin-swc` is released.
+
 ## Change log
 | Date | Decision |
 |---|---|
 | 2026-06-29 | Initial version pinning; TS held at 5.9, ESLint at 9 (see rationale). |
 | 2026-06-29 | **Roadmap reorder (no effort change, ~222h):** moved MikroORM, BaseEntity (uuid v7 + timestamps + soft delete), PII `EncryptedText`, and the Result pattern from Week 5 into Week 1 (T1.2). These are foundational/cross-cutting — every feature inherits them, so building features first and "migrating" later would force a full rewrite of entities, repositories, and service signatures. Moved the Audit Service to Week 3 (after the event bus is stable, so audit can be exercised end-to-end). Week 5 is now verification + Artillery load testing, not building. This removes hidden rework and de-risks the schedule. |
+| 2026-06-30 | **T1.1 complete.** pnpm workspace, NestJS 11 app, ESLint 9 flat config, vitest 4 + unplugin-swc, husky pre-commit (hooksPath set via `git rev-parse --show-prefix`), Docker Compose (PG 16, Mongo 7, Redis 7, RabbitMQ 3). Note ADR-020 above re vitest/swc cosmetic warning. |
 | 2026-06-30 | **ADR-019 Performance optimization order — Index → Query → Cache.** Redis caching (response cache, RBAC cache, query cache) is Week 5-only and requires T5.5 Artillery benchmark data to justify. Most p99 regressions are solved by a missing index or an N+1 query; adding cache without that evidence buys invalidation complexity, stale-read risk, and extra monitoring for no proven gain. Consumer deduplication keys (`dedup:<eventId>`) are the only pre-T5 Redis use — they are idempotency infrastructure, not a performance cache. When cache is added in T5.6, record the before/after p99 and load level in this file. |

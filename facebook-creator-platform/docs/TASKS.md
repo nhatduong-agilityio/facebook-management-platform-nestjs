@@ -22,7 +22,7 @@ For blocked tasks always append an inline note on the same line:
 
 ## Week 1 — Foundation (build it right before any feature)
 
-- [ ] **T1.1 Monorepo + tooling + datastores** (~4h)
+- [x] **T1.1 Monorepo + tooling + datastores** (~4h)
   - pnpm workspace; apps/api + services/* packages; tsconfig base; eslint(9)+prettier; vitest+swc; husky pre-commit (lint+test). Docker Compose: PostgreSQL 16, **MongoDB**, Redis, RabbitMQ. `.env.example`.
   - DoD: `pnpm install/lint/test` clean on an empty app; `docker compose up` brings all four datastores up; `/health` 200.
 - [ ] **T1.2 Persistence + cross-cutting foundation** (~6h)  (the keystone task)

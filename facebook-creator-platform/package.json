@@ -1,0 +1,32 @@
+{
+  "name": "facebook-creator-platform",
+  "private": true,
+  "engines": {
+    "node": ">=25",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "pnpm --filter @fcp/api test",
+    "build": "pnpm --filter @fcp/api build",
+    "start:dev": "pnpm --filter @fcp/api start:dev",
+    "prepare": "git config core.hooksPath $(git rev-parse --show-prefix).husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.29.0",
+    "globals": "^17.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.8",
+    "prettier": "^3.9.3",
+    "typescript-eslint": "^8.62.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["@swc/core", "esbuild", "@scarf/scarf"]
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
+    "*.{json,md,yaml,yml}": ["prettier --write"]
+  }
+}
