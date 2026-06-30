@@ -1,0 +1,32 @@
+config:
+  target: "{{ $processEnvironment.API_URL }}"
+  phases:
+    - duration: 20
+      arrivalRate: 2
+      name: "smoke"
+  ensure:
+    p99: 500
+    maxErrorRate: 1
+  defaults:
+    headers:
+      authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+      content-type: "application/json"
+
+# Fast (<30s) smoke test meant to gate every PR. Asserts the core read paths
+# return 2xx under trivial load. Extend, don't bloat — heavy load lives in the
+# dedicated scenarios (see .claude/skills/artillery-scenario/SKILL.md).
+scenarios:
+  - name: "health + core reads"
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/v1/auth/me"
+          expect:
+            - statusCode: [200, 401]
+      - get:
+          url: "/api/v1/workspaces?pageSize=20"
+          expect:
+            - statusCode: [200, 401]
