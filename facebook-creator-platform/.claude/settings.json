@@ -1,0 +1,43 @@
+{
+  "$comment": "Project-scoped Claude Code settings (commit this). Pre-approves safe, common commands so Claude doesn't stop to ask on every step, while still gating destructive actions. See https://docs.claude.com for the full schema.",
+
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm start:dev)",
+      "Bash(pnpm build)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(pnpm format:*)",
+      "Bash(pnpm exec:*)",
+      "Bash(pnpm mikro-orm:*)",
+      "Bash(pnpm artillery:*)",
+      "Bash(pnpm view *)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git log:*)",
+      "Bash(docker compose up:*)",
+      "Bash(docker compose ps)",
+      "Read(./**)",
+      "Edit(./**)"
+    ],
+    "ask": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(docker compose down:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git push --force:*)",
+      "Bash(pnpm mikro-orm schema:drop:*)",
+      "Read(./.env)",
+      "Read(./**/*.pem)",
+      "Read(./**/secrets/**)"
+    ]
+  },
+
+  "enableAllProjectMcpServers": false
+}

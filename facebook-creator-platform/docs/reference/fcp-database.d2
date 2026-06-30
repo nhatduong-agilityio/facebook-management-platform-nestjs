@@ -1,0 +1,427 @@
+# Facebook Creator Platform — NestJS Practice
+# D2 SQL Tables Diagram
+#
+# Render with: d2 02-tables-diagram.d2 02-tables-diagram.svg
+# (or paste into https://play.d2lang.com)
+#
+# Dashed edges = cross-schema relationship (no DB-level FK constraint, see BR-R06).
+# Solid edges  = same-schema relationship (a real FK constraint exists in 01-ddl-schema.sql).
+
+direction: right
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+title: |md
+  # Database ERD — Facebook Creator Platform (NestJS Practice)
+  16 tables across 7 schema-owning groups
+|
+
+# ---------------------------------------------------------------------------
+# core — apps/api
+# ---------------------------------------------------------------------------
+core: {
+  label: "core (apps/api)"
+  style.fill: "#dce6f2"
+  style.stroke: "#1a3c6e"
+
+  users: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    clerk_user_id: varchar(255) {constraint: UNIQUE}
+    email: varchar(255) {constraint: UNIQUE}
+    full_name: varchar(100)
+    avatar_url: varchar(2048)
+    status: varchar(15)
+    created_at: timestamptz
+    updated_at: timestamptz
+  }
+
+  workspaces: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    name: varchar(100)
+    slug: varchar(120) {constraint: UNIQUE}
+    description: varchar(500)
+    status: varchar(15)
+    owner_user_id: uuid {constraint: FK}
+    created_at: timestamptz
+    updated_at: timestamptz
+  }
+
+  workspace_members: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    workspace_id: uuid {constraint: FK}
+    user_id: uuid {constraint: FK}
+    role: varchar(20)
+    invited_at: timestamptz
+    accepted_at: timestamptz
+    joined_at: timestamptz
+  }
+
+  invitations: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    workspace_id: uuid {constraint: FK}
+    email: varchar(255)
+    role: varchar(20)
+    token: varchar(64) {constraint: UNIQUE}
+    status: varchar(15)
+    invited_by_user_id: uuid {constraint: FK}
+    expires_at: timestamptz
+    created_at: timestamptz
+  }
+
+  facebook_accounts: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    workspace_id: uuid {constraint: FK}
+    page_id: varchar(255) {constraint: UNIQUE}
+    page_name: varchar(255)
+    access_token: text
+    token_expires_at: timestamptz
+    connected_at: timestamptz
+    updated_at: timestamptz
+  }
+
+  posts: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    workspace_id: uuid {constraint: FK}
+    facebook_account_id: uuid {constraint: FK}
+    created_by_user_id: uuid {constraint: FK}
+    title: varchar(255)
+    content: text
+    media_url: varchar(2048)
+    status: varchar(15)
+    facebook_graph_post_id: varchar(255)
+    scheduled_at: timestamptz
+    published_at: timestamptz
+    last_error: text
+    created_at: timestamptz
+    updated_at: timestamptz
+  }
+
+  audit_logs: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    actor_user_id: uuid {constraint: FK}
+    action: varchar(150)
+    entity_type: varchar(150)
+    entity_id: uuid
+    old_values: jsonb
+    new_values: jsonb
+    metadata: jsonb
+    created_at: timestamptz
+  }
+}
+
+# ---------------------------------------------------------------------------
+# billing — billing-service
+# ---------------------------------------------------------------------------
+billing: {
+  label: "billing (billing-service)"
+  style.fill: "#f3e3d3"
+  style.stroke: "#8a4b00"
+
+  plans: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    code: varchar(20) {constraint: UNIQUE}
+    name: varchar(50)
+    stripe_price_id: varchar(255)
+    monthly_price: decimal
+    yearly_price: decimal
+    post_limit: integer
+    scheduled_post_limit: integer
+    analytics_retention_days: integer
+    created_at: timestamptz
+    updated_at: timestamptz
+  }
+
+  subscriptions: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    workspace_id: uuid {constraint: FK}
+    plan_id: uuid {constraint: FK}
+    stripe_customer_id: varchar(255)
+    stripe_subscription_id: varchar(255) {constraint: UNIQUE}
+    status: varchar(15)
+    current_period_start: timestamptz
+    current_period_end: timestamptz
+    grace_period_end: timestamptz
+    created_at: timestamptz
+    updated_at: timestamptz
+  }
+
+  billing_events: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    stripe_event_id: varchar(255) {constraint: UNIQUE}
+    event_type: varchar(100)
+    event_payload: jsonb
+    occurred_at: timestamptz
+    subscription_id: uuid {constraint: FK}
+    created_at: timestamptz
+  }
+}
+
+# ---------------------------------------------------------------------------
+# analytics — analytics-service
+# ---------------------------------------------------------------------------
+analytics: {
+  label: "analytics (analytics-service)"
+  style.fill: "#dcefdc"
+  style.stroke: "#2f6e2f"
+
+  post_metrics: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    post_id: uuid {constraint: FK}
+    metric_date: date {constraint: UNIQUE}
+    reach: integer
+    impressions: integer
+    likes: integer
+    comments: integer
+    shares: integer
+    created_at: timestamptz
+  }
+}
+
+# ---------------------------------------------------------------------------
+# notification — notification-service
+# ---------------------------------------------------------------------------
+notification: {
+  label: "notification (notification-service)"
+  style.fill: "#e6dcf2"
+  style.stroke: "#5b3a8a"
+
+  notifications: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    workspace_id: uuid {constraint: FK}
+    type: varchar(50)
+    title: varchar(150)
+    message: text
+    payload: jsonb
+    created_at: timestamptz
+  }
+
+  notification_recipients: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    notification_id: uuid {constraint: FK}
+    user_id: uuid {constraint: FK}
+    read_status: boolean
+    read_at: timestamptz
+    created_at: timestamptz
+  }
+}
+
+# ---------------------------------------------------------------------------
+# email — email-service
+# ---------------------------------------------------------------------------
+email: {
+  label: "email (email-service)"
+  style.fill: "#d8eeee"
+  style.stroke: "#1a7a7a"
+
+  email_delivery_logs: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    workspace_id: uuid {constraint: FK}
+    user_id: uuid {constraint: FK}
+    email_type: varchar(50)
+    recipient_email: varchar(255)
+    template_name: varchar(100)
+    provider: varchar(30)
+    status: varchar(15)
+    dedupe_key: varchar(255) {constraint: UNIQUE}
+    retry_count: integer
+    related_entity_type: varchar(100)
+    related_entity_id: uuid
+    sent_at: timestamptz
+    created_at: timestamptz
+  }
+}
+
+# ---------------------------------------------------------------------------
+# messaging — shared infra (libs/rabbitmq + libs/database)
+# ---------------------------------------------------------------------------
+messaging: {
+  label: "messaging (shared libs/rabbitmq)"
+  style.fill: "#f2dbe2"
+  style.stroke: "#8a1a3b"
+
+  event_message_logs: {
+    shape: sql_table
+    event_id: uuid {constraint: PK}
+    event_type: varchar(100)
+    exchange_name: varchar(100)
+    routing_key: varchar(150)
+    processing_status: varchar(15)
+    retry_count: integer
+    payload: jsonb
+    result: jsonb
+    processed_at: timestamptz
+    created_at: timestamptz
+  }
+
+  dead_letter_messages: {
+    shape: sql_table
+    id: uuid {constraint: PK}
+    event_id: uuid {constraint: FK}
+    error_message: text
+    retry_count: integer
+    failed_at: timestamptz
+    reprocessed_at: timestamptz
+  }
+}
+
+# ---------------------------------------------------------------------------
+# search — search-service (reserved, no tables — Algolia is the system of record, ADR-004)
+# ---------------------------------------------------------------------------
+search: {
+  label: "search (search-service)\nno tables — Algolia is\nthe system of record"
+  style.fill: "#e8e8e8"
+  style.stroke: "#6c6c6c"
+  style.stroke-dash: 4
+}
+
+# ===========================================================================
+# Relationships — same-schema (solid, real FK constraint, full crow's-foot)
+# ===========================================================================
+core.users.id <-> core.workspaces.owner_user_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.users.id <-> core.workspace_members.user_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.workspaces.id <-> core.workspace_members.workspace_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.workspaces.id <-> core.invitations.workspace_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.users.id <-> core.invitations.invited_by_user_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.workspaces.id <-> core.facebook_accounts.workspace_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.workspaces.id <-> core.posts.workspace_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.facebook_accounts.id <-> core.posts.facebook_account_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.users.id <-> core.posts.created_by_user_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+core.users.id <-> core.audit_logs.actor_user_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+
+billing.plans.id <-> billing.subscriptions.plan_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+billing.subscriptions.id <-> billing.billing_events.subscription_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+
+notification.notifications.id <-> notification.notification_recipients.notification_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: * {
+    shape: cf-many
+  }
+}
+
+messaging.event_message_logs.event_id <-> messaging.dead_letter_messages.event_id {
+  source-arrowhead: 1 {
+    shape: cf-one-required
+  }
+  target-arrowhead: 1 {
+    shape: cf-one-required
+  }
+}
+
+# ===========================================================================
+# Relationships — cross-schema (no DB-level FK, see BR-R06 — same convention
+# as room_status_audit in the Hotel Management System reference: a plain
+# dashed, labeled arrow with NO crow's-foot shapes, because there is no real
+# enforced constraint to notate — only a logical reference kept consistent
+# by domain events.)
+# ===========================================================================
+core.posts.id -> analytics.post_metrics.post_id: "1:N (no DB FK)" {style.stroke-dash: 4}
+core.workspaces.id -> billing.subscriptions.workspace_id: "1:1 (no DB FK)" {style.stroke-dash: 4}
+core.workspaces.id -> notification.notifications.workspace_id: "1:N (no DB FK)" {style.stroke-dash: 4}
+core.users.id -> notification.notification_recipients.user_id: "1:N (no DB FK)" {style.stroke-dash: 4}
+core.workspaces.id -> email.email_delivery_logs.workspace_id: "1:N (no DB FK)" {style.stroke-dash: 4}
+core.users.id -> email.email_delivery_logs.user_id: "1:N (no DB FK)" {style.stroke-dash: 4}
+

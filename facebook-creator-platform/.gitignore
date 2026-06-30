@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.env
+*.local
+*.pem
+**/secrets/**
+coverage/
+test/load/reports/
+.DS_Store
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
+# Claude Code local (per-developer) overrides — keep project settings.json committed
+.claude/settings.local.json

@@ -1,0 +1,194 @@
+<mxfile host="app.diagrams.net" version="24.0.0">
+  <diagram id="fcp-arch" name="Architecture">
+    <mxGraphModel dx="1400" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1120" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- TITLE -->
+        <mxCell id="title" value="Facebook Creator Platform — Hybrid Architecture" style="text;html=1;align=center;verticalAlign=middle;fontSize=26;fontStyle=1;fontColor=#1A1A1A;" vertex="1" parent="1">
+          <mxGeometry x="360" y="20" width="880" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="NestJS Modular Monolith + Event-Driven Supporting Services  (rev. CR-01)" style="text;html=1;align=center;verticalAlign=middle;fontSize=14;fontColor=#5A5A5A;" vertex="1" parent="1">
+          <mxGeometry x="430" y="58" width="740" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- WEB CLIENT -->
+        <mxCell id="webclient" value="&lt;b&gt;Web Client&lt;/b&gt;&lt;br&gt;Next.js (Browser)&lt;br&gt;Tailwind CSS" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;strokeColor=#2D6CDF;fillColor=#EAF1FE;fontColor=#1A3A6B;fontSize=13;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="150" width="180" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- CLERK -->
+        <mxCell id="clerk" value="&lt;b&gt;Clerk&lt;/b&gt;&lt;br&gt;Auth &amp; User&lt;br&gt;Management" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#E08A1E;fillColor=#FFF3E0;fontColor=#7A4A0A;fontSize=13;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="340" y="150" width="170" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- HTTPS edge -->
+        <mxCell id="e_https" value="HTTPS" style="endArrow=block;html=1;strokeColor=#1A1A1A;strokeWidth=2;fontSize=12;fontStyle=1;" edge="1" parent="1" source="webclient" target="clerk">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- JWT verify edge -->
+        <mxCell id="e_jwt" value="JWT (Verify)" style="endArrow=block;html=1;dashed=1;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;fontStyle=1;fontColor=#1A3A6B;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="clerk" target="monolith">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- MONOLITH CONTAINER -->
+        <mxCell id="monolith" value="" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#2D6CDF;fillColor=#F4F8FF;fontColor=#1A3A6B;verticalAlign=top;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="120" y="290" width="980" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="monolith_title" value="apps/api — NestJS Modular Monolith (Core Application)" style="text;html=1;align=center;fontSize=16;fontStyle=1;fontColor=#1A3A6B;" vertex="1" parent="1">
+          <mxGeometry x="140" y="300" width="940" height="26" as="geometry" />
+        </mxCell>
+        <mxCell id="modules_label" value="Core Domain Modules (inside Monolith)" style="text;html=1;align=center;fontSize=13;fontStyle=2;fontColor=#3A5A8B;" vertex="1" parent="1">
+          <mxGeometry x="140" y="330" width="940" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Identity Module -->
+        <mxCell id="m_identity" value="&lt;b&gt;Identity&lt;/b&gt;&lt;br&gt;&#8226; Users&lt;br&gt;&#8226; Roles&lt;br&gt;&#8226; Permissions" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 4;strokeColor=#2D6CDF;fillColor=#FFFFFF;fontColor=#1A3A6B;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="150" y="358" width="215" height="120" as="geometry" />
+        </mxCell>
+        <!-- Workspace Module -->
+        <mxCell id="m_workspace" value="&lt;b&gt;Workspace&lt;/b&gt;&lt;br&gt;&#8226; Teams&lt;br&gt;&#8226; Members&lt;br&gt;&#8226; Invitations" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 4;strokeColor=#2E9E5B;fillColor=#FFFFFF;fontColor=#1B5E33;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="385" y="358" width="215" height="120" as="geometry" />
+        </mxCell>
+        <!-- Facebook Module -->
+        <mxCell id="m_facebook" value="&lt;b&gt;Facebook&lt;/b&gt;&lt;br&gt;&#8226; Pages&lt;br&gt;&#8226; OAuth Tokens&lt;br&gt;&#8226; Accounts" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 4;strokeColor=#3A5BD9;fillColor=#FFFFFF;fontColor=#1A2E7A;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="620" y="358" width="215" height="120" as="geometry" />
+        </mxCell>
+        <!-- Posts Module -->
+        <mxCell id="m_posts" value="&lt;b&gt;Posts&lt;/b&gt;&lt;br&gt;&#8226; Create&lt;br&gt;&#8226; Schedule&lt;br&gt;&#8226; Publish&lt;br&gt;&#8226; Manage" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 4;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="855" y="358" width="215" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- Postgres single db (inside monolith) -->
+        <mxCell id="pg_single" value="&lt;b&gt;PostgreSQL&lt;/b&gt; (Single Database)&lt;br&gt;Schema ownership by domain (core)&lt;br&gt;MikroORM (Unit of Work)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#2D6CDF;fillColor=#EAF1FE;fontColor=#1A3A6B;fontSize=12;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="150" y="498" width="450" height="74" as="geometry" />
+        </mxCell>
+        <mxCell id="redis_mono" value="&lt;b&gt;Redis&lt;/b&gt; (Cache)&lt;br&gt;Plans, Permissions, FB Metadata" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#C5392B;fillColor=#FDECEA;fontColor=#8A1F16;fontSize=12;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="620" y="498" width="450" height="74" as="geometry" />
+        </mxCell>
+
+        <!-- DATA STORES (right) -->
+        <mxCell id="datastores" value="Data Stores" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;strokeColor=#2D6CDF;fillColor=#F4F8FF;fontColor=#1A3A6B;verticalAlign=top;fontSize=15;fontStyle=1;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="150" width="380" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_pg" value="&lt;b&gt;PostgreSQL&lt;/b&gt; — MikroORM (UoW)&lt;br&gt;&#8226; core (apps/api)&lt;br&gt;&#8226; billing / analytics&lt;br&gt;&#8226; notification / email&lt;br&gt;&#8226; messaging (shared)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#2D6CDF;fillColor=#EAF1FE;fontColor=#1A3A6B;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="190" width="340" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="ds_redis" value="&lt;b&gt;Redis&lt;/b&gt;&lt;br&gt;&#8226; Plan Cache&lt;br&gt;&#8226; Permission Cache&lt;br&gt;&#8226; Facebook Metadata Cache" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#C5392B;fillColor=#FDECEA;fontColor=#8A1F16;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="335" width="340" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ds1" value="" style="endArrow=block;startArrow=block;html=1;dashed=1;strokeColor=#2D6CDF;strokeWidth=2;exitX=1;exitY=0.3;entryX=0;entryY=0.5;" edge="1" parent="1" source="monolith" target="ds_pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ds2" value="" style="endArrow=block;startArrow=block;html=1;dashed=1;strokeColor=#C5392B;strokeWidth=2;exitX=1;exitY=0.7;entryX=0;entryY=0.5;" edge="1" parent="1" source="monolith" target="ds_redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Publish Domain Events arrow -->
+        <mxCell id="e_pub" value="Publish Domain Events" style="endArrow=block;html=1;strokeColor=#1A1A1A;strokeWidth=2.5;fontSize=13;fontStyle=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="monolith" target="rabbit">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- RABBITMQ EVENT BUS -->
+        <mxCell id="rabbit" value="" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#8A3FD9;fillColor=#F3EAFB;fontColor=#5A1B8B;verticalAlign=top;fontSize=15;" vertex="1" parent="1">
+          <mxGeometry x="120" y="630" width="980" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="rabbit_title" value="RabbitMQ (Event Bus)  —  AMQP" style="text;html=1;align=center;fontSize=16;fontStyle=1;fontColor=#5A1B8B;" vertex="1" parent="1">
+          <mxGeometry x="140" y="638" width="940" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="rk1" value="workspace.*" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="150" y="676" width="130" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="rk2" value="posts.*" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="295" y="676" width="120" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="rk3" value="billing.*" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="430" y="676" width="120" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="rk4" value="analytics.*" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="565" y="676" width="130" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="rk5" value="notification.*" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="710" y="676" width="140" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="rk6" value="email.*" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="865" y="676" width="110" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="rk7" value="search.*" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="955" y="676" width="70" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="rk8" value="audit.*" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=4 3;strokeColor=#8A3FD9;fillColor=#FFFFFF;fontColor=#5A1B8B;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="676" width="60" height="32" as="geometry" />
+        </mxCell>
+
+        <!-- SUPPORTING SERVICES -->
+        <mxCell id="svc_billing" value="&lt;b&gt;Billing Service&lt;/b&gt;&lt;br&gt;&#8226; Subscription&lt;br&gt;&#8226; Plan Enforcement&lt;br&gt;&#8226; State Machine&lt;br&gt;&#8226; Stripe Webhooks" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#E0A21E;fillColor=#FFF8E1;fontColor=#7A560A;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="780" width="235" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_analytics" value="&lt;b&gt;Analytics Service&lt;/b&gt;&lt;br&gt;&#8226; Metrics Sync&lt;br&gt;&#8226; Graph API Pull&lt;br&gt;&#8226; Aggregations&lt;br&gt;&#8226; Reporting" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#2E9E9E;fillColor=#E0F7F7;fontColor=#0A5A5A;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="295" y="780" width="235" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_search" value="&lt;b&gt;Search Service&lt;/b&gt;&lt;br&gt;&#8226; Index Posts&lt;br&gt;&#8226; Full-text Search&lt;br&gt;&#8226; Sync with Algolia" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#3A5BD9;fillColor=#EAF1FE;fontColor=#1A2E7A;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="550" y="780" width="235" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_notif" value="&lt;b&gt;Notification Service&lt;/b&gt;&lt;br&gt;&#8226; In-App Notifications&lt;br&gt;&#8226; Slack Alerts&lt;br&gt;&#8226; Orchestration" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#C5396B;fillColor=#FDEAF1;fontColor=#8A1640;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="805" y="780" width="235" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="svc_email" value="&lt;b&gt;Email Service&lt;/b&gt;&lt;br&gt;&#8226; Invitation Emails&lt;br&gt;&#8226; Publish Result&lt;br&gt;&#8226; Subscription&lt;br&gt;&#8226; Token Reminders" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#2E9E5B;fillColor=#E6F7EC;fontColor=#1B5E33;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="780" width="235" height="120" as="geometry" />
+        </mxCell>
+        <!-- Audit Service (NEW — CR-01 R6) -->
+        <mxCell id="svc_audit" value="&lt;b&gt;Audit Service&lt;/b&gt;&lt;br&gt;&#8226; Consumes all events&lt;br&gt;&#8226; Append-only trail&lt;br&gt;&#8226; Schemaless docs&lt;br&gt;&#8226; MongoDB store" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#4A4A4A;fillColor=#EEEEEE;fontColor=#222222;fontSize=12;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="1315" y="780" width="235" height="120" as="geometry" />
+        </mxCell>
+
+        <!-- edges from rabbit to services (AMQP) -->
+        <mxCell id="ev_b" style="endArrow=block;html=1;dashed=1;strokeColor=#8A3FD9;strokeWidth=2;exitX=0.15;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="rabbit" target="svc_billing"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ev_a" style="endArrow=block;html=1;dashed=1;strokeColor=#8A3FD9;strokeWidth=2;exitX=0.32;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="rabbit" target="svc_analytics"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ev_s" style="endArrow=block;html=1;dashed=1;strokeColor=#8A3FD9;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="rabbit" target="svc_search"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ev_n" style="endArrow=block;html=1;dashed=1;strokeColor=#8A3FD9;strokeWidth=2;exitX=0.68;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="rabbit" target="svc_notif"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ev_e" style="endArrow=block;html=1;dashed=1;strokeColor=#8A3FD9;strokeWidth=2;exitX=0.85;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="rabbit" target="svc_email"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ev_au" style="endArrow=block;html=1;dashed=1;strokeColor=#8A3FD9;strokeWidth=2;exitX=1;exitY=0.5;entryX=0.5;entryY=0;" edge="1" parent="1" source="rabbit" target="svc_audit"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- EXTERNAL PROVIDERS -->
+        <mxCell id="ext_stripe" value="&lt;b&gt;Stripe&lt;/b&gt;&lt;br&gt;Payments / Webhooks" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#635BFF;fillColor=#EEEDFF;fontColor=#2A2580;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="960" width="235" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_graph" value="&lt;b&gt;Facebook Graph API&lt;/b&gt;&lt;br&gt;Insights / Metrics" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#3A5BD9;fillColor=#EAF1FE;fontColor=#1A2E7A;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="295" y="960" width="235" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_algolia" value="&lt;b&gt;Algolia&lt;/b&gt;&lt;br&gt;Search Index" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#1E47C8;fillColor=#E7ECFF;fontColor=#10277A;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="550" y="960" width="235" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_slack" value="&lt;b&gt;Slack&lt;/b&gt;&lt;br&gt;Operational Alerts" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#C5396B;fillColor=#FDEAF1;fontColor=#8A1640;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="805" y="960" width="235" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="ext_email" value="&lt;b&gt;Email Provider&lt;/b&gt;&lt;br&gt;Resend / SendGrid / SMTP" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#2E9E5B;fillColor=#E6F7EC;fontColor=#1B5E33;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="960" width="235" height="60" as="geometry" />
+        </mxCell>
+        <!-- MongoDB datastore (NEW — CR-01 R6) -->
+        <mxCell id="ext_mongo" value="&lt;b&gt;MongoDB&lt;/b&gt;&lt;br&gt;Audit trail (schemaless)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#4A7A3A;fillColor=#EAF3E4;fontColor=#2A4A1A;fontSize=11;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1315" y="960" width="235" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="x_b" value="Webhooks" style="endArrow=block;html=1;dashed=1;strokeColor=#E0A21E;strokeWidth=2;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="svc_billing" target="ext_stripe"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="x_a" style="endArrow=block;html=1;dashed=1;strokeColor=#2E9E9E;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="svc_analytics" target="ext_graph"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="x_s" style="endArrow=block;html=1;dashed=1;strokeColor=#3A5BD9;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="svc_search" target="ext_algolia"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="x_n" style="endArrow=block;html=1;dashed=1;strokeColor=#C5396B;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="svc_notif" target="ext_slack"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="x_e" style="endArrow=block;html=1;dashed=1;strokeColor=#2E9E5B;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="svc_email" target="ext_email"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="x_au" style="endArrow=block;startArrow=block;html=1;dashed=1;strokeColor=#4A7A3A;strokeWidth=2;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="svc_audit" target="ext_mongo"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- LEGEND -->
+        <mxCell id="legend" value="Communication Patterns" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=6 4;strokeColor=#9AA7B8;fillColor=#FAFBFC;fontColor=#33424F;verticalAlign=top;fontSize=13;fontStyle=1;spacingTop=8;align=center;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="540" width="380" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="lg1" value="&#8594;  HTTPS (Sync Request)" style="text;html=1;align=left;fontSize=12;fontColor=#1A1A1A;" vertex="1" parent="1"><mxGeometry x="1190" y="575" width="340" height="22" as="geometry" /></mxCell>
+        <mxCell id="lg2" value="&#8674;  JWT (Auth Verify)" style="text;html=1;align=left;fontSize=12;fontColor=#1A3A6B;" vertex="1" parent="1"><mxGeometry x="1190" y="600" width="340" height="22" as="geometry" /></mxCell>
+        <mxCell id="lg3" value="&#8674;  AMQP (Async Domain Events)" style="text;html=1;align=left;fontSize=12;fontColor=#5A1B8B;" vertex="1" parent="1"><mxGeometry x="1190" y="625" width="340" height="22" as="geometry" /></mxCell>
+        <mxCell id="lg4" value="&#8674;  Webhook (Async)" style="text;html=1;align=left;fontSize=12;fontColor=#7A560A;" vertex="1" parent="1"><mxGeometry x="1190" y="650" width="340" height="22" as="geometry" /></mxCell>
+        <mxCell id="lg5" value="&#8674;  External API Calls" style="text;html=1;align=left;fontSize=12;fontColor=#1B5E33;" vertex="1" parent="1"><mxGeometry x="1190" y="675" width="340" height="22" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
