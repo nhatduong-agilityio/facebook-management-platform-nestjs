@@ -4,9 +4,9 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T1.2` — Persistence + cross-cutting foundation (MikroORM, BaseEntity, EncryptedText, Result pattern, Pino).
+- **Next task:** `T1.3` — Identity module (Clerk JWT guard, `getOrCreateUser`, `GET /auth/me`, RBAC roles).
 - **Branch:** `nestjs-practice`
-- **Notes:** T1.1 is done — monorepo, tooling, Docker Compose all green. T1.2 is the keystone: MikroORM wired to Postgres + Mongo, BaseEntity (uuid v7, timestamps, soft-delete filter), AppError/Result helpers, EncryptedText (AES-256-GCM), Pino logger with PII redaction.
+- **Notes:** T1.2 is done — MikroORM v7 wired (PG + Mongo), BaseEntity, AppError/Result, EncryptedText, Pino with PII redaction, User entity + initial migration. Key v7 finding: decorators are in `@mikro-orm/decorators/legacy` (not core), type inference needs `TsMorphMetadataProvider` from `@mikro-orm/reflection`. Run `pnpm mikro-orm migration:up` once Docker is running to apply the initial migration.
 
 ## Log
 <!-- Format:
@@ -17,6 +17,26 @@
 - Follow-ups / TODOs discovered
 - **Parking lot** (only if mid-task session end): what's done so far, exact next step within the task
 -->
+
+### 2026-06-30 — T1.2 Persistence + cross-cutting foundation
+
+- **Common infrastructure created:**
+  - `src/common/errors/app-error.ts` — AppError + AppErrorCode (9 codes)
+  - `src/common/http/to-http-exception.ts` — maps AppError.code → HttpStatus
+  - `src/common/crypto/aes-gcm.ts` — AES-256-GCM encrypt/decrypt (key from PII_ENCRYPTION_KEY)
+  - `src/common/crypto/encrypted-text.type.ts` — MikroORM Type for PII columns
+  - `src/common/entities/base.entity.ts` — uuid v7 id, timestamps, softDelete filter
+- **MikroORM wired:**
+  - `src/database/database.module.ts` — PostgreSQL (primary) + MongoDB (named context 'mongo')
+  - `apps/api/mikro-orm.config.ts` — CLI config with TsMorphMetadataProvider
+- **Sample entity + migration:**
+  - `src/modules/identity/entities/user.entity.ts` — User entity in core.users
+  - `src/migrations/Migration20260630000000_InitialSchema.ts` — creates core schema + core.users
+- **Updated:** `src/app.module.ts` (DatabaseModule + LoggerModule/Pino PII redaction), `src/main.ts` (Pino logger)
+- **Key MikroORM v7 findings (ADR-021/022/023):** decorators split to `@mikro-orm/decorators/legacy`; type inference needs `TsMorphMetadataProvider`; migration generation needs live DB for `--initial` but `schema:create --dump` works offline.
+- **Boot-verification fixes:** removed `exports: [MikroOrmModule]` from DatabaseModule (dynamic module instances can't be re-exported by class reference — `@mikro-orm/nestjs` registers providers globally so export is unnecessary); added `discovery: { warnWhenNoEntities: false }` to MongoDB context so it defers entity validation until T3.x Audit Service entities exist.
+- Tests: 30/30 passing. Lint: clean. App boots to `Application listening on port 3000` with all modules initialized.
+- `pnpm mikro-orm migration:up` will apply the initial schema once Docker is running.
 
 ### 2026-06-30 — T1.1 Monorepo + tooling + datastores
 

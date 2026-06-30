@@ -71,6 +71,40 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 - ADR-017 Guarded billing state machine with transition log
 - ADR-018 Index all foreign keys (real + logical)
 
+## MikroORM v7 packages (added T1.2, verified 2026-06-30)
+| Package | Version | Purpose |
+|---|---|---|
+| @mikro-orm/core | ^7.1.5 | ORM core (Unit of Work) |
+| @mikro-orm/postgresql | ^7.1.5 | PostgreSQL driver |
+| @mikro-orm/mongodb | ^7.1.5 | MongoDB driver (Audit Service) |
+| @mikro-orm/nestjs | ^7.0.2 | NestJS integration module |
+| @mikro-orm/migrations | ^7.1.5 | SQL migration runner |
+| @mikro-orm/cli | ^7.1.5 | CLI for migration:create / schema:create |
+| @mikro-orm/decorators | ^7.1.5 | **Required in v7** — decorator API moved here from core |
+| @mikro-orm/reflection | ^7.1.5 | TsMorphMetadataProvider for TS type inference |
+| neverthrow | ^8.2.0 | Result pattern (`ok` / `err`) |
+| uuidv7 | ^1.2.1 | App-generated time-ordered UUIDs (ADR-013) |
+| @swc-node/register | ^1.11.1 | SWC loader for mikro-orm CLI TypeScript support |
+
+> **ADR-021 MikroORM v7 decorator API moved to `@mikro-orm/decorators`:**
+> In v7.1.5, `@Entity`, `@PrimaryKey`, `@Property`, `@Filter`, `@Index`, `@Unique`,
+> `@ManyToOne` etc. are NOT exported from `@mikro-orm/core`. They live in
+> `@mikro-orm/decorators/legacy` (for TypeScript legacy `experimentalDecorators`)
+> and `@mikro-orm/decorators/es` (for TC39 stage-3 decorators). Import from
+> `@mikro-orm/decorators/legacy` in all entities.
+>
+> **ADR-022 `TsMorphMetadataProvider` required for type inference:**
+> Without `emitDecoratorMetadata` reaching MikroORM at runtime (the CLI uses `tsx`
+> which doesn't emit it), MikroORM v7 cannot infer property types from TypeScript
+> metadata. Use `TsMorphMetadataProvider` from `@mikro-orm/reflection` in both the
+> CLI config (`mikro-orm.config.ts`) and the runtime NestJS module. This reads
+> TypeScript source files directly (via `ts-morph`) to extract type information.
+>
+> **ADR-023 Migration generation without Docker:** `mikro-orm migration:create --initial`
+> requires a live DB connection even for `--initial`. Use `mikro-orm schema:create --dump`
+> to preview the DDL, then write the migration file manually. Run `migration:up` once
+> Docker is running to apply it.
+
 ## Additional dev tooling (added T1.1, verified 2026-06-30)
 | Package | Version | Purpose |
 |---|---|---|
@@ -91,5 +125,7 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 |---|---|
 | 2026-06-29 | Initial version pinning; TS held at 5.9, ESLint at 9 (see rationale). |
 | 2026-06-29 | **Roadmap reorder (no effort change, ~222h):** moved MikroORM, BaseEntity (uuid v7 + timestamps + soft delete), PII `EncryptedText`, and the Result pattern from Week 5 into Week 1 (T1.2). These are foundational/cross-cutting — every feature inherits them, so building features first and "migrating" later would force a full rewrite of entities, repositories, and service signatures. Moved the Audit Service to Week 3 (after the event bus is stable, so audit can be exercised end-to-end). Week 5 is now verification + Artillery load testing, not building. This removes hidden rework and de-risks the schedule. |
+| 2026-06-30 | **T1.2 complete.** MikroORM v7 wired to PG + Mongo; BaseEntity (uuid v7 + timestamps + soft-delete); AppError + toHttpException; EncryptedText (AES-256-GCM); Pino logger with PII redaction; User entity + initial migration. See ADR-021/022/023 for v7 decorator split, TsMorph metadata provider, and offline migration workflow. |
+| 2026-06-30 | **T1.2 boot-verification fixes.** (1) Removed `exports: [MikroOrmModule]` from DatabaseModule — `@mikro-orm/nestjs` registers providers globally so explicit export is not needed, and re-exporting dynamic modules by class reference throws `UnknownExportException` in NestJS. (2) Added `discovery: { warnWhenNoEntities: false }` to the MongoDB context so startup is not blocked until Audit Service entities are added in T3.x. |
 | 2026-06-30 | **T1.1 complete.** pnpm workspace, NestJS 11 app, ESLint 9 flat config, vitest 4 + unplugin-swc, husky pre-commit (hooksPath set via `git rev-parse --show-prefix`), Docker Compose (PG 16, Mongo 7, Redis 7, RabbitMQ 3). Note ADR-020 above re vitest/swc cosmetic warning. |
 | 2026-06-30 | **ADR-019 Performance optimization order — Index → Query → Cache.** Redis caching (response cache, RBAC cache, query cache) is Week 5-only and requires T5.5 Artillery benchmark data to justify. Most p99 regressions are solved by a missing index or an N+1 query; adding cache without that evidence buys invalidation complexity, stale-read risk, and extra monitoring for no proven gain. Consumer deduplication keys (`dedup:<eventId>`) are the only pre-T5 Redis use — they are idempotency infrastructure, not a performance cache. When cache is added in T5.6, record the before/after p99 and load level in this file. |
