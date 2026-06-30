@@ -23,10 +23,19 @@
     "typescript-eslint": "^8.62.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@swc/core", "esbuild", "@scarf/scarf"]
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "esbuild",
+      "@scarf/scarf"
+    ]
   },
   "lint-staged": {
-    "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
-    "*.{json,md,yaml,yml}": ["prettier --write"]
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yaml,yml}": [
+      "prettier --write"
+    ]
   }
 }

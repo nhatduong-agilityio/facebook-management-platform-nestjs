@@ -25,7 +25,7 @@ For blocked tasks always append an inline note on the same line:
 - [x] **T1.1 Monorepo + tooling + datastores** (~4h)
   - pnpm workspace; apps/api + services/* packages; tsconfig base; eslint(9)+prettier; vitest+swc; husky pre-commit (lint+test). Docker Compose: PostgreSQL 16, **MongoDB**, Redis, RabbitMQ. `.env.example`.
   - DoD: `pnpm install/lint/test` clean on an empty app; `docker compose up` brings all four datastores up; `/health` 200.
-- [ ] **T1.2 Persistence + cross-cutting foundation** (~6h)  (the keystone task)
+- [x] **T1.2 Persistence + cross-cutting foundation** (~6h)  (the keystone task)
   - MikroORM (UoW) wired to Postgres (per-schema) **and** Mongo; `BaseEntity` (uuid v7, createdAt/updatedAt/deletedAt, global soft-delete filter); `AppError` + `toHttpException`; Result helpers; `EncryptedText` (AES-256-GCM) + aes-gcm util; Pino logger with PII redaction; FK-index migration convention.
   - DoD: unit tests for AppError mapping, encrypt/decrypt round-trip, logger redacts a token; a sample entity migrates and matches `docs/reference/fcp-ddl.sql`; soft delete hides rows by default.
 - [ ] **T1.3 Identity module** (~3h)

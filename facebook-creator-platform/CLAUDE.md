@@ -17,6 +17,11 @@ do not silently diverge.
 - Auth: **Clerk** (JWT at gateway). Payments: **Stripe** (state machine).
 - Search: **Algolia**. Errors: **neverthrow** (Result pattern). Tests: **Vitest** + **Artillery**.
 
+## Comments — mandatory JSDoc on all exported code
+Every exported class, method, function, interface, type alias, and enum **must** have a
+JSDoc block. Non-exported implementation code needs a comment only when the *why* is
+non-obvious. Full rules and canonical examples in `docs/CODING-STANDARDS.md` §9.
+
 ## Non-negotiable conventions — full detail in `docs/CODING-STANDARDS.md`
 1. Service/domain methods return `Result<T, AppError>` (neverthrow). **Never throw for expected/domain failures.** Throw only for truly exceptional cases.
 2. Primary keys are **app-generated UUID v7** created before persistence. **No DB `DEFAULT` on service-owned tables.**

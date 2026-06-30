@@ -12,5 +12,9 @@ test/load/reports/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+# TypeScript incremental build cache
+*.tsbuildinfo
+# MikroORM TsMorphMetadataProvider cache
+**/temp/
 # Claude Code local (per-developer) overrides — keep project settings.json committed
 .claude/settings.local.json

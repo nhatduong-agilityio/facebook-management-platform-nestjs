@@ -227,7 +227,79 @@ export class CreatePostDto {
 DTOs validate *shape and format* only. Business rules (quota, state, ownership) live in
 the service and return `err(AppError)`, not DTO validation errors.
 
-## 9. Testing
+## 9. Comments — JSDoc on all public API surface
+
+Every exported class, method, function, interface, type alias, and enum **must** have a
+JSDoc block. Internal (non-exported) implementation code needs a comment only when the
+*why* is non-obvious.
+
+### Rules
+
+- **Exported class** — one-line summary of its responsibility.
+- **Exported method / function** — one-line summary + `@param` for each parameter whose
+  purpose is not self-evident + `@returns` describing the value (including whether it is a
+  `Result<T, AppError>` and what errors it can return).
+- **Exported interface / type / enum** — one-line summary; document each member whose
+  name alone does not explain its meaning.
+- **Non-exported code** — only comment when there is a hidden constraint, a non-obvious
+  invariant, or a workaround for a specific bug. Do not narrate what the code does.
+
+### Canonical shape
+
+```ts
+/**
+ * Manages workspace lifecycle: create, fetch, and soft-delete operations.
+ * All mutating methods return Result<T, AppError> — never throw for domain errors.
+ */
+@Injectable()
+export class WorkspaceService {
+  /**
+   * Finds an active workspace by id.
+   *
+   * @param id - UUID v7 of the workspace to fetch.
+   * @returns ok(workspace) or err(NOT_FOUND) if it does not exist or is soft-deleted.
+   */
+  async getWorkspace(id: string): Promise<Result<Workspace, AppError>> { ... }
+
+  /**
+   * Creates a new workspace for the given owner.
+   *
+   * @param ownerId - UUID of the User who will own this workspace.
+   * @param name    - Display name; max 100 chars (BR-F01).
+   * @returns ok(workspace) or err(CONFLICT) if the owner already has a workspace with
+   *          the same name, or err(PLAN_LIMIT_EXCEEDED) if the owner's plan is at quota.
+   */
+  async createWorkspace(ownerId: string, name: string): Promise<Result<Workspace, AppError>> { ... }
+}
+```
+
+```ts
+/**
+ * Domain error codes for the Facebook Creator Platform.
+ * Controllers map these to HTTP status codes via toHttpException().
+ */
+export type AppErrorCode =
+  | 'NOT_FOUND'          // resource does not exist or is soft-deleted
+  | 'FORBIDDEN'          // authenticated but not authorised
+  | 'CONFLICT'           // unique constraint or business-rule violation
+  | 'PLAN_LIMIT_EXCEEDED'; // owner's subscription plan does not allow this operation
+```
+
+### What NOT to comment
+
+```ts
+// BAD — restates the code, adds no information
+/** Gets the user by id */
+async getUserById(id: string) { ... }
+
+// BAD — describes the current task, rots immediately
+/** Added for the T1.3 identity flow */
+export class ClerkGuard { ... }
+```
+
+---
+
+## 10. Testing
 - Unit: Vitest, colocate `*.spec.ts`. Mock the `EntityManager` with `vi.fn()`.
 - Each service method: at least one `ok` path and one `err` path.
 - API smoke + load: Artillery scenarios in `test/load/` (see the artillery skill).
