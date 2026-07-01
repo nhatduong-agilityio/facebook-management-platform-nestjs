@@ -36,10 +36,10 @@ export class MikroOrmWorkspaceRepository extends IWorkspaceRepository {
    * @inheritdoc
    */
   async findAllByUserId(userId: string): Promise<Workspace[]> {
-    const memberships = await this.memberRepo.find({ userId }, { fields: ['workspaceId'] });
+    const memberships = await this.memberRepo.find({ userId }, { fields: ['workspace'] });
     if (memberships.length === 0) return [];
 
-    return this.repo.find({ id: { $in: memberships.map((m) => m.workspaceId) } });
+    return this.repo.find({ id: { $in: memberships.map((m) => m.workspace.id) } });
   }
 
   /** @inheritdoc */
@@ -53,7 +53,7 @@ export class MikroOrmWorkspaceRepository extends IWorkspaceRepository {
    *
    * Uses a dedicated `flush` to commit the workspace + its owner membership
    * in one transaction. The caller is responsible for calling
-   * `IWorkspaceMemberWriteRepository.persist` before this method.
+   * `IWorkspaceMemberRepository.persist` before this method.
    *
    * @inheritdoc
    */

@@ -34,7 +34,7 @@ For blocked tasks always append an inline note on the same line:
 - [x] **T1.4 Workspace module — core** (~3h)
   - Workspace entity + service + role resolution. Entities extend BaseEntity.
   - DoD: create/list/get endpoints; tests + Swagger; Result used.
-- [ ] **T1.5 Workspace module — members & invitations** (~4h)
+- [x] **T1.5 Workspace module — members & invitations** (~4h)
   - Members + invitations entities; invite flow; sole-owner guard (BR-R02); emit events.
   - DoD: invite endpoint; sole-owner removal -> err(FORBIDDEN); tests.
 
