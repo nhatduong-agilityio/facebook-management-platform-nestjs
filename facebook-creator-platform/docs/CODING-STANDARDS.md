@@ -450,7 +450,44 @@ in `docs/DECISIONS.md` (before/after p99, load level tested).
 
 ---
 
-## 13. Ports & Adapters — services depend only on abstractions
+## 13. MikroORM queries — prefer typed API over raw SQL
+
+Use MikroORM's repository or `QueryBuilder` API wherever the query can be expressed
+with them. Fall back to `em.getConnection().execute(raw SQL)` only when the ORM
+cannot represent the query (e.g. window functions, CTEs, complex multi-table DDL).
+
+### Decision order
+
+1. **Repository methods** (`repo.findOne`, `repo.find`, `repo.count`, `em.findOne`) —
+   use for simple filter/projection queries. The `softDelete` filter from `BaseEntity`
+   applies automatically; no manual `deleted_at IS NULL` needed.
+2. **QueryBuilder** (`em.createQueryBuilder`) — use for joins, subqueries, aggregations,
+   and anything that needs custom `WHERE` clauses beyond what `FilterQuery` supports.
+3. **Raw SQL** — last resort only. When used, cast the result explicitly:
+   `(await em.getConnection().execute(sql, params)) as Array<{ col: type }>`.
+
+### Cross-module entity access without `@InjectRepository`
+
+When an adapter in module A needs to query an entity owned by module B, and a
+NestJS `forwardRef` / circular module dependency must be avoided, import the
+entity **class file** directly and query via `EntityManager`:
+
+```ts
+// identity/repositories/mikro-orm-workspace-member.repository.ts
+import { WorkspaceMember } from '../../workspace/entities/workspace-member.entity';
+
+// EntityManager is global — it can query any entity registered in any forFeature
+const member = await this.em.findOne(WorkspaceMember, { userId, workspaceId });
+```
+
+An entity-class import is a TypeScript file-level dependency only. It does NOT
+create a NestJS module dependency, so the circular module cycle is not introduced.
+Use `@InjectRepository(Entity)` only when the entity is registered in the current
+module's `MikroOrmModule.forFeature`.
+
+---
+
+## 14. Ports & Adapters — services depend only on abstractions
 
 Services (application layer) must **never** import:
 - ORM types: `EntityRepository`, `EntityManager`, or anything from `@mikro-orm/*`
