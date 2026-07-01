@@ -4,11 +4,50 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T1.3` — Identity module (Clerk JWT guard, `getOrCreateUser`, `GET /auth/me`, RBAC roles).
+- **Next task:** `T1.4` — Workspace module core (Workspace entity + service + create/list/get endpoints + tests + Swagger).
 - **Branch:** `nestjs-practice`
-- **Notes:** T1.2 is done — MikroORM v7 wired (PG + Mongo), BaseEntity, AppError/Result, EncryptedText, Pino with PII redaction, User entity + initial migration. Key v7 finding: decorators are in `@mikro-orm/decorators/legacy` (not core), type inference needs `TsMorphMetadataProvider` from `@mikro-orm/reflection`. Run `pnpm mikro-orm migration:up` once Docker is running to apply the initial migration.
+- **Notes:** T1.3 is done + post-T1.3 enhancements complete (see log below). 60 tests passing. `WorkspaceRolesGuard.getUserWorkspaceRole` queries `core.workspace_members` (table created in T1.4); guard is unit-tested with mocks and will work at runtime after T1.4 migration.
 
 ## Log
+
+### 2026-07-01 — Post-T1.3 enhancements (no task id — out-of-band)
+
+- **Hexagonal Architecture refactor of IdentityModule:**
+  - Created ports: `src/modules/identity/ports/user.repository.port.ts` (`IUserRepository`), `workspace-member.repository.port.ts` (`IWorkspaceMemberRepository`), `identity-provider.port.ts` (`IIdentityProvider`)
+  - Created adapters: `repositories/mikro-orm-user.repository.ts`, `repositories/mikro-orm-workspace-member.repository.ts`, `repositories/clerk-identity-provider.ts`
+  - Rewrote `identity.service.ts` — zero ORM / SDK / ConfigService imports; depends only on ports
+  - Updated `docs/CODING-STANDARDS.md §13` with Ports & Adapters rules: services never import ORM types, SDKs, or ConfigService; no `vi.mock('@clerk/backend')` in service specs
+- **BaseEntity / User — MikroORM v7 `Opt` fix:** `createdAt`, `updatedAt` (`BaseEntity`), `status` (`User`) typed as `T & Opt` so `em.create()` does not require caller to supply properties that have in-class defaults
+- **DevAuthModule** (`NODE_ENV !== 'production'` only):
+  - `POST /api/v1/dev-auth/token` — accepts `{ userId?, email?, template? }`, calls Clerk Backend API with `CLERK_SECRET_KEY`, returns a real Clerk JWT ready to paste into Postman's Authorization header
+  - Falls back to a sign-in token URL if no active session exists for the user
+- **Clerk webhook receiver:**
+  - `POST /api/v1/webhooks/clerk` — receives `user.created`, `user.updated`, `user.deleted` events from Clerk
+  - Signature verification via `verifyWebhook` from `@clerk/backend/webhooks` (no separate `svix` dep — it is bundled inside `@clerk/backend`)
+  - `rawBody: true` added to `NestFactory.create` so the unmodified buffer is available for HMAC verification
+  - `user.created` / `user.updated` → upsert email, name, avatar in `core.users`; `user.deleted` → soft-delete (idempotent)
+  - ADR-026 filed in DECISIONS.md
+- **Deleted:** `dev-auth.guard.ts` + spec (Bearer `dev:<userId>` bypass — rejected in favour of real Clerk JWTs)
+- Tests: 60/60 passing. Lint: clean.
+- **Setup required:** add `CLERK_WEBHOOK_SIGNING_SECRET=whsec_...` to `.env`; register `POST /api/v1/webhooks/clerk` in Clerk Dashboard → Webhooks, subscribe to `user.created`, `user.updated`, `user.deleted`.
+
+### 2026-07-01 — T1.3 Identity module
+
+- **Created:**
+  - `src/modules/identity/types/workspace-role.type.ts` — `WorkspaceRole` type + `ROLE_HIERARCHY` map (`owner=3 > editor=2 > viewer=1`)
+  - `src/modules/identity/decorators/current-user.decorator.ts` — `@CurrentUser()` param decorator
+  - `src/modules/identity/decorators/roles.decorator.ts` — `@Roles()` metadata decorator + `ROLES_KEY`
+  - `src/modules/identity/dto/auth-me-response.dto.ts` — `AuthMeResponseDto` with Swagger
+  - `src/modules/identity/guards/clerk-auth.guard.ts` — `ClerkAuthGuard` (JWT verify via `verifyToken`, user upsert, 401 on failure/inactive)
+  - `src/modules/identity/guards/roles.guard.ts` — `WorkspaceRolesGuard` (reads `@Roles` metadata, queries `core.workspace_members`)
+  - `src/modules/identity/identity.service.ts` — `getOrCreateUser` (DB-first, Clerk API on first sign-in) + `getUserWorkspaceRole`
+  - `src/modules/identity/identity.controller.ts` — `GET /auth/me`
+  - `src/modules/identity/identity.module.ts` — exports guards + service
+- **Updated:** `src/app.module.ts` (added `IdentityModule`), `apps/api/package.json` (added `@clerk/backend@^3.9.0`)
+- **ADR-024:** Clerk JWT guard strategy: `verifyToken` (local crypto, no API call) + Clerk `users.getUser` only on first sign-in. See DECISIONS.md.
+- Tests: 50/50 passing. Lint: clean.
+- `WorkspaceRolesGuard.getUserWorkspaceRole` queries `core.workspace_members` which is created in T1.4; the guard is unit-tested with mocks and will work at runtime after T1.4's migration.
+
 <!-- Format:
 ### YYYY-MM-DD — <task id> <title>
 - What changed (files/modules)

@@ -16,9 +16,12 @@ import { AppModule } from './app.module';
  * - **ValidationPipe** with whitelist + transform to reject unknown fields and
  *   coerce primitives via class-transformer.
  * - **Swagger** UI available at `/api/docs` (all environments).
+ * - **`rawBody: true`** — NestJS stores the unmodified request buffer on `req.rawBody`
+ *   before JSON parsing so `ClerkWebhookController` can pass it to svix for HMAC
+ *   signature verification (a re-serialised JSON object would fail the check).
  */
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
 
   app.useLogger(app.get(PinoLogger));
 

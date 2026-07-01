@@ -447,3 +447,114 @@ reads, and a monitoring surface. Never add caching speculatively.
 
 When adding any cache beyond consumer dedup: record the benchmark that justified it
 in `docs/DECISIONS.md` (before/after p99, load level tested).
+
+---
+
+## 13. Ports & Adapters — services depend only on abstractions
+
+Services (application layer) must **never** import:
+- ORM types: `EntityRepository`, `EntityManager`, or anything from `@mikro-orm/*`
+- Third-party SDKs: `createClerkClient`, `Stripe`, `algoliasearch`, etc.
+- Infrastructure config: `ConfigService` (config is read once in the adapter constructor, not passed through)
+
+All outbound calls — persistence, external APIs, messaging — go through a **port**
+(abstract class) bound to an **adapter** (concrete implementation) via NestJS DI.
+A service file that imports a package name containing a vendor name is a smell.
+
+### Why abstract class, not interface
+
+TypeScript interfaces are erased at runtime, so they cannot be NestJS DI tokens.
+Abstract classes survive compilation and act as both the contract and the injection token
+— no extra `Symbol` or string token needed.
+
+### File layout per module
+
+```
+modules/<domain>/
+  ports/
+    <x>.repository.port.ts          # abstract class  I<X>Repository   (persistence)
+    <x>-provider.port.ts            # abstract class  I<X>Provider     (external service)
+  repositories/
+    mikro-orm-<x>.repository.ts     # MikroORM adapter  (persistence)
+    <vendor>-<x>-provider.ts        # SDK adapter       (external service — e.g. clerk-identity-provider.ts)
+```
+
+### Canonical port shape
+
+```ts
+// modules/workspace/ports/workspace.repository.port.ts
+import type { Workspace } from '../entities/workspace.entity';
+
+/**
+ * Port: persistence contract for the Workspace aggregate.
+ */
+export abstract class IWorkspaceRepository {
+  abstract findById(id: string): Promise<Workspace | null>;
+  abstract findAllByOwner(ownerId: string): Promise<Workspace[]>;
+  abstract save(workspace: Workspace): Promise<void>;
+}
+```
+
+### Canonical adapter shape
+
+```ts
+// modules/workspace/repositories/mikro-orm-workspace.repository.ts
+@Injectable()
+export class MikroOrmWorkspaceRepository extends IWorkspaceRepository {
+  constructor(
+    @InjectRepository(Workspace) private readonly repo: EntityRepository<Workspace>,
+    private readonly em: EntityManager,
+  ) { super(); }
+
+  findById(id: string)                  { return this.repo.findOne({ id }); }
+  findAllByOwner(ownerId: string)       { return this.repo.find({ ownerId }); }
+  async save(workspace: Workspace)      { this.em.persist(workspace); await this.em.flush(); }
+}
+```
+
+### Module wiring
+
+```ts
+providers: [
+  WorkspaceService,
+  { provide: IWorkspaceRepository, useClass: MikroOrmWorkspaceRepository },
+],
+```
+
+### Service — zero ORM imports
+
+```ts
+@Injectable()
+export class WorkspaceService {
+  constructor(private readonly workspaces: IWorkspaceRepository) {}
+
+  async getWorkspace(id: string): Promise<Result<Workspace, AppError>> {
+    const ws = await this.workspaces.findById(id);
+    if (!ws) return err(AppError.notFound('Workspace'));
+    return ok(ws);
+  }
+}
+```
+
+### Rules
+
+- **One port per aggregate root** (persistence) or **per external capability** (service).
+  Ports reflect domain concepts — `IIdentityProvider`, not `IClerkClient`.
+- **Port methods return domain types** (`User`, `Workspace`) or plain DTOs — never
+  MikroORM types (`Collection`, `Reference`, `Loaded`) or vendor SDK types.
+- **Errors from ports are exceptions**, not `Result` — infrastructure failures
+  (DB down, network timeout) are not domain errors. The service wraps domain
+  outcomes (`null` → `NOT_FOUND`) in `Result`.
+- **Services never instantiate SDKs.** If a constructor creates a client
+  (`new Stripe(...)`, `createClerkClient(...)`, `algoliasearch(...)`), it belongs in
+  an adapter, not a service.
+- **Services never read config.** `ConfigService` is injected into adapters only.
+  The adapter reads the key once (in its constructor) and exposes a typed method.
+- **flush() placement**: for single-aggregate writes, call `persist` + `flush` inside
+  the repository `save`. For multi-aggregate operations in one transaction, call
+  `flush` once in the service *after* all persists and collect domain events before it.
+- **Cross-schema queries** with no MikroORM entity: use raw SQL via
+  `em.getConnection().execute(...)` inside the adapter. Never in the service.
+- **Unit tests** mock the port, not the implementation:
+  `const mockRepo = { findById: vi.fn(), save: vi.fn() }`.
+  No `vi.mock('stripe')`, no `vi.mock('@clerk/backend')` in service specs.

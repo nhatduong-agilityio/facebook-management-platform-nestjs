@@ -28,7 +28,7 @@ For blocked tasks always append an inline note on the same line:
 - [x] **T1.2 Persistence + cross-cutting foundation** (~6h)  (the keystone task)
   - MikroORM (UoW) wired to Postgres (per-schema) **and** Mongo; `BaseEntity` (uuid v7, createdAt/updatedAt/deletedAt, global soft-delete filter); `AppError` + `toHttpException`; Result helpers; `EncryptedText` (AES-256-GCM) + aes-gcm util; Pino logger with PII redaction; FK-index migration convention.
   - DoD: unit tests for AppError mapping, encrypt/decrypt round-trip, logger redacts a token; a sample entity migrates and matches `docs/reference/fcp-ddl.sql`; soft delete hides rows by default.
-- [ ] **T1.3 Identity module** (~3h)
+- [x] **T1.3 Identity module** (~3h)
   - Clerk JWT guard at gateway; `getOrCreateUser`; `GET /auth/me`; RBAC roles (Owner/Editor/Viewer) resolver.
   - DoD: protected route 401 without token / 200 with; role guard unit-tested; Result used.
 - [ ] **T1.4 Workspace module — core** (~3h)
