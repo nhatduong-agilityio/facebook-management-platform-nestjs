@@ -22,7 +22,7 @@ export class MikroOrmWorkspaceMemberRepository extends IWorkspaceMemberRepositor
 
   /** @inheritdoc */
   async findRole(userId: string, workspaceId: string): Promise<WorkspaceRole | null> {
-    const member = await this.em.findOne(WorkspaceMember, { userId, workspaceId });
+    const member = await this.em.findOne(WorkspaceMember, { userId, workspace: workspaceId });
     return member ? member.role : null;
   }
 }

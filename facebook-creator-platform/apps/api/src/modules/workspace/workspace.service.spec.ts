@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WorkspaceService } from './workspace.service';
 import { IWorkspaceRepository } from './ports/workspace.repository.port';
-import { IWorkspaceMemberWriteRepository } from './ports/workspace-member.repository.port';
+import { IWorkspaceMemberRepository } from './ports/workspace-member.repository.port';
+import { IInvitationRepository } from './ports/invitation.repository.port';
+import { IEventBus } from '../../common/events/event-bus.port';
 import { Workspace } from './entities/workspace.entity';
+import { WorkspaceMember } from './entities/workspace-member.entity';
+import { Invitation } from './entities/invitation.entity';
 
 const mockWorkspaceRepo = {
   findById: vi.fn(),
@@ -13,13 +17,26 @@ const mockWorkspaceRepo = {
 
 const mockMemberRepo = {
   persist: vi.fn(),
-} as unknown as IWorkspaceMemberWriteRepository;
+  findByWorkspaceAndId: vi.fn(),
+  findAllByWorkspaceId: vi.fn(),
+  countOwners: vi.fn(),
+  remove: vi.fn(),
+} as unknown as IWorkspaceMemberRepository;
+
+const mockInvitationRepo = {
+  save: vi.fn(),
+  findPendingByWorkspaceAndEmail: vi.fn(),
+} as unknown as IInvitationRepository;
+
+const mockEventBus = {
+  publish: vi.fn(),
+} as unknown as IEventBus;
 
 describe('WorkspaceService', () => {
   let service: WorkspaceService;
 
   beforeEach(() => {
-    service = new WorkspaceService(mockWorkspaceRepo, mockMemberRepo);
+    service = new WorkspaceService(mockWorkspaceRepo, mockMemberRepo, mockInvitationRepo, mockEventBus);
     vi.clearAllMocks();
   });
 
@@ -41,7 +58,7 @@ describe('WorkspaceService', () => {
       expect(ws.ownerUserId).toBe('user-1');
     });
 
-    it('stages the owner WorkspaceMember before saving the workspace', async () => {
+    it('stages the owner WorkspaceMember with role=owner before saving', async () => {
       vi.mocked(mockWorkspaceRepo.existsBySlug).mockResolvedValue(false);
       vi.mocked(mockWorkspaceRepo.save).mockResolvedValue(undefined);
 
@@ -62,7 +79,7 @@ describe('WorkspaceService', () => {
       expect(result._unsafeUnwrapErr().code).toBe('CONFLICT');
     });
 
-    it('generates slug by lowercasing and replacing non-alphanumeric chars', async () => {
+    it('derives slug by lowercasing and replacing non-alphanumeric chars', async () => {
       vi.mocked(mockWorkspaceRepo.existsBySlug).mockResolvedValue(false);
       vi.mocked(mockWorkspaceRepo.save).mockResolvedValue(undefined);
 
@@ -95,11 +112,36 @@ describe('WorkspaceService', () => {
       expect(result._unsafeUnwrap()).toEqual([]);
     });
 
-    it('returns ok(workspaces) when workspaces exist', async () => {
+    it('returns ok(workspaces) when memberships exist', async () => {
       const ws = Object.assign(new Workspace(), { id: 'ws-1', name: 'My WS' });
       vi.mocked(mockWorkspaceRepo.findAllByUserId).mockResolvedValue([ws]);
 
       const result = await service.listForUser('user-1');
+
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap()).toHaveLength(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // listMembers
+  // ---------------------------------------------------------------------------
+
+  describe('listMembers', () => {
+    it('returns ok([]) when workspace has no members', async () => {
+      vi.mocked(mockMemberRepo.findAllByWorkspaceId).mockResolvedValue([]);
+
+      const result = await service.listMembers('ws-1');
+
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap()).toEqual([]);
+    });
+
+    it('returns ok(members) when members exist', async () => {
+      const m = Object.assign(new WorkspaceMember(), { id: 'm-1', userId: 'u-1', role: 'owner' });
+      vi.mocked(mockMemberRepo.findAllByWorkspaceId).mockResolvedValue([m]);
+
+      const result = await service.listMembers('ws-1');
 
       expect(result.isOk()).toBe(true);
       expect(result._unsafeUnwrap()).toHaveLength(1);
@@ -140,6 +182,123 @@ describe('WorkspaceService', () => {
 
       expect(result.isErr()).toBe(true);
       expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // inviteMember
+  // ---------------------------------------------------------------------------
+
+  describe('inviteMember', () => {
+    const ws = Object.assign(new Workspace(), { id: 'ws-1', name: 'My WS' });
+
+    it('returns ok(invitation) on the happy path', async () => {
+      vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(ws);
+      vi.mocked(mockInvitationRepo.findPendingByWorkspaceAndEmail).mockResolvedValue(null);
+      vi.mocked(mockInvitationRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      const result = await service.inviteMember('ws-1', { email: 'a@b.com', role: 'editor' }, 'user-1');
+
+      expect(result.isOk()).toBe(true);
+      const inv = result._unsafeUnwrap();
+      expect(inv.email).toBe('a@b.com');
+      expect(inv.role).toBe('editor');
+      expect(inv.status).toBe('pending');
+      expect(inv.token).toHaveLength(64);
+    });
+
+    it('publishes MemberInvitedEvent after saving', async () => {
+      vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(ws);
+      vi.mocked(mockInvitationRepo.findPendingByWorkspaceAndEmail).mockResolvedValue(null);
+      vi.mocked(mockInvitationRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      await service.inviteMember('ws-1', { email: 'a@b.com', role: 'viewer' }, 'user-1');
+
+      expect(mockEventBus.publish).toHaveBeenCalledOnce();
+    });
+
+    it('returns err(NOT_FOUND) when workspace does not exist', async () => {
+      vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(null);
+
+      const result = await service.inviteMember('bad-ws', { email: 'a@b.com', role: 'editor' }, 'user-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+    });
+
+    it('returns err(CONFLICT) when a pending invite for the same email exists', async () => {
+      vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(ws);
+      vi.mocked(mockInvitationRepo.findPendingByWorkspaceAndEmail).mockResolvedValue(
+        Object.assign(new Invitation(), { id: 'inv-1', status: 'pending' }),
+      );
+
+      const result = await service.inviteMember('ws-1', { email: 'dup@b.com', role: 'editor' }, 'user-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('CONFLICT');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // removeMember
+  // ---------------------------------------------------------------------------
+
+  describe('removeMember', () => {
+    it('returns ok(void) when a non-owner member is removed', async () => {
+      const member = Object.assign(new WorkspaceMember(), { id: 'm-1', userId: 'u-2', role: 'editor' });
+      vi.mocked(mockMemberRepo.findByWorkspaceAndId).mockResolvedValue(member);
+      vi.mocked(mockMemberRepo.remove).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      const result = await service.removeMember('ws-1', 'm-1', 'owner-1');
+
+      expect(result.isOk()).toBe(true);
+      expect(mockMemberRepo.remove).toHaveBeenCalledWith(member);
+    });
+
+    it('publishes MemberRemovedEvent after removal', async () => {
+      const member = Object.assign(new WorkspaceMember(), { id: 'm-1', userId: 'u-2', role: 'editor' });
+      vi.mocked(mockMemberRepo.findByWorkspaceAndId).mockResolvedValue(member);
+      vi.mocked(mockMemberRepo.remove).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      await service.removeMember('ws-1', 'm-1', 'owner-1');
+
+      expect(mockEventBus.publish).toHaveBeenCalledOnce();
+    });
+
+    it('returns err(NOT_FOUND) when member does not exist in the workspace', async () => {
+      vi.mocked(mockMemberRepo.findByWorkspaceAndId).mockResolvedValue(null);
+
+      const result = await service.removeMember('ws-1', 'bad-id', 'owner-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+    });
+
+    it('returns err(FORBIDDEN) when removing the sole owner (BR-R02)', async () => {
+      const member = Object.assign(new WorkspaceMember(), { id: 'm-1', userId: 'owner-1', role: 'owner' });
+      vi.mocked(mockMemberRepo.findByWorkspaceAndId).mockResolvedValue(member);
+      vi.mocked(mockMemberRepo.countOwners).mockResolvedValue(1);
+
+      const result = await service.removeMember('ws-1', 'm-1', 'owner-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('FORBIDDEN');
+    });
+
+    it('allows removing an owner when another owner exists', async () => {
+      const member = Object.assign(new WorkspaceMember(), { id: 'm-1', userId: 'owner-2', role: 'owner' });
+      vi.mocked(mockMemberRepo.findByWorkspaceAndId).mockResolvedValue(member);
+      vi.mocked(mockMemberRepo.countOwners).mockResolvedValue(2);
+      vi.mocked(mockMemberRepo.remove).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      const result = await service.removeMember('ws-1', 'm-1', 'owner-1');
+
+      expect(result.isOk()).toBe(true);
     });
   });
 });

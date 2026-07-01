@@ -8,6 +8,7 @@ import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
 import { User } from '../modules/identity/entities/user.entity';
 import { Workspace } from '../modules/workspace/entities/workspace.entity';
 import { WorkspaceMember } from '../modules/workspace/entities/workspace-member.entity';
+import { Invitation } from '../modules/workspace/entities/invitation.entity';
 
 /**
  * Configures and registers the two MikroORM connections used by the platform:
@@ -30,7 +31,7 @@ import { WorkspaceMember } from '../modules/workspace/entities/workspace-member.
         driver: PostgreSqlDriver,
         clientUrl: config.getOrThrow<string>('DATABASE_URL'),
         schema: 'core',
-        entities: [User, Workspace, WorkspaceMember],
+        entities: [User, Workspace, WorkspaceMember, Invitation],
         metadataProvider: TsMorphMetadataProvider,
         migrations: {
           path: './src/migrations',
@@ -38,7 +39,6 @@ import { WorkspaceMember } from '../modules/workspace/entities/workspace-member.
           transactional: true,
         },
         extensions: [Migrator],
-        filters: { softDelete: { cond: { deletedAt: null }, default: true } },
         allowGlobalContext: false,
       }),
       inject: [ConfigService],

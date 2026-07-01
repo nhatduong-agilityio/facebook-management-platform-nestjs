@@ -4,11 +4,47 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T1.5` — Workspace module members & invitations (invite flow, sole-owner guard BR-R02, events).
+- **Next task:** `T2.1` — Facebook OAuth connect-url (`GET /workspaces/:id/facebook/connect-url`, Owner/Editor).
 - **Branch:** `nestjs-practice`
-- **Notes:** T1.4 done. 70 tests passing. Migration `Migration20260701000000_WorkspaceSchema` adds `core.workspaces` + `core.workspace_members`. Run `pnpm mikro-orm migration:up` once Docker is running to apply.
+- **Notes:** Week 1 foundation complete. 79 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker) to apply all three migrations. Webhook setup still needed: add `CLERK_WEBHOOK_SIGNING_SECRET` + register `POST /api/v1/webhooks/clerk` in Clerk Dashboard.
+- **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint (`POST /workspaces/:workspaceId/invitations/:token/accept`) — `Invitation` entity and `WorkspaceMember.forAcceptedInvite` factory are in place; only needs service method + controller endpoint + `findByWorkspaceAndToken` repo method.
 
 ## Log
+
+### 2026-07-01 — Week 1 wrap-up (post-T1.5 bug fix)
+
+- **Bug:** `GET /workspaces` and `GET /workspaces/:id` returned 500 — `Trying to query by not existing property WorkspaceMember.deletedAt`.
+- **Root cause:** `database.module.ts` registered a global ORM filter `filters: { softDelete: { cond: { deletedAt: null }, default: true } }`. Global ORM filters apply to ALL entities; `WorkspaceMember` and `Invitation` have no `deletedAt`. The `@Filter` on `BaseEntity` already handles soft-delete correctly for its subclasses.
+- **Fix:** Removed the global filter from `database.module.ts`. Entity-level `@Filter` on `BaseEntity` (inherited by `Workspace` and `User`) is the single source of truth.
+- **Not implemented (pre-T2 follow-up):** `POST /workspaces/:workspaceId/invitations/:token/accept` — outside T1.5 DoD but infrastructure (`Invitation` entity, `WorkspaceMember.forAcceptedInvite` factory) is in place.
+- Tests: 79/79. Lint: clean.
+
+### 2026-07-01 — T1.5 Workspace module members & invitations
+
+- **Entity relationships added:**
+  - `WorkspaceMember.workspace: Ref<Workspace>` with `@ManyToOne` (replaces scalar `workspaceId`); static factories `forOwner` / `forAcceptedInvite` keep `ref()` out of service code (§14)
+  - `Workspace.members: Collection<WorkspaceMember>` and `Workspace.invitations: Collection<Invitation>` with `@OneToMany` (inverse side)
+  - `Invitation.workspace: Ref<Workspace>` with `@ManyToOne`; static factory `Invitation.create()`
+- **Created:**
+  - `src/common/events/event-bus.port.ts` — `DomainEvent` base + `IEventBus` port
+  - `src/common/events/noop-event-bus.ts` — no-op adapter (T2.6 swaps for RabbitMQ)
+  - `src/modules/workspace/events/member-invited.event.ts` — `MemberInvitedEvent`
+  - `src/modules/workspace/events/member-removed.event.ts` — `MemberRemovedEvent`
+  - `src/modules/workspace/entities/invitation.entity.ts` — `Invitation` (no BaseEntity; custom PK; token = 64-char hex; expiresAt = +7d)
+  - `src/modules/workspace/dto/invite-member.dto.ts` — `InviteMemberDto` + `InvitationResponseDto`
+  - `src/modules/workspace/ports/invitation.repository.port.ts` — `IInvitationRepository`
+  - `src/modules/workspace/repositories/mikro-orm-invitation.repository.ts`
+  - `src/migrations/Migration20260701000001_InvitationsSchema.ts` — `core.invitations`
+- **Updated:**
+  - `workspace-member.repository.port.ts` — renamed `IWorkspaceMemberWriteRepository` → `IWorkspaceMemberRepository`; added `findByWorkspaceAndId`, `countOwners`, `remove`
+  - `mikro-orm-workspace-member.repository.ts` (workspace) — implemented new methods; filters use `workspace` relation key
+  - `mikro-orm-workspace-member.repository.ts` (identity) — filter updated to `{ userId, workspace: workspaceId }`
+  - `workspace.service.ts` — added `inviteMember` + `removeMember`; `create` uses `WorkspaceMember.forOwner` factory
+  - `workspace.controller.ts` — `POST :workspaceId/members/invite` (Owner/Editor) + `DELETE :workspaceId/members/:memberId` (Owner)
+  - `workspace.module.ts` — wired `Invitation`, `IInvitationRepository`, `IEventBus → NoopEventBus`
+  - `database.module.ts` + `mikro-orm.config.ts` — added `Invitation`
+- Tests: 79/79 passing. Lint: clean.
+- **Setup required:** `pnpm mikro-orm migration:up` to apply `Migration20260701000001_InvitationsSchema`.
 
 ### 2026-07-01 — T1.4 Workspace module core
 
