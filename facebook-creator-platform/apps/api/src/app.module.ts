@@ -6,6 +6,7 @@ import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
+import { FacebookModule } from './modules/facebook/facebook.module';
 import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
 
 /**
@@ -19,6 +20,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  * - **HealthModule** — liveness probe at `GET /api/v1/health`.
  * - **IdentityModule** — Clerk JWT guard, user upsert, workspace RBAC guards.
  * - **WorkspaceModule** — workspace create/list/get endpoints; seeds owner membership on create.
+ * - **FacebookModule** — Facebook OAuth connect-url, Page connection, token refresh, Graph API (T2.1–T2.3).
  * - **DevAuthModule** — `POST /dev-auth/token` token generator; loaded only when `NODE_ENV !== 'production'`.
  */
 @Module({
@@ -47,6 +49,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     HealthModule,
     IdentityModule,
     WorkspaceModule,
+    FacebookModule,
     ...(process.env.NODE_ENV !== 'production' ? [DevAuthModule] : []),
   ],
 })
