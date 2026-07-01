@@ -2,17 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { EntityManager } from '@mikro-orm/core';
 import type { WorkspaceRole } from '../types/workspace-role.type';
 import { IWorkspaceMemberRepository } from '../ports/workspace-member.repository.port';
+import { WorkspaceMember } from '../../workspace/entities/workspace-member.entity';
 
 /**
  * MikroORM adapter for `IWorkspaceMemberRepository`.
  *
- * Uses a raw SQL query against `core.workspace_members` because the table's
- * MikroORM entity is owned by the workspace module (created in T1.4). Raw SQL
- * is the correct choice here: no entity mapping exists yet, and cross-schema
- * references must not carry MikroORM relation metadata (BR-R06).
- *
- * This adapter will be relocated to the workspace module in T1.4 once the
- * `WorkspaceMember` entity is registered there.
+ * Imports `WorkspaceMember` as a plain entity class (not via `@InjectRepository`)
+ * so that `EntityManager.findOne` can query it without registering the entity in
+ * this module's `MikroOrmModule.forFeature`. This avoids a circular NestJS module
+ * dependency: `IdentityModule` exports guards consumed by `WorkspaceModule`, and
+ * importing `WorkspaceModule` here would close the cycle. An entity-class import
+ * is a TypeScript file dependency only — no NestJS module coupling.
  */
 @Injectable()
 export class MikroOrmWorkspaceMemberRepository extends IWorkspaceMemberRepository {
@@ -22,13 +22,7 @@ export class MikroOrmWorkspaceMemberRepository extends IWorkspaceMemberRepositor
 
   /** @inheritdoc */
   async findRole(userId: string, workspaceId: string): Promise<WorkspaceRole | null> {
-    const rows = await this.em
-      .getConnection()
-      .execute<{ role: string }[]>(
-        'SELECT role FROM core.workspace_members WHERE user_id = ? AND workspace_id = ? AND deleted_at IS NULL',
-        [userId, workspaceId],
-      );
-
-    return rows.length === 0 ? null : (rows[0].role as WorkspaceRole);
+    const member = await this.em.findOne(WorkspaceMember, { userId, workspaceId });
+    return member ? member.role : null;
   }
 }

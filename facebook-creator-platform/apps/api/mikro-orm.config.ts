@@ -3,12 +3,14 @@ import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
 import { defineConfig } from '@mikro-orm/postgresql';
 import { Migrator } from '@mikro-orm/migrations';
 import { User } from './src/modules/identity/entities/user.entity';
+import { Workspace } from './src/modules/workspace/entities/workspace.entity';
+import { WorkspaceMember } from './src/modules/workspace/entities/workspace-member.entity';
 
 export default defineConfig({
   clientUrl: process.env.DATABASE_URL ?? 'postgres://fcp:fcp@localhost:5432/fcp',
   metadataProvider: TsMorphMetadataProvider,
   schema: 'core',
-  entities: [User],
+  entities: [User, Workspace, WorkspaceMember],
   migrations: {
     path: './src/migrations',
     glob: '!(*.d).{js,ts}',

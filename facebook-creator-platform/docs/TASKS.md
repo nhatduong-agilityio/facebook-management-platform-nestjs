@@ -31,7 +31,7 @@ For blocked tasks always append an inline note on the same line:
 - [x] **T1.3 Identity module** (~3h)
   - Clerk JWT guard at gateway; `getOrCreateUser`; `GET /auth/me`; RBAC roles (Owner/Editor/Viewer) resolver.
   - DoD: protected route 401 without token / 200 with; role guard unit-tested; Result used.
-- [ ] **T1.4 Workspace module — core** (~3h)
+- [x] **T1.4 Workspace module — core** (~3h)
   - Workspace entity + service + role resolution. Entities extend BaseEntity.
   - DoD: create/list/get endpoints; tests + Swagger; Result used.
 - [ ] **T1.5 Workspace module — members & invitations** (~4h)

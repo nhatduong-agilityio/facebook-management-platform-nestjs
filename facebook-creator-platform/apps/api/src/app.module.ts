@@ -5,6 +5,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
 import { IdentityModule } from './modules/identity/identity.module';
+import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
 
 /**
@@ -17,6 +18,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  * - **DatabaseModule** — PostgreSQL (primary store) and MongoDB (audit store) via MikroORM.
  * - **HealthModule** — liveness probe at `GET /api/v1/health`.
  * - **IdentityModule** — Clerk JWT guard, user upsert, workspace RBAC guards.
+ * - **WorkspaceModule** — workspace create/list/get endpoints; seeds owner membership on create.
  * - **DevAuthModule** — `POST /dev-auth/token` token generator; loaded only when `NODE_ENV !== 'production'`.
  */
 @Module({
@@ -44,6 +46,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     DatabaseModule,
     HealthModule,
     IdentityModule,
+    WorkspaceModule,
     ...(process.env.NODE_ENV !== 'production' ? [DevAuthModule] : []),
   ],
 })

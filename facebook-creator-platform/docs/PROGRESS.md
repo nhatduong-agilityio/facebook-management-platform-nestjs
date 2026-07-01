@@ -4,11 +4,32 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T1.4` — Workspace module core (Workspace entity + service + create/list/get endpoints + tests + Swagger).
+- **Next task:** `T1.5` — Workspace module members & invitations (invite flow, sole-owner guard BR-R02, events).
 - **Branch:** `nestjs-practice`
-- **Notes:** T1.3 is done + post-T1.3 enhancements complete (see log below). 60 tests passing. `WorkspaceRolesGuard.getUserWorkspaceRole` queries `core.workspace_members` (table created in T1.4); guard is unit-tested with mocks and will work at runtime after T1.4 migration.
+- **Notes:** T1.4 done. 70 tests passing. Migration `Migration20260701000000_WorkspaceSchema` adds `core.workspaces` + `core.workspace_members`. Run `pnpm mikro-orm migration:up` once Docker is running to apply.
 
 ## Log
+
+### 2026-07-01 — T1.4 Workspace module core
+
+- **Created:**
+  - `src/modules/workspace/entities/workspace.entity.ts` — `Workspace extends BaseEntity`; fields: `name`, `slug`, `description`, `status`, `ownerUserId` (indexed); `@Entity({ tableName: 'workspaces', schema: 'core' })`
+  - `src/modules/workspace/entities/workspace-member.entity.ts` — `WorkspaceMember` (no BaseEntity — DDL has no `deletedAt`); own uuid v7 PK; fields: `workspaceId`, `userId`, `role`, `invitedAt`, `acceptedAt`, `joinedAt`; `@Unique` on `(workspaceId, userId)` (BR-R01); btree indexes on both FK columns (BR-R08)
+  - `src/modules/workspace/ports/workspace.repository.port.ts` — `IWorkspaceRepository`
+  - `src/modules/workspace/ports/workspace-member.repository.port.ts` — `IWorkspaceMemberWriteRepository` (write-side port for seeding owner on create)
+  - `src/modules/workspace/repositories/mikro-orm-workspace.repository.ts` — `MikroOrmWorkspaceRepository`; `findAllByUserId` uses raw SQL join (workspace_members cross-aggregate, no ORM relation — BR-R06)
+  - `src/modules/workspace/repositories/mikro-orm-workspace-member.repository.ts` — `MikroOrmWorkspaceMemberRepository` (persist only, no flush)
+  - `src/modules/workspace/dto/workspace.dto.ts` — `CreateWorkspaceDto` + `WorkspaceResponseDto` with Swagger
+  - `src/modules/workspace/workspace.service.ts` — `WorkspaceService.create/listForUser/getById`; all return `Result<T, AppError>`; `create` generates slug, checks CONFLICT, persists workspace + owner membership in one flush
+  - `src/modules/workspace/workspace.service.spec.ts` — 10 unit tests (ok + err paths)
+  - `src/modules/workspace/workspace.controller.ts` — `WorkspaceController`; `POST /workspaces`, `GET /workspaces`, `GET /workspaces/:id`; maps Result → HTTP
+  - `src/modules/workspace/workspace.module.ts` — imports `IdentityModule` (for `ClerkAuthGuard`); registers entities + port bindings
+  - `src/migrations/Migration20260701000000_WorkspaceSchema.ts` — creates `core.workspaces` + `core.workspace_members` with all constraints and indexes; no DB-generated UUIDs
+- **Updated:**
+  - `src/app.module.ts` — added `WorkspaceModule`
+  - `src/modules/identity/repositories/mikro-orm-workspace-member.repository.ts` — removed incorrect `deleted_at IS NULL` filter (`workspace_members` has no `deletedAt` per DDL)
+- Tests: 70/70 passing. Lint: clean.
+- **Setup required:** `pnpm mikro-orm migration:up` to apply `Migration20260701000000_WorkspaceSchema`.
 
 ### 2026-07-01 — Post-T1.3 enhancements (no task id — out-of-band)
 
