@@ -4,12 +4,26 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.1` — Facebook OAuth connect-url (`GET /workspaces/:id/facebook/connect-url`, Owner/Editor).
+- **Next task:** `T2.2` — Facebook OAuth callback → connect Page (`POST /workspaces/:id/facebook/pages`; token via `EncryptedText`; BR-R05 same-workspace guard).
 - **Branch:** `nestjs-practice`
-- **Notes:** Week 1 foundation complete. 79 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker) to apply all three migrations. Webhook setup still needed: add `CLERK_WEBHOOK_SIGNING_SECRET` + register `POST /api/v1/webhooks/clerk` in Clerk Dashboard.
-- **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint (`POST /workspaces/:workspaceId/invitations/:token/accept`) — `Invitation` entity and `WorkspaceMember.forAcceptedInvite` factory are in place; only needs service method + controller endpoint + `findByWorkspaceAndToken` repo method.
+- **Notes:** 90 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker). Add `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_REDIRECT_URI` to `.env` before testing T2.1 live.
+- **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-01 — T2.1 Facebook OAuth connect-url
+
+- **Created `FacebookModule`** — Ports & Adapters structure under `src/modules/facebook/`:
+  - `ports/facebook-oauth.provider.port.ts` — `IFacebookOAuthProvider` abstract class + `ConnectUrl` interface
+  - `adapters/facebook-oauth.adapter.ts` — reads `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET` / `FACEBOOK_REDIRECT_URI` from `ConfigService`; builds Graph API v21.0 OAuth URL; scopes: `pages_manage_posts`, `pages_read_engagement`, `pages_show_list`
+  - `dto/connect-url-response.dto.ts` — `ConnectUrlResponseDto` with Swagger
+  - `facebook.service.ts` — `getConnectUrl(workspaceId)`: `Result<ConnectUrl, AppError>`; no ORM/ConfigService imports (§14)
+  - `facebook.controller.ts` — `GET /workspaces/:workspaceId/facebook/connect-url`; `WorkspaceRolesGuard` Owner/Editor
+  - `facebook.module.ts` — wires `IFacebookOAuthProvider → FacebookOAuthAdapter`
+- **CSRF state format:** `base64url(JSON.stringify({ workspaceId, nonce })).<hmac-sha256-hex>` — signed with `FACEBOOK_APP_SECRET`; callback (T2.2) must verify before accepting the OAuth code.
+- **Added `FacebookModule` to `app.module.ts`.**
+- Tests: 9 new tests (service × 2, adapter × 7). 90/90 total. Lint: clean.
+- **Setup required:** add `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_REDIRECT_URI` to `.env` (see `.env.example`).
 
 ### 2026-07-01 — Week 1 wrap-up (post-T1.5 bug fix)
 
