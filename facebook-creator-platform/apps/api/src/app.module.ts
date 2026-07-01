@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
+import { IdentityModule } from './modules/identity/identity.module';
+import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
 
 /**
  * Root application module. Composes all feature and infrastructure modules.
@@ -14,6 +16,8 @@ import { DatabaseModule } from './database/database.module';
  *   `accessToken`, `token`, and `Authorization` headers (BR-F12).
  * - **DatabaseModule** — PostgreSQL (primary store) and MongoDB (audit store) via MikroORM.
  * - **HealthModule** — liveness probe at `GET /api/v1/health`.
+ * - **IdentityModule** — Clerk JWT guard, user upsert, workspace RBAC guards.
+ * - **DevAuthModule** — `POST /dev-auth/token` token generator; loaded only when `NODE_ENV !== 'production'`.
  */
 @Module({
   imports: [
@@ -39,6 +43,8 @@ import { DatabaseModule } from './database/database.module';
     }),
     DatabaseModule,
     HealthModule,
+    IdentityModule,
+    ...(process.env.NODE_ENV !== 'production' ? [DevAuthModule] : []),
   ],
 })
 export class AppModule {}

@@ -1,4 +1,5 @@
 import { Filter, PrimaryKey, Property } from '@mikro-orm/decorators/legacy';
+import type { Opt } from '@mikro-orm/core';
 import { uuidv7 } from 'uuidv7';
 
 /**
@@ -21,11 +22,11 @@ export abstract class BaseEntity {
 
   /** Timestamp set once when the row is first inserted. */
   @Property({ type: 'timestamptz', defaultRaw: 'now()' })
-  createdAt: Date = new Date();
+  createdAt: Date & Opt = new Date();
 
   /** Timestamp updated automatically by MikroORM on every flush that modifies the entity. */
   @Property({ type: 'timestamptz', defaultRaw: 'now()', onUpdate: () => new Date() })
-  updatedAt: Date = new Date();
+  updatedAt: Date & Opt = new Date();
 
   /**
    * Soft-delete marker. When set to a non-null value the row is excluded from all

@@ -27,7 +27,7 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 | @mikro-orm/nestjs | ^7.0.2 | Nest integration |
 | @mikro-orm/migrations | ^7.1.5 | migrations |
 | @golevelup/nestjs-rabbitmq | ^9.0.2 | RabbitMQ event bus |
-| @clerk/backend | ^3.8.4 | JWT verification at gateway |
+| @clerk/backend | ^3.9.0 | JWT verification at gateway (verified 2026-07-01) |
 | stripe | ^22.3.0 | billing |
 | algoliasearch | ^5.55.1 | search (NOT the empty `algolia` pkg) |
 | ioredis | ^5.11.1 | Redis cache |
@@ -105,6 +105,39 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > to preview the DDL, then write the migration file manually. Run `migration:up` once
 > Docker is running to apply it.
 
+## Clerk webhook verification (added post-T1.3, verified 2026-07-01)
+| Package | Version | Purpose |
+|---|---|---|
+| svix | ^1.96.1 | HMAC signature verification for Clerk webhook payloads (Standard Webhooks spec) |
+
+> **ADR-026 Clerk webhook verification via `svix` + raw body:**
+> Clerk delivers webhook events signed with a per-endpoint secret using the Standard Webhooks
+> spec (standardwebhooks.com). Verification requires the *exact* raw request bytes — a
+> re-parsed JSON object produces a different byte sequence and fails the HMAC check.
+> `NestFactory.create` is called with `rawBody: true` so NestJS stores the unmodified buffer
+> on `req.rawBody` before the JSON body parser consumes the stream.
+> `ClerkWebhookService` receives that buffer and the three signature headers (`svix-id`,
+> `svix-timestamp`, `svix-signature`) from the controller and calls
+> `new Webhook(secret).verify(body, headers)` from the `svix` package — the direct,
+> synchronous API for Express-based servers.
+> Types (`UserWebhookEvent`) are imported from `@clerk/backend` (already a dependency).
+> Endpoint: `POST /api/v1/webhooks/clerk`.
+
+## @clerk/backend (added T1.3, verified 2026-07-01)
+| Package | Version | Purpose |
+|---|---|---|
+| @clerk/backend | ^3.9.0 | JWT verification (`verifyToken`) + user profile fetch (`users.getUser`) |
+| @types/express | ^5.0.6 | Express `Request` types for guards (dev dep) |
+
+> **ADR-024 Clerk JWT guard strategy — verify locally, fetch profile on first sign-in only:**
+> `verifyToken` (from `@clerk/backend`) validates the JWT signature locally (no network hop).
+> The `sub` claim is the Clerk user id. User profile data (email, name, avatar) is NOT in
+> the JWT payload; it is fetched via `clerkClient.users.getUser(sub)` only when the user
+> does not yet exist in our `core.users` table. After the first sign-in, all subsequent
+> requests resolve the user via a local DB lookup by `clerkUserId` — no Clerk API call.
+> This avoids per-request network latency while keeping profile data in sync at sign-in time.
+> If profile sync on every request becomes a requirement, revisit in T5.x.
+
 ## Additional dev tooling (added T1.1, verified 2026-06-30)
 | Package | Version | Purpose |
 |---|---|---|
@@ -127,5 +160,7 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 | 2026-06-29 | **Roadmap reorder (no effort change, ~222h):** moved MikroORM, BaseEntity (uuid v7 + timestamps + soft delete), PII `EncryptedText`, and the Result pattern from Week 5 into Week 1 (T1.2). These are foundational/cross-cutting — every feature inherits them, so building features first and "migrating" later would force a full rewrite of entities, repositories, and service signatures. Moved the Audit Service to Week 3 (after the event bus is stable, so audit can be exercised end-to-end). Week 5 is now verification + Artillery load testing, not building. This removes hidden rework and de-risks the schedule. |
 | 2026-06-30 | **T1.2 complete.** MikroORM v7 wired to PG + Mongo; BaseEntity (uuid v7 + timestamps + soft-delete); AppError + toHttpException; EncryptedText (AES-256-GCM); Pino logger with PII redaction; User entity + initial migration. See ADR-021/022/023 for v7 decorator split, TsMorph metadata provider, and offline migration workflow. |
 | 2026-06-30 | **T1.2 boot-verification fixes.** (1) Removed `exports: [MikroOrmModule]` from DatabaseModule — `@mikro-orm/nestjs` registers providers globally so explicit export is not needed, and re-exporting dynamic modules by class reference throws `UnknownExportException` in NestJS. (2) Added `discovery: { warnWhenNoEntities: false }` to the MongoDB context so startup is not blocked until Audit Service entities are added in T3.x. |
+| 2026-07-01 | **T1.3 complete.** Clerk JWT guard (`ClerkAuthGuard`), `IdentityService.getOrCreateUser` (DB upsert with Clerk API fallback on first sign-in), `GET /auth/me`, RBAC role types + `WorkspaceRolesGuard`. ADR-024 below. |
+| 2026-07-01 | **Post-T1.3 enhancements.** (1) Hexagonal Architecture refactor: repository + identity-provider ports; MikroORM + Clerk adapters; `IdentityService` now depends only on abstract ports — zero ORM/SDK/ConfigService imports; §13 added to CODING-STANDARDS.md. (2) `DevAuthModule`: `POST /dev-auth/token` calls Clerk Backend API to return a real JWT for Postman (dev only). (3) Clerk webhook receiver: `POST /webhooks/clerk` syncs `user.created/updated/deleted` to `core.users` using `verifyWebhook` from `@clerk/backend/webhooks`; no separate `svix` dep. ADR-026. `rawBody: true` added to bootstrap. 60 tests passing. |
 | 2026-06-30 | **T1.1 complete.** pnpm workspace, NestJS 11 app, ESLint 9 flat config, vitest 4 + unplugin-swc, husky pre-commit (hooksPath set via `git rev-parse --show-prefix`), Docker Compose (PG 16, Mongo 7, Redis 7, RabbitMQ 3). Note ADR-020 above re vitest/swc cosmetic warning. |
 | 2026-06-30 | **ADR-019 Performance optimization order — Index → Query → Cache.** Redis caching (response cache, RBAC cache, query cache) is Week 5-only and requires T5.5 Artillery benchmark data to justify. Most p99 regressions are solved by a missing index or an N+1 query; adding cache without that evidence buys invalidation complexity, stale-read risk, and extra monitoring for no proven gain. Consumer deduplication keys (`dedup:<eventId>`) are the only pre-T5 Redis use — they are idempotency infrastructure, not a performance cache. When cache is added in T5.6, record the before/after p99 and load level in this file. |

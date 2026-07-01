@@ -1,4 +1,5 @@
 import { Entity, Index, Property, Unique } from '@mikro-orm/decorators/legacy';
+import type { Opt } from '@mikro-orm/core';
 import { BaseEntity } from '../../../common/entities/base.entity';
 
 /**
@@ -41,5 +42,5 @@ export class User extends BaseEntity {
 
   /** Current lifecycle state of the account. Defaults to `active` on creation. */
   @Property({ length: 15, default: 'active' })
-  status: UserStatus = 'active';
+  status: UserStatus & Opt = 'active';
 }
