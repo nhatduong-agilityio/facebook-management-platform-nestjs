@@ -9,6 +9,7 @@ import { User } from '../modules/identity/entities/user.entity';
 import { Workspace } from '../modules/workspace/entities/workspace.entity';
 import { WorkspaceMember } from '../modules/workspace/entities/workspace-member.entity';
 import { Invitation } from '../modules/workspace/entities/invitation.entity';
+import { FacebookAccount } from '../modules/facebook/entities/facebook-account.entity';
 
 /**
  * Configures and registers the two MikroORM connections used by the platform:
@@ -31,7 +32,7 @@ import { Invitation } from '../modules/workspace/entities/invitation.entity';
         driver: PostgreSqlDriver,
         clientUrl: config.getOrThrow<string>('DATABASE_URL'),
         schema: 'core',
-        entities: [User, Workspace, WorkspaceMember, Invitation],
+        entities: [User, Workspace, WorkspaceMember, Invitation, FacebookAccount],
         metadataProvider: TsMorphMetadataProvider,
         migrations: {
           path: './src/migrations',

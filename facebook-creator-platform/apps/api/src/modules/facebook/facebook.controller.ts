@@ -1,7 +1,9 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -13,6 +15,7 @@ import { Roles } from '../identity/decorators/roles.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { FacebookService } from './facebook.service';
 import { ConnectUrlResponseDto } from './dto/connect-url-response.dto';
+import { ConnectPageDto, ConnectedPageResponseDto } from './dto/connect-page.dto';
 
 /**
  * Facebook integration endpoints, scoped under a workspace.
@@ -47,6 +50,38 @@ export class FacebookController {
     const result = this.facebookService.getConnectUrl(workspaceId);
     return result.match(
       (connectUrl) => connectUrl,
+      (e) => { throw toHttpException(e); },
+    );
+  }
+
+  /**
+   * Completes the Facebook OAuth flow and connects the user's Pages to the workspace.
+   *
+   * Receives the `code` and `state` from the Facebook OAuth redirect. The backend
+   * verifies the CSRF state, exchanges the code for long-lived page access tokens,
+   * and persists each Page as a connected account. Tokens are stored encrypted
+   * (AES-256-GCM) and never returned in the response (BR-F11).
+   *
+   * @param workspaceId - UUID of the workspace. Must match the `workspaceId` embedded
+   *   in the `state` token (BR-R05); mismatch → 403 CROSS_WORKSPACE.
+   * @param dto         - `{ code, state }` from the Facebook redirect.
+   */
+  @Post(':workspaceId/facebook/pages')
+  @UseGuards(WorkspaceRolesGuard)
+  @Roles('owner', 'editor')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Connect Facebook Pages via OAuth callback' })
+  @ApiCreatedResponse({ type: [ConnectedPageResponseDto], description: 'Pages connected (tokens not included)' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
+  @ApiForbiddenResponse({ description: 'Insufficient role or CSRF state mismatch (BR-R05)' })
+  @ApiNotFoundResponse({ description: 'User manages no Facebook Pages' })
+  async connectPage(
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: ConnectPageDto,
+  ): Promise<ConnectedPageResponseDto[]> {
+    const result = await this.facebookService.connectPage(workspaceId, dto.code, dto.state);
+    return result.match(
+      (pages) => pages,
       (e) => { throw toHttpException(e); },
     );
   }

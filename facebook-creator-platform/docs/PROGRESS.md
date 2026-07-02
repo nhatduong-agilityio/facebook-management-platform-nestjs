@@ -4,12 +4,29 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.2` — Facebook OAuth callback → connect Page (`POST /workspaces/:id/facebook/pages`; token via `EncryptedText`; BR-R05 same-workspace guard).
+- **Next task:** `T2.3` — Facebook token refresh + Graph API service (`refresh flow + typed client`; `IFacebookGraphApiProvider` already created in T2.2 with `exchangeCodeForPages`; T2.3 adds a `refreshPageToken` method + typed client wrapper).
 - **Branch:** `nestjs-practice`
-- **Notes:** 90 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker). Add `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_REDIRECT_URI` to `.env` before testing T2.1 live.
+- **Notes:** 105 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker, adds `core.facebook_accounts`). Env vars needed: `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_REDIRECT_URI`, `PII_ENCRYPTION_KEY`.
 - **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-02 — T2.2 Facebook OAuth callback → connect Page
+
+- **Created `FacebookAccount` entity** — `core.facebook_accounts`; no BaseEntity (DDL uses `connected_at`/`updated_at`, no `deleted_at`); uuid v7 PK; `workspace: Ref<Workspace>` (`@ManyToOne`, same schema, real FK); `pageId` (`@Unique`); `accessToken` (`EncryptedText` — never returned/logged); static factory `connect()` + `updateToken()` method.
+- **Created ports:**
+  - `ports/facebook-graph-api.provider.port.ts` — `IFacebookGraphApiProvider` with `exchangeCodeForPages(code): Promise<FacebookPageData[]>`
+  - `ports/facebook-account.repository.port.ts` — `IFacebookAccountRepository` with `findByPageId` + `connectPage` (upsert)
+- **Created adapters:**
+  - `adapters/facebook-graph-api.adapter.ts` — three Graph API calls (code→short token→long-lived token→`/me/accounts`); native `fetch` (Node 18+, no extra dep)
+  - `adapters/facebook-oauth.adapter.ts` — added `verifyState(state, workspaceId): boolean`; HMAC re-computed and compared via `timingSafeEqual` (hex string comparison, equal-length to avoid throw)
+- **Created `repositories/mikro-orm-facebook-account.repository.ts`** — upsert: existing page → `updateToken()` + flush; new page → `em.getReference(Workspace, id)` + `FacebookAccount.connect()` + persist + flush.
+- **Added `dto/connect-page.dto.ts`** — `ConnectPageDto` (code, state) + `ConnectedPageResponseDto` (id, pageId, pageName, connectedAt — **no accessToken**).
+- **Added `POST :workspaceId/facebook/pages`** to controller (Owner/Editor, HTTP 201, Swagger); service `connectPage` returns `err(CROSS_WORKSPACE)` on state failure, `err(NOT_FOUND)` if user has no pages.
+- **Updated** `facebook.module.ts`, `database.module.ts`, `mikro-orm.config.ts` with `FacebookAccount`.
+- **Migration:** `Migration20260702000000_FacebookAccountsSchema` — creates `core.facebook_accounts`; no `DEFAULT gen_random_uuid()` on PK (ADR-013).
+- Tests: 15 new tests (service ×5, graph-api adapter ×6, oauth adapter ×4). 105/105 total. Lint: clean.
+- **Setup required:** `pnpm mikro-orm migration:up` to apply `Migration20260702000000_FacebookAccountsSchema`.
 
 ### 2026-07-01 — T2.1 Facebook OAuth connect-url
 
