@@ -4,12 +4,21 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.5` — Post status state machine (`PATCH /workspaces/:workspaceId/posts/:postId/status`; four states `draft→scheduled→publishing→published|failed`; `publishing` state + `facebook_graph_post_id` field already exist in T2.4 entity/migration; guarded transitions; BR-F06 `scheduled_at` future check).
+- **Next task:** `T2.6` — RabbitMQ event infrastructure (`@golevelup`; publish-after-commit; idempotent consumer base; DLQ + retry + dedup). DoD: publish PostCreated/PostPublished; consumer processes once; failing msg → DLQ after retries.
 - **Branch:** `nestjs-practice`
-- **Notes:** 138 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker, adds `core.posts`). Quota stub returns 10 (T3.1 swaps with billing lookup).
+- **Notes:** 150 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker). State machine and `PostPublishedEvent` are ready for T2.6 to wire real publishing.
 - **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-02 — T2.5 Post status state machine
+
+- **`ALLOWED_TRANSITIONS` guard table** — module-level constant in `posts.service.ts`; illegal `(from, to)` pairs return `err(INVALID_STATE_TRANSITION)` (HTTP 409).
+- **`transitionStatus(workspaceId, postId, dto)`** — loads post (workspace-scoped), guards transition, applies side-effects: `→ scheduled` sets `scheduledAt` + BR-F06 future check; `→ publishing` requires + stores `facebookGraphPostId`; `→ published` auto-sets `publishedAt` + emits `PostPublishedEvent` after flush; `→ failed` stores `lastError`; `failed → draft` clears `lastError`.
+- **`PostPublishedEvent extends DomainEvent`** — carries `postId`, `workspaceId`, `facebookGraphPostId`; no PII; dedup key `eventId = uuidv7()`; consumed by T2.6 (RabbitMQ), T3.3 (analytics), T4.1 (Algolia).
+- **`UpdatePostStatusDto`** — `status: PostStatus` (`@IsIn`); optional `scheduledAt`, `facebookGraphPostId`, `lastError`.
+- **`PATCH /workspaces/:workspaceId/posts/:postId/status`** — Owner/Editor; HTTP 200; Swagger `@ApiConflictResponse` for `INVALID_STATE_TRANSITION`.
+- Tests: 12 new `transitionStatus` tests covering all transitions + BR-F06 + NOT_FOUND. 150/150 total. Lint: clean.
 
 ### 2026-07-02 — T2.4 Posts entity + CRUD + quota
 
