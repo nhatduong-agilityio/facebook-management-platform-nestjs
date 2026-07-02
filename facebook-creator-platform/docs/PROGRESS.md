@@ -4,12 +4,21 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.3` — Facebook token refresh + Graph API service (`refresh flow + typed client`; `IFacebookGraphApiProvider` already created in T2.2 with `exchangeCodeForPages`; T2.3 adds a `refreshPageToken` method + typed client wrapper).
+- **Next task:** `T2.4` — Posts entity + CRUD + quota (`create/list/update/delete` soft-delete; content length BR-F02; plan-quota check).
 - **Branch:** `nestjs-practice`
-- **Notes:** 105 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker, adds `core.facebook_accounts`). Env vars needed: `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_REDIRECT_URI`, `PII_ENCRYPTION_KEY`.
+- **Notes:** 122 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker). Env vars needed: `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_REDIRECT_URI`, `FACEBOOK_WEBHOOK_VERIFY_TOKEN`, `PII_ENCRYPTION_KEY`. Webhook verification live and ngrok-tested.
 - **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-02 — T2.3 Facebook token refresh + Graph API service
+
+- **`refreshPageToken`** added to `IFacebookGraphApiProvider` port + `FacebookGraphApiAdapter` — calls `GET /oauth/access_token?grant_type=fb_exchange_token`; returns `RefreshedToken { accessToken, expiresAt }`; `expiresAt` is `null` for non-expiring Page tokens (common when derived from a long-lived user token).
+- **`findByIdAndWorkspace` + `save`** added to `IFacebookAccountRepository` port + `MikroOrmFacebookAccountRepository` — `findByIdAndWorkspace` queries `{ id, workspace: workspaceId }` for scope enforcement; `save` calls `em.flush()` on an already-tracked entity.
+- **`refreshAccountToken(workspaceId, accountId)`** added to `FacebookService` — loads account (workspace-scoped → NOT_FOUND if missing), passes decrypted token to `graphApi.refreshPageToken`, calls `account.updateToken()`, flushes. Returns `ok(undefined)` — token never returned (BR-F11).
+- **`POST /workspaces/:workspaceId/facebook/pages/:accountId/refresh-token`** added to `FacebookController` (Owner/Editor, HTTP 200, Swagger).
+- **Webhook verification** (`GET /webhooks/facebook` hub.challenge, `FacebookWebhookController`, `verifyWebhookToken`, `verifyWebhookChallenge`) — implemented as part of T2.2/T2.3 follow-up; confirmed live with ngrok.
+- Tests: 12 new (adapter ×3, service ×3, oauth-adapter ×3 for `verifyWebhookToken` + `extractWorkspaceId`, service ×3 for `verifyWebhookChallenge`). 122/122 total. Lint: clean.
 
 ### 2026-07-02 — T2.2 Facebook OAuth callback → connect Page
 

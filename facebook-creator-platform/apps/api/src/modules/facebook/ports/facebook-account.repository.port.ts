@@ -31,6 +31,29 @@ export abstract class IFacebookAccountRepository {
   abstract findByPageId(pageId: string): Promise<FacebookAccount | null>;
 
   /**
+   * Finds a `FacebookAccount` by its primary key, scoped to a specific workspace.
+   *
+   * Returns `null` if the account does not exist **or** belongs to a different workspace,
+   * preventing cross-workspace token access without a separate guard.
+   *
+   * @param id          - UUID v7 of the `FacebookAccount` record.
+   * @param workspaceId - UUID of the owning workspace.
+   * @returns The matching account, or `null` if not found in that workspace.
+   */
+  abstract findByIdAndWorkspace(id: string, workspaceId: string): Promise<FacebookAccount | null>;
+
+  /**
+   * Persists changes to an already-tracked `FacebookAccount` entity.
+   *
+   * Calls `em.flush()` only — the entity must already be managed by the current
+   * MikroORM Unit of Work (i.e. loaded via `findByIdAndWorkspace` or `findByPageId`
+   * in the same request context). Do not call on a detached entity.
+   *
+   * @param account - The managed entity whose changes should be flushed.
+   */
+  abstract save(account: FacebookAccount): Promise<void>;
+
+  /**
    * Creates or updates a `FacebookAccount` for the given workspace and page.
    *
    * If a record with `data.pageId` already exists, its token is refreshed via

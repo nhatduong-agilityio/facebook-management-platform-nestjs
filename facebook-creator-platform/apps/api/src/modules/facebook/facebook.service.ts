@@ -36,6 +36,35 @@ export class FacebookService {
   }
 
   /**
+   * Refreshes the stored Page access token for a connected `FacebookAccount`.
+   *
+   * Loads the account (workspace-scoped), calls the Graph API `fb_exchange_token`
+   * endpoint with the current decrypted token, then persists the new ciphertext.
+   * The plaintext token is held in memory only for the duration of this call and
+   * is never returned to the caller (BR-F11).
+   *
+   * @param workspaceId - UUID of the owning workspace (scope guard).
+   * @param accountId   - UUID v7 of the `FacebookAccount` to refresh.
+   * @returns `ok(undefined)` on success, or `err(NOT_FOUND)` if the account does
+   *          not exist or belongs to a different workspace.
+   */
+  async refreshAccountToken(
+    workspaceId: string,
+    accountId: string,
+  ): Promise<Result<undefined, AppError>> {
+    const account = await this.facebookAccounts.findByIdAndWorkspace(accountId, workspaceId);
+    if (!account) {
+      return err(AppError.notFound('FacebookAccount', { accountId, workspaceId }));
+    }
+
+    const refreshed = await this.graphApi.refreshPageToken(account.accessToken);
+    account.updateToken(refreshed.accessToken, refreshed.expiresAt);
+    await this.facebookAccounts.save(account);
+
+    return ok(undefined);
+  }
+
+  /**
    * Validates a Facebook webhook hub.challenge handshake request.
    *
    * Facebook sends `GET /webhooks/facebook?hub.mode=subscribe&hub.verify_token=<secret>&hub.challenge=<nonce>`

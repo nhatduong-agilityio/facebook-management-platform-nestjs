@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   IFacebookGraphApiProvider,
   type FacebookPageData,
+  type RefreshedToken,
 } from '../ports/facebook-graph-api.provider.port';
 
 /** Facebook Graph API version used for all token and data calls. */
@@ -63,6 +64,29 @@ export class FacebookGraphApiAdapter extends IFacebookGraphApiProvider {
     this.appId = config.getOrThrow<string>('FACEBOOK_APP_ID');
     this.appSecret = config.getOrThrow<string>('FACEBOOK_APP_SECRET');
     this.redirectUri = config.getOrThrow<string>('FACEBOOK_REDIRECT_URI');
+  }
+
+  /** @inheritdoc */
+  async refreshPageToken(pageAccessToken: string): Promise<RefreshedToken> {
+    const params = new URLSearchParams({
+      grant_type: 'fb_exchange_token',
+      client_id: this.appId,
+      client_secret: this.appSecret,
+      fb_exchange_token: pageAccessToken,
+    });
+
+    const res = await fetch(`${GRAPH_BASE}/oauth/access_token?${params.toString()}`);
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Facebook token refresh failed (${res.status}): ${body}`);
+    }
+
+    const data = (await res.json()) as LongLivedTokenResponse;
+    return {
+      accessToken: data.access_token,
+      expiresAt: data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : null,
+    };
   }
 
   /** @inheritdoc */

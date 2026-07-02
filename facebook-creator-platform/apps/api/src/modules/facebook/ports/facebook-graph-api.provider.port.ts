@@ -1,4 +1,18 @@
 /**
+ * Result of a Page access token refresh via `fb_exchange_token`.
+ * The token is a plaintext string; callers must never log it.
+ */
+export interface RefreshedToken {
+  /** New long-lived Page access token (plaintext). Never log or return to clients. */
+  accessToken: string;
+  /**
+   * When the new token expires, or `null` for non-expiring Page tokens.
+   * Non-expiring tokens are common when derived from a long-lived user token.
+   */
+  expiresAt: Date | null;
+}
+
+/**
  * A single Facebook Page entry returned by the Graph API `/me/accounts` endpoint,
  * normalized to the shape the platform needs.
  */
@@ -38,4 +52,17 @@ export abstract class IFacebookGraphApiProvider {
    * @throws If any Graph API call returns a non-2xx response or a malformed body.
    */
   abstract exchangeCodeForPages(code: string): Promise<FacebookPageData[]>;
+
+  /**
+   * Extends a Page access token to a new long-lived token via `fb_exchange_token`.
+   *
+   * Calls `GET /oauth/access_token?grant_type=fb_exchange_token&fb_exchange_token=<current>`.
+   * Use this before a token expires (check `FacebookAccount.tokenExpiresAt`) to avoid
+   * having to re-run the full OAuth flow.
+   *
+   * @param pageAccessToken - Current plaintext Page access token (decrypted by caller).
+   * @returns New token and its expiry. `expiresAt` is `null` for non-expiring Page tokens.
+   * @throws If the Graph API returns a non-2xx response or a malformed body.
+   */
+  abstract refreshPageToken(pageAccessToken: string): Promise<RefreshedToken>;
 }
