@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { FacebookModule } from './modules/facebook/facebook.module';
+import { PostsModule } from './modules/posts/posts.module';
 import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
 
 /**
@@ -21,6 +22,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  * - **IdentityModule** — Clerk JWT guard, user upsert, workspace RBAC guards.
  * - **WorkspaceModule** — workspace create/list/get endpoints; seeds owner membership on create.
  * - **FacebookModule** — Facebook OAuth connect-url, Page connection, token refresh, Graph API (T2.1–T2.3).
+ * - **PostsModule** — Post CRUD (create/list/get/update/soft-delete), plan quota, PostCreatedEvent (T2.4).
  * - **DevAuthModule** — `POST /dev-auth/token` token generator; loaded only when `NODE_ENV !== 'production'`.
  */
 @Module({
@@ -50,6 +52,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     IdentityModule,
     WorkspaceModule,
     FacebookModule,
+    PostsModule,
     ...(process.env.NODE_ENV !== 'production' ? [DevAuthModule] : []),
   ],
 })
