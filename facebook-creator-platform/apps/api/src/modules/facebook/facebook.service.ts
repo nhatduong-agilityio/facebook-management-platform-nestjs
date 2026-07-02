@@ -36,6 +36,32 @@ export class FacebookService {
   }
 
   /**
+   * Validates a Facebook webhook hub.challenge handshake request.
+   *
+   * Facebook sends `GET /webhooks/facebook?hub.mode=subscribe&hub.verify_token=<secret>&hub.challenge=<nonce>`
+   * when the webhook URL is registered or re-verified in the App Dashboard.
+   * The endpoint must respond with the raw `hub.challenge` string if the token matches.
+   *
+   * @param mode        - Must be `"subscribe"`.
+   * @param verifyToken - Secret string that must match `FACEBOOK_WEBHOOK_VERIFY_TOKEN`.
+   * @param challenge   - Opaque nonce string to echo back to Facebook.
+   * @returns `ok(challenge)` to confirm the handshake, or `err(FORBIDDEN)` on mismatch.
+   */
+  verifyWebhookChallenge(
+    mode: string,
+    verifyToken: string,
+    challenge: string,
+  ): Result<string, AppError> {
+    if (mode !== 'subscribe') {
+      return err(AppError.forbidden('hub.mode must be "subscribe"'));
+    }
+    if (!this.oauthProvider.verifyWebhookToken(verifyToken)) {
+      return err(AppError.forbidden('Invalid hub.verify_token'));
+    }
+    return ok(challenge);
+  }
+
+  /**
    * Handles the Facebook OAuth callback when there is no frontend to extract the
    * `workspaceId` from the URL. The workspace is resolved from the signed state token.
    *

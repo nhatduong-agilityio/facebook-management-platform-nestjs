@@ -45,6 +45,18 @@ export abstract class IFacebookOAuthProvider {
   abstract verifyState(state: string, workspaceId: string): boolean;
 
   /**
+   * Validates a Facebook webhook `hub.verify_token` against the configured
+   * `FACEBOOK_WEBHOOK_VERIFY_TOKEN` secret.
+   *
+   * Used by `GET /webhooks/facebook` (hub.challenge handshake). The comparison
+   * uses a timing-safe equality check to prevent timing attacks.
+   *
+   * @param token - Value of `hub.verify_token` from the Facebook GET request.
+   * @returns `true` if the token matches the configured secret; `false` otherwise.
+   */
+  abstract verifyWebhookToken(token: string): boolean;
+
+  /**
    * Extracts the `workspaceId` from a state token **without** verifying the HMAC.
    *
    * Use this only to determine which workspace a callback belongs to before calling

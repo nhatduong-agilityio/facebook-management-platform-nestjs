@@ -9,6 +9,7 @@ const mockOAuthProvider = {
   buildConnectUrl: vi.fn(),
   verifyState: vi.fn(),
   extractWorkspaceId: vi.fn(),
+  verifyWebhookToken: vi.fn(),
 } as unknown as IFacebookOAuthProvider;
 
 const mockGraphApi = {
@@ -123,6 +124,34 @@ describe('FacebookService', () => {
         accessToken: 'tok',
         tokenExpiresAt: null,
       });
+    });
+  });
+
+  describe('verifyWebhookChallenge', () => {
+    it('returns ok(challenge) when mode is "subscribe" and token is valid', () => {
+      vi.mocked(mockOAuthProvider.verifyWebhookToken).mockReturnValue(true);
+
+      const result = service.verifyWebhookChallenge('subscribe', 'secret', 'challenge-nonce');
+
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap()).toBe('challenge-nonce');
+    });
+
+    it('returns err(FORBIDDEN) when hub.mode is not "subscribe"', () => {
+      const result = service.verifyWebhookChallenge('unsubscribe', 'secret', 'challenge-nonce');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('FORBIDDEN');
+      expect(mockOAuthProvider.verifyWebhookToken).not.toHaveBeenCalled();
+    });
+
+    it('returns err(FORBIDDEN) when the verify_token does not match', () => {
+      vi.mocked(mockOAuthProvider.verifyWebhookToken).mockReturnValue(false);
+
+      const result = service.verifyWebhookChallenge('subscribe', 'wrong-token', 'challenge-nonce');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('FORBIDDEN');
     });
   });
 
