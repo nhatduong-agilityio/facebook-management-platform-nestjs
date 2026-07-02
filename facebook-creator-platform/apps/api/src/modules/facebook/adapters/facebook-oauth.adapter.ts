@@ -27,12 +27,14 @@ export class FacebookOAuthAdapter extends IFacebookOAuthProvider {
   private readonly appId: string;
   private readonly appSecret: string;
   private readonly redirectUri: string;
+  private readonly webhookVerifyToken: string;
 
   constructor(config: ConfigService) {
     super();
     this.appId = config.getOrThrow<string>('FACEBOOK_APP_ID');
     this.appSecret = config.getOrThrow<string>('FACEBOOK_APP_SECRET');
     this.redirectUri = config.getOrThrow<string>('FACEBOOK_REDIRECT_URI');
+    this.webhookVerifyToken = config.getOrThrow<string>('FACEBOOK_WEBHOOK_VERIFY_TOKEN');
   }
 
   /** @inheritdoc */
@@ -79,6 +81,16 @@ export class FacebookOAuthAdapter extends IFacebookOAuthProvider {
         workspaceId?: string;
       };
       return decoded.workspaceId === workspaceId;
+    } catch {
+      return false;
+    }
+  }
+
+  /** @inheritdoc */
+  verifyWebhookToken(token: string): boolean {
+    if (token.length !== this.webhookVerifyToken.length) return false;
+    try {
+      return timingSafeEqual(Buffer.from(token), Buffer.from(this.webhookVerifyToken));
     } catch {
       return false;
     }

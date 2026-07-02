@@ -7,6 +7,8 @@ const APP_ID = 'test-app-id';
 const APP_SECRET = 'test-app-secret';
 const REDIRECT_URI = 'http://localhost:3000/api/v1/facebook/callback';
 
+const WEBHOOK_VERIFY_TOKEN = 'test-webhook-verify-token';
+
 function makeAdapter(): FacebookOAuthAdapter {
   const config = {
     getOrThrow: (key: string) => {
@@ -14,6 +16,7 @@ function makeAdapter(): FacebookOAuthAdapter {
         FACEBOOK_APP_ID: APP_ID,
         FACEBOOK_APP_SECRET: APP_SECRET,
         FACEBOOK_REDIRECT_URI: REDIRECT_URI,
+        FACEBOOK_WEBHOOK_VERIFY_TOKEN: WEBHOOK_VERIFY_TOKEN,
       };
       if (!(key in map)) throw new Error(`Missing env: ${key}`);
       return map[key];
@@ -117,6 +120,20 @@ describe('FacebookOAuthAdapter', () => {
 
     it('returns null when the payload is not valid base64url JSON', () => {
       expect(adapter.extractWorkspaceId('!!!.sig')).toBeNull();
+    });
+  });
+
+  describe('verifyWebhookToken', () => {
+    it('returns true when the token matches the configured secret', () => {
+      expect(adapter.verifyWebhookToken(WEBHOOK_VERIFY_TOKEN)).toBe(true);
+    });
+
+    it('returns false when the token does not match', () => {
+      expect(adapter.verifyWebhookToken('wrong-token')).toBe(false);
+    });
+
+    it('returns false for an empty token', () => {
+      expect(adapter.verifyWebhookToken('')).toBe(false);
     });
   });
 });

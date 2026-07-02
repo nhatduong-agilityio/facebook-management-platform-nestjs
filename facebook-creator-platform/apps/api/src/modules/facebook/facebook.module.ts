@@ -11,6 +11,7 @@ import { FacebookAccount } from './entities/facebook-account.entity';
 import { FacebookService } from './facebook.service';
 import { FacebookController } from './facebook.controller';
 import { FacebookCallbackController } from './facebook-callback.controller';
+import { FacebookWebhookController } from './facebook-webhook.controller';
 
 /**
  * Facebook integration module.
@@ -25,7 +26,7 @@ import { FacebookCallbackController } from './facebook-callback.controller';
  */
 @Module({
   imports: [IdentityModule, MikroOrmModule.forFeature([FacebookAccount])],
-  controllers: [FacebookController, FacebookCallbackController],
+  controllers: [FacebookController, FacebookCallbackController, FacebookWebhookController],
   providers: [
     FacebookService,
     { provide: IFacebookOAuthProvider, useClass: FacebookOAuthAdapter },
