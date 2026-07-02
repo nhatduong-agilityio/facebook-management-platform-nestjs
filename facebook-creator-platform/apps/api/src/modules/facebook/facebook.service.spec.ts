@@ -14,10 +14,13 @@ const mockOAuthProvider = {
 
 const mockGraphApi = {
   exchangeCodeForPages: vi.fn(),
+  refreshPageToken: vi.fn(),
 } as unknown as IFacebookGraphApiProvider;
 
 const mockFacebookAccounts = {
   findByPageId: vi.fn(),
+  findByIdAndWorkspace: vi.fn(),
+  save: vi.fn(),
   connectPage: vi.fn(),
 } as unknown as IFacebookAccountRepository;
 
@@ -124,6 +127,60 @@ describe('FacebookService', () => {
         accessToken: 'tok',
         tokenExpiresAt: null,
       });
+    });
+  });
+
+  describe('refreshAccountToken', () => {
+    const WORKSPACE_ID = 'ws-001';
+    const ACCOUNT_ID = 'acc-uuid-1';
+
+    const fakeAccount = {
+      id: ACCOUNT_ID,
+      pageId: 'page-1',
+      pageName: 'My Page',
+      accessToken: 'decrypted-current-token',
+      connectedAt: new Date(),
+      updateToken: vi.fn(),
+    } as unknown as import('./entities/facebook-account.entity').FacebookAccount;
+
+    it('refreshes and saves the token on the happy path', async () => {
+      vi.mocked(mockFacebookAccounts.findByIdAndWorkspace).mockResolvedValue(fakeAccount);
+      vi.mocked(mockGraphApi.refreshPageToken).mockResolvedValue({
+        accessToken: 'new-token',
+        expiresAt: new Date('2027-01-01'),
+      });
+      vi.mocked(mockFacebookAccounts.save).mockResolvedValue(undefined);
+
+      const result = await service.refreshAccountToken(WORKSPACE_ID, ACCOUNT_ID);
+
+      expect(result.isOk()).toBe(true);
+      expect(mockGraphApi.refreshPageToken).toHaveBeenCalledWith('decrypted-current-token');
+      expect(fakeAccount.updateToken).toHaveBeenCalledWith('new-token', expect.any(Date));
+      expect(mockFacebookAccounts.save).toHaveBeenCalledWith(fakeAccount);
+    });
+
+    it('returns err(NOT_FOUND) when the account does not exist in the workspace', async () => {
+      vi.mocked(mockFacebookAccounts.findByIdAndWorkspace).mockResolvedValue(null);
+
+      const result = await service.refreshAccountToken(WORKSPACE_ID, 'missing-id');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+      expect(mockGraphApi.refreshPageToken).not.toHaveBeenCalled();
+    });
+
+    it('returns ok(undefined) — never exposes the token in the result (BR-F11)', async () => {
+      vi.mocked(mockFacebookAccounts.findByIdAndWorkspace).mockResolvedValue(fakeAccount);
+      vi.mocked(mockGraphApi.refreshPageToken).mockResolvedValue({
+        accessToken: 'new-secret-token',
+        expiresAt: null,
+      });
+      vi.mocked(mockFacebookAccounts.save).mockResolvedValue(undefined);
+
+      const result = await service.refreshAccountToken(WORKSPACE_ID, ACCOUNT_ID);
+
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap()).toBeUndefined();
     });
   });
 

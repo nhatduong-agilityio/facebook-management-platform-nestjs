@@ -135,4 +135,38 @@ describe('FacebookGraphApiAdapter', () => {
       );
     });
   });
+
+  describe('refreshPageToken', () => {
+    it('returns new token and expiresAt when expires_in is present', async () => {
+      mockFetch([
+        { ok: true, body: { access_token: 'new-long-token', token_type: 'bearer', expires_in: 5183944 } },
+      ]);
+
+      const result = await adapter.refreshPageToken('current-page-token');
+
+      expect(result.accessToken).toBe('new-long-token');
+      expect(result.expiresAt).toBeInstanceOf(Date);
+    });
+
+    it('returns expiresAt as null when expires_in is absent (non-expiring Page token)', async () => {
+      mockFetch([
+        { ok: true, body: { access_token: 'new-long-token', token_type: 'bearer' } },
+      ]);
+
+      const result = await adapter.refreshPageToken('current-page-token');
+
+      expect(result.accessToken).toBe('new-long-token');
+      expect(result.expiresAt).toBeNull();
+    });
+
+    it('throws when the Graph API returns a non-2xx response', async () => {
+      mockFetch([
+        { ok: false, body: { error: { message: 'Invalid OAuth access token' } } },
+      ]);
+
+      await expect(adapter.refreshPageToken('expired-token')).rejects.toThrow(
+        /Facebook token refresh failed/,
+      );
+    });
+  });
 });

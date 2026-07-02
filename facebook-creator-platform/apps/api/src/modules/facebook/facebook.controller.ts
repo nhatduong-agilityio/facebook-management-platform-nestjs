@@ -85,4 +85,35 @@ export class FacebookController {
       (e) => { throw toHttpException(e); },
     );
   }
+
+  /**
+   * Refreshes the stored Page access token for a connected Facebook account.
+   *
+   * Calls the Facebook Graph API `fb_exchange_token` flow with the current
+   * encrypted token and persists the new ciphertext. The plaintext token is
+   * never returned (BR-F11). Use this before `FacebookAccount.tokenExpiresAt`
+   * to avoid requiring users to re-run the full OAuth flow.
+   *
+   * @param workspaceId - UUID of the workspace that owns the Page.
+   * @param accountId   - UUID v7 of the `core.facebook_accounts` record to refresh.
+   */
+  @Post(':workspaceId/facebook/pages/:accountId/refresh-token')
+  @UseGuards(WorkspaceRolesGuard)
+  @Roles('owner', 'editor')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh the stored Page access token for a connected account' })
+  @ApiOkResponse({ description: 'Token refreshed and stored; no token returned (BR-F11)' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
+  @ApiForbiddenResponse({ description: 'Insufficient workspace role (Owner or Editor required)' })
+  @ApiNotFoundResponse({ description: 'FacebookAccount not found in this workspace' })
+  async refreshToken(
+    @Param('workspaceId') workspaceId: string,
+    @Param('accountId') accountId: string,
+  ): Promise<void> {
+    const result = await this.facebookService.refreshAccountToken(workspaceId, accountId);
+    result.match(
+      () => undefined,
+      (e) => { throw toHttpException(e); },
+    );
+  }
 }
