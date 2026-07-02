@@ -29,6 +29,7 @@ import { Roles } from '../identity/decorators/roles.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { PostsService } from './posts.service';
 import { CreatePostDto, UpdatePostDto, PostResponseDto } from './dto/post.dto';
+import { UpdatePostStatusDto } from './dto/update-post-status.dto';
 import type { User } from '../identity/entities/user.entity';
 import type { Post as PostEntity } from './entities/post.entity';
 
@@ -189,6 +190,39 @@ export class PostsController {
     const result = await this.postsService.deletePost(workspaceId, postId);
     result.match(
       () => undefined,
+      (e) => { throw toHttpException(e); },
+    );
+  }
+
+  /**
+   * Drives a guarded status transition on a post.
+   *
+   * Enforces the state machine: `draft → scheduled → publishing → published | failed`.
+   * Illegal transitions return 409 Conflict. BR-F06 violations (past `scheduledAt`)
+   * return 422 Unprocessable Entity.
+   *
+   * @param workspaceId - UUID of the owning workspace.
+   * @param postId      - UUID v7 of the post.
+   * @param dto         - Target status and any required auxiliary fields.
+   */
+  @Patch(':postId/status')
+  @UseGuards(WorkspaceRolesGuard)
+  @Roles('owner', 'editor')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Transition post status via the state machine' })
+  @ApiOkResponse({ type: PostResponseDto, description: 'Post with updated status' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
+  @ApiForbiddenResponse({ description: 'Insufficient workspace role' })
+  @ApiNotFoundResponse({ description: 'Post not found' })
+  @ApiConflictResponse({ description: 'Transition not allowed from current status (INVALID_STATE_TRANSITION)' })
+  async transitionStatus(
+    @Param('workspaceId') workspaceId: string,
+    @Param('postId') postId: string,
+    @Body() dto: UpdatePostStatusDto,
+  ): Promise<PostResponseDto> {
+    const result = await this.postsService.transitionStatus(workspaceId, postId, dto);
+    return result.match(
+      (post) => toDto(post),
       (e) => { throw toHttpException(e); },
     );
   }

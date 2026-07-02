@@ -5,8 +5,22 @@ import { IEventBus } from '../../common/events/event-bus.port';
 import { IPostRepository } from './ports/post.repository.port';
 import { IPostQuotaProvider } from './ports/post-quota.provider.port';
 import { PostCreatedEvent } from './events/post-created.event';
-import { Post } from './entities/post.entity';
+import { PostPublishedEvent } from './events/post-published.event';
+import { Post, type PostStatus } from './entities/post.entity';
 import { type CreatePostDto, type UpdatePostDto } from './dto/post.dto';
+import { type UpdatePostStatusDto } from './dto/update-post-status.dto';
+
+/**
+ * Legal state transitions for the Post lifecycle state machine.
+ * Any `(from, to)` pair not listed here returns `err(INVALID_STATE_TRANSITION)`.
+ */
+const ALLOWED_TRANSITIONS: Record<PostStatus, PostStatus[]> = {
+  draft: ['scheduled', 'publishing'],
+  scheduled: ['draft', 'publishing'],
+  publishing: ['published', 'failed'],
+  published: [],
+  failed: ['draft'],
+};
 
 /**
  * Application service for `Post` CRUD operations.
@@ -20,7 +34,8 @@ import { type CreatePostDto, type UpdatePostDto } from './dto/post.dto';
  *   for belt-and-suspenders on any non-HTTP callers.
  * - PLAN_LIMIT_EXCEEDED: workspace is at its plan's post quota.
  * - BR-R05: `facebookAccountId`, when provided, must belong to the same workspace.
- * - Immutability: `published` and `publishing` posts cannot be updated.
+ * - Immutability: `published` and `publishing` posts cannot be updated via `updatePost`.
+ * - State machine: `transitionStatus` enforces `ALLOWED_TRANSITIONS`; BR-F06 for `scheduled`.
  */
 @Injectable()
 export class PostsService {
@@ -148,9 +163,7 @@ export class PostsService {
     }
 
     if (post.status === 'published' || post.status === 'publishing') {
-      return err(
-        AppError.forbidden(`Cannot edit a post in '${post.status}' state`),
-      );
+      return err(AppError.forbidden(`Cannot edit a post in '${post.status}' state`));
     }
 
     if (dto.facebookAccountId) {
@@ -188,10 +201,7 @@ export class PostsService {
    * @param postId      - UUID v7 of the post.
    * @returns `ok(undefined)` on success, or `err(NOT_FOUND)` if missing.
    */
-  async deletePost(
-    workspaceId: string,
-    postId: string,
-  ): Promise<Result<undefined, AppError>> {
+  async deletePost(workspaceId: string, postId: string): Promise<Result<undefined, AppError>> {
     const post = await this.postRepo.findById(postId, workspaceId);
     if (!post) {
       return err(AppError.notFound('Post', { postId, workspaceId }));
@@ -200,5 +210,105 @@ export class PostsService {
     post.deletedAt = new Date();
     await this.postRepo.save(post);
     return ok(undefined);
+  }
+
+  /**
+   * Drives a guarded status transition on a post.
+   *
+   * Validates that `(current → target)` is in `ALLOWED_TRANSITIONS`, then applies
+   * state-specific side-effects before flushing:
+   * - `→ scheduled`  — `scheduledAt` required and must be future (BR-F06).
+   * - `→ publishing` — `facebookGraphPostId` required (Graph API post id from Publish Job).
+   * - `→ published`  — sets `publishedAt = now()`; emits `PostPublishedEvent` after flush.
+   * - `→ failed`     — stores `lastError`.
+   * - `failed → draft` — clears `lastError` for retry.
+   *
+   * Called by the HTTP controller (user-facing transitions) and by internal consumers
+   * (Publish Job → `publishing`; webhook consumer T2.7 → `published`/`failed`).
+   *
+   * @param workspaceId - UUID of the owning workspace.
+   * @param postId      - UUID v7 of the post.
+   * @param dto         - Target status and any required auxiliary fields.
+   * @returns `ok(post)` on success, or:
+   *   - `err(NOT_FOUND)` if the post does not exist.
+   *   - `err(INVALID_STATE_TRANSITION)` if the transition is not allowed.
+   *   - `err(VALIDATION_ERROR)` if BR-F06 is violated or a required field is missing.
+   */
+  async transitionStatus(
+    workspaceId: string,
+    postId: string,
+    dto: UpdatePostStatusDto,
+  ): Promise<Result<Post, AppError>> {
+    const post = await this.postRepo.findById(postId, workspaceId);
+    if (!post) {
+      return err(AppError.notFound('Post', { postId, workspaceId }));
+    }
+
+    const allowed = ALLOWED_TRANSITIONS[post.status as PostStatus] ?? [];
+    if (!allowed.includes(dto.status)) {
+      return err(
+        new AppError(
+          'INVALID_STATE_TRANSITION',
+          `Cannot transition from '${post.status}' to '${dto.status}'`,
+          { from: post.status, to: dto.status },
+        ),
+      );
+    }
+
+    if (dto.status === 'scheduled') {
+      if (!dto.scheduledAt) {
+        return err(
+          new AppError(
+            'VALIDATION_ERROR',
+            'scheduledAt is required when transitioning to scheduled',
+          ),
+        );
+      }
+      const at = new Date(dto.scheduledAt);
+      if (at <= new Date()) {
+        return err(
+          new AppError('VALIDATION_ERROR', 'scheduledAt must be a future datetime (BR-F06)', {
+            scheduledAt: dto.scheduledAt,
+          }),
+        );
+      }
+      post.scheduledAt = at;
+    }
+
+    if (dto.status === 'publishing') {
+      if (!dto.facebookGraphPostId) {
+        return err(
+          new AppError(
+            'VALIDATION_ERROR',
+            'facebookGraphPostId is required when transitioning to publishing',
+          ),
+        );
+      }
+      post.facebookGraphPostId = dto.facebookGraphPostId;
+    }
+
+    if (dto.status === 'published') {
+      post.publishedAt = new Date();
+    }
+
+    if (dto.status === 'failed') {
+      post.lastError = dto.lastError;
+    }
+
+    // Retry path: clear the previous error so the post is clean for re-scheduling.
+    if (dto.status === 'draft' && post.status === 'failed') {
+      post.lastError = undefined;
+    }
+
+    post.status = dto.status;
+    await this.postRepo.save(post);
+
+    if (dto.status === 'published' && post.facebookGraphPostId) {
+      await this.eventBus.publish(
+        new PostPublishedEvent(post.id, workspaceId, post.facebookGraphPostId),
+      );
+    }
+
+    return ok(post);
   }
 }

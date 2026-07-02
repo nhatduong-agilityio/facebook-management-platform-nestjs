@@ -266,4 +266,170 @@ describe('PostsService', () => {
       expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
     });
   });
+
+  // ── transitionStatus ───────────────────────────────────────────────────────
+
+  describe('transitionStatus', () => {
+    const FUTURE_DATE = new Date(Date.now() + 86_400_000).toISOString(); // +1 day
+    const PAST_DATE = new Date(Date.now() - 86_400_000).toISOString();  // -1 day
+    const GRAPH_POST_ID = 'fb-graph-post-id-001';
+
+    function setupPost(status: Parameters<typeof makePost>[0]['status']) {
+      const post = makePost({ status });
+      vi.mocked(mockPostRepo.findById).mockResolvedValue(post);
+      vi.mocked(mockPostRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+      return post;
+    }
+
+    it('draft → scheduled: sets scheduledAt and transitions status', async () => {
+      const post = setupPost('draft');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'scheduled',
+        scheduledAt: FUTURE_DATE,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap().status).toBe('scheduled');
+      expect(post.scheduledAt).toBeInstanceOf(Date);
+    });
+
+    it('draft → scheduled: returns err(VALIDATION_ERROR) when scheduledAt is missing', async () => {
+      setupPost('draft');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'scheduled',
+      });
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('VALIDATION_ERROR');
+    });
+
+    it('draft → scheduled: returns err(VALIDATION_ERROR) when scheduledAt is in the past (BR-F06)', async () => {
+      setupPost('draft');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'scheduled',
+        scheduledAt: PAST_DATE,
+      });
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('VALIDATION_ERROR');
+    });
+
+    it('draft → publishing: sets facebookGraphPostId', async () => {
+      const post = setupPost('draft');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'publishing',
+        facebookGraphPostId: GRAPH_POST_ID,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(post.facebookGraphPostId).toBe(GRAPH_POST_ID);
+      expect(post.status).toBe('publishing');
+    });
+
+    it('draft → publishing: returns err(VALIDATION_ERROR) when facebookGraphPostId is missing', async () => {
+      setupPost('draft');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'publishing',
+      });
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('VALIDATION_ERROR');
+    });
+
+    it('scheduled → draft: unschedules the post', async () => {
+      const post = setupPost('scheduled');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'draft',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(post.status).toBe('draft');
+    });
+
+    it('publishing → published: sets publishedAt and emits PostPublishedEvent after flush', async () => {
+      const callOrder: string[] = [];
+      const post = makePost({ status: 'publishing', facebookGraphPostId: GRAPH_POST_ID });
+      vi.mocked(mockPostRepo.findById).mockResolvedValue(post);
+      vi.mocked(mockPostRepo.save).mockImplementation(async () => { callOrder.push('flush'); });
+      vi.mocked(mockEventBus.publish).mockImplementation(async () => { callOrder.push('event'); });
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'published',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(post.publishedAt).toBeInstanceOf(Date);
+      expect(mockEventBus.publish).toHaveBeenCalledOnce();
+      expect(callOrder).toEqual(['flush', 'event']);
+    });
+
+    it('publishing → failed: stores lastError on the post', async () => {
+      const post = setupPost('publishing');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'failed',
+        lastError: 'Graph API rate limit exceeded',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(post.lastError).toBe('Graph API rate limit exceeded');
+      expect(post.status).toBe('failed');
+    });
+
+    it('failed → draft: clears lastError for retry', async () => {
+      const post = makePost({ status: 'failed' });
+      post.lastError = 'previous error';
+      vi.mocked(mockPostRepo.findById).mockResolvedValue(post);
+      vi.mocked(mockPostRepo.save).mockResolvedValue(undefined);
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'draft',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(post.lastError).toBeUndefined();
+      expect(post.status).toBe('draft');
+    });
+
+    it('published → draft: returns err(INVALID_STATE_TRANSITION) — terminal state', async () => {
+      setupPost('published');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'draft',
+      });
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('INVALID_STATE_TRANSITION');
+    });
+
+    it('draft → published: returns err(INVALID_STATE_TRANSITION) — skipping states', async () => {
+      setupPost('draft');
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'published',
+      });
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('INVALID_STATE_TRANSITION');
+    });
+
+    it('returns err(NOT_FOUND) when the post does not exist', async () => {
+      vi.mocked(mockPostRepo.findById).mockResolvedValue(null);
+
+      const result = await service.transitionStatus(WORKSPACE_ID, 'missing-id', {
+        status: 'scheduled',
+        scheduledAt: FUTURE_DATE,
+      });
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+    });
+  });
 });
