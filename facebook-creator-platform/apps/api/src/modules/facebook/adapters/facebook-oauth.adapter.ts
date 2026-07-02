@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { IFacebookOAuthProvider, type ConnectUrl } from '../ports/facebook-oauth.provider.port';
 
 /** Facebook Graph API version used for all OAuth and API calls. */
-const GRAPH_VERSION = 'v21.0';
+const GRAPH_VERSION = 'v25.0';
 
 /**
  * OAuth scopes requested when connecting a Facebook Page.
@@ -51,15 +51,63 @@ export class FacebookOAuthAdapter extends IFacebookOAuthProvider {
     return { url, state };
   }
 
+  /** @inheritdoc */
+  verifyState(state: string, workspaceId: string): boolean {
+    const dotIndex = state.lastIndexOf('.');
+    if (dotIndex === -1) return false;
+
+    const payload = state.slice(0, dotIndex);
+    const sig = state.slice(dotIndex + 1);
+
+    if (!payload || !sig) return false;
+
+    const expectedSig = createHmac('sha256', this.appSecret).update(payload).digest('hex');
+
+    // Compare as UTF-8 buffers (both are hex strings of equal length) to avoid
+    // buffer length mismatch if sig is malformed.
+    if (sig.length !== expectedSig.length) return false;
+
+    try {
+      const sigValid = timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig));
+      if (!sigValid) return false;
+    } catch {
+      return false;
+    }
+
+    try {
+      const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+        workspaceId?: string;
+      };
+      return decoded.workspaceId === workspaceId;
+    } catch {
+      return false;
+    }
+  }
+
+  /** @inheritdoc */
+  extractWorkspaceId(state: string): string | null {
+    const dotIndex = state.lastIndexOf('.');
+    if (dotIndex === -1) return null;
+    const payload = state.slice(0, dotIndex);
+    if (!payload) return null;
+    try {
+      const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+        workspaceId?: string;
+      };
+      return typeof decoded.workspaceId === 'string' ? decoded.workspaceId : null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Builds a tamper-proof CSRF state token.
    *
-   * Format: `<base64url-payload>.<hex-hmac-prefix>`
+   * Format: `<base64url-payload>.<hex-hmac>`
    *
    * The payload encodes `workspaceId` and a 16-byte random nonce so each
-   * authorization attempt produces a unique state. The HMAC prefix (first 32
-   * hex chars = 128 bits) is enough for CSRF protection without bloating the
-   * token; the full digest is used for comparison on the callback side.
+   * authorization attempt produces a unique state. The callback must
+   * call `verifyState` before accepting the OAuth code.
    */
   private buildState(workspaceId: string): string {
     const nonce = randomBytes(16).toString('hex');

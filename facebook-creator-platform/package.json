@@ -11,6 +11,7 @@
     "test": "pnpm --filter @fcp/api test",
     "build": "pnpm --filter @fcp/api build",
     "start:dev": "pnpm --filter @fcp/api start:dev",
+    "migration": "pnpm --filter @fcp/api mikro-orm migration:up",
     "prepare": "git config core.hooksPath $(git rev-parse --show-prefix).husky"
   },
   "devDependencies": {

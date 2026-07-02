@@ -41,7 +41,7 @@ For blocked tasks always append an inline note on the same line:
 ## Week 2 — Facebook + Posts + Event Bus  (resume point after foundation)
 
 - [x] **T2.1 Facebook OAuth connect-url** (~2h) — `GET /workspaces/:id/facebook/connect-url` (Owner/Editor). DoD: returns provider URL + state; test; Swagger.
-- [ ] **T2.2 Facebook OAuth callback -> connect Page** (~3h) — `POST /workspaces/:id/facebook/pages`; **token persisted via EncryptedText from the first write** (already available from T1.2); same-workspace guard (BR-R05). DoD: ciphertext in DB, token never returned; cross-workspace -> err(CROSS_WORKSPACE).
+- [x] **T2.2 Facebook OAuth callback -> connect Page** (~3h) — `POST /workspaces/:id/facebook/pages`; **token persisted via EncryptedText from the first write** (already available from T1.2); same-workspace guard (BR-R05). DoD: ciphertext in DB, token never returned; cross-workspace -> err(CROSS_WORKSPACE).
 - [ ] **T2.3 Facebook token refresh + Graph API service** (~3h) — refresh flow + typed client. DoD: refresh updates encrypted token; tests.
 - [ ] **T2.4 Posts entity + CRUD + quota** (~4h) — create/list/update/delete (soft); content length (BR-F02); plan-quota check. DoD: validation + Result + tests.
 - [ ] **T2.5 Post status state machine** (~3h) — `PATCH /posts/:id/status`; guarded transitions; scheduled_at future (BR-F06). DoD: illegal transition -> err(INVALID_STATE_TRANSITION); tests.

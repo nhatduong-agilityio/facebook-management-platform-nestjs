@@ -30,10 +30,9 @@ describe('FacebookOAuthAdapter', () => {
   });
 
   describe('buildConnectUrl', () => {
-    it('returns a url pointing to the Facebook OAuth dialog', () => {
+    it('returns a url pointing to the Facebook OAuth dialog on v25.0', () => {
       const { url } = adapter.buildConnectUrl('ws-1');
-      expect(url).toContain('https://www.facebook.com/');
-      expect(url).toContain('/dialog/oauth');
+      expect(url).toContain('https://www.facebook.com/v25.0/dialog/oauth');
     });
 
     it('includes the app id, redirect_uri, and required scopes in the url', () => {
@@ -81,6 +80,43 @@ describe('FacebookOAuthAdapter', () => {
       const { state: s1 } = adapter.buildConnectUrl('ws-1');
       const { state: s2 } = adapter.buildConnectUrl('ws-1');
       expect(s1).not.toBe(s2);
+    });
+  });
+
+  describe('verifyState', () => {
+    it('returns true for a valid state with the correct workspaceId', () => {
+      const { state } = adapter.buildConnectUrl('ws-100');
+      expect(adapter.verifyState(state, 'ws-100')).toBe(true);
+    });
+
+    it('returns false when the HMAC signature has been tampered with', () => {
+      const { state } = adapter.buildConnectUrl('ws-1');
+      const tampered = state.slice(0, -4) + 'beef'; // corrupt last 4 hex chars
+      expect(adapter.verifyState(tampered, 'ws-1')).toBe(false);
+    });
+
+    it('returns false when the workspaceId in the state does not match the expected one', () => {
+      const { state } = adapter.buildConnectUrl('ws-1');
+      expect(adapter.verifyState(state, 'ws-2')).toBe(false);
+    });
+
+    it('returns false for a malformed state with no dot separator', () => {
+      expect(adapter.verifyState('notavalidstate', 'ws-1')).toBe(false);
+    });
+  });
+
+  describe('extractWorkspaceId', () => {
+    it('returns the workspaceId from a valid state without checking the HMAC', () => {
+      const { state } = adapter.buildConnectUrl('ws-extract-test');
+      expect(adapter.extractWorkspaceId(state)).toBe('ws-extract-test');
+    });
+
+    it('returns null for a state with no dot separator', () => {
+      expect(adapter.extractWorkspaceId('nodot')).toBeNull();
+    });
+
+    it('returns null when the payload is not valid base64url JSON', () => {
+      expect(adapter.extractWorkspaceId('!!!.sig')).toBeNull();
     });
   });
 });

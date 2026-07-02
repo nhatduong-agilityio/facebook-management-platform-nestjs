@@ -12,7 +12,7 @@ export interface ConnectUrl {
 }
 
 /**
- * Port (outbound): constructs Facebook OAuth URLs.
+ * Port (outbound): constructs Facebook OAuth URLs and verifies OAuth state tokens.
  *
  * Implementations read `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, and
  * `FACEBOOK_REDIRECT_URI` from the environment. Services depend on this
@@ -28,4 +28,31 @@ export abstract class IFacebookOAuthProvider {
    *   for callback verification.
    */
   abstract buildConnectUrl(workspaceId: string): ConnectUrl;
+
+  /**
+   * Verifies a CSRF state token received in the OAuth callback.
+   *
+   * Checks two things:
+   * 1. The HMAC signature is valid (prevents token tampering).
+   * 2. The `workspaceId` embedded in the state matches the URL parameter (BR-R05).
+   *
+   * Uses a timing-safe comparison to prevent timing attacks.
+   *
+   * @param state       - State token from the Facebook redirect (`base64url(payload).<hmac>`).
+   * @param workspaceId - UUID to compare against the state payload.
+   * @returns `true` if the token is authentic and belongs to `workspaceId`; `false` otherwise.
+   */
+  abstract verifyState(state: string, workspaceId: string): boolean;
+
+  /**
+   * Extracts the `workspaceId` from a state token **without** verifying the HMAC.
+   *
+   * Use this only to determine which workspace a callback belongs to before calling
+   * `verifyState`. Never trust the extracted id as authoritative — always call
+   * `verifyState` (or `connectPage` which calls it internally) afterwards.
+   *
+   * @param state - State token from the Facebook redirect (`base64url(payload).<hmac>`).
+   * @returns The `workspaceId` string if the token is structurally valid; `null` otherwise.
+   */
+  abstract extractWorkspaceId(state: string): string | null;
 }
