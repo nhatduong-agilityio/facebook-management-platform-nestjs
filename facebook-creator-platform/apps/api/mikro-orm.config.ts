@@ -7,12 +7,13 @@ import { Workspace } from './src/modules/workspace/entities/workspace.entity';
 import { WorkspaceMember } from './src/modules/workspace/entities/workspace-member.entity';
 import { Invitation } from './src/modules/workspace/entities/invitation.entity';
 import { FacebookAccount } from './src/modules/facebook/entities/facebook-account.entity';
+import { Post } from './src/modules/posts/entities/post.entity';
 
 export default defineConfig({
   clientUrl: process.env.DATABASE_URL ?? 'postgres://fcp:fcp@localhost:5432/fcp',
   metadataProvider: TsMorphMetadataProvider,
   schema: 'core',
-  entities: [User, Workspace, WorkspaceMember, Invitation, FacebookAccount],
+  entities: [User, Workspace, WorkspaceMember, Invitation, FacebookAccount, Post],
   migrations: {
     path: './src/migrations',
     glob: '!(*.d).{js,ts}',

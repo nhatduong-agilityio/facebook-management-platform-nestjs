@@ -4,12 +4,23 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.4` — Posts entity + CRUD + quota (`create/list/update/delete` soft-delete; content length BR-F02; plan-quota check).
+- **Next task:** `T2.5` — Post status state machine (`PATCH /workspaces/:workspaceId/posts/:postId/status`; four states `draft→scheduled→publishing→published|failed`; `publishing` state + `facebook_graph_post_id` field already exist in T2.4 entity/migration; guarded transitions; BR-F06 `scheduled_at` future check).
 - **Branch:** `nestjs-practice`
-- **Notes:** 122 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker). Env vars needed: `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, `FACEBOOK_REDIRECT_URI`, `FACEBOOK_WEBHOOK_VERIFY_TOKEN`, `PII_ENCRYPTION_KEY`. Webhook verification live and ngrok-tested.
+- **Notes:** 138 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker, adds `core.posts`). Quota stub returns 10 (T3.1 swaps with billing lookup).
 - **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-02 — T2.4 Posts entity + CRUD + quota
+
+- **`Post` entity** — extends `BaseEntity`; `PostStatus` type `'draft'|'scheduled'|'publishing'|'published'|'failed'` (all 5 states included now per T2.5 design); `@ManyToOne` relations to `Workspace` + `FacebookAccount`; `createdByUserId` scalar (cross-module logical FK — BR-R06); `facebookGraphPostId` nullable (set by Publish Job in T2.5/T2.7); static `Post.create()` factory.
+- **`IPostRepository` port** — `findById` (workspace-scoped), `findAll` (soft-delete filter applies), `countByWorkspace` (quota), `facebookAccountBelongsToWorkspace` (BR-R05; imports `FacebookAccount` entity directly per §13), `createPost` (em.getReference + factory + persist + flush), `save` (flush only).
+- **`IPostQuotaProvider` port + `HardcodedPostQuotaAdapter`** — returns 10 (free-plan limit); T3.1 swaps for real billing lookup without changing service or port.
+- **`PostCreatedEvent extends DomainEvent`** — carries `postId`, `workspaceId`, `createdByUserId`; no PII; published after `em.flush()` (§6).
+- **`PostsService`** — 5 methods: `createPost` (quota + BR-R05 + flush + event); `listPosts`; `getPost`; `updatePost` (rejects `publishing`/`published` posts with FORBIDDEN); `deletePost` (sets `deletedAt` + flush).
+- **`PostsController`** — 5 routes on `POST|GET|GET :id|PATCH :id|DELETE :id`; writes Owner/Editor; reads all roles; full Swagger.
+- **Migration** — `core.posts` with uuid v7 PK (no DB DEFAULT), `deleted_at` (soft-delete), CHECK on all 5 statuses, 5 indexes (workspace_id, facebook_account_id, created_by_user_id, status, partial on scheduled_at).
+- Tests: 16 new service tests covering all 5 methods + err paths. 138/138 total. Lint: clean.
 
 ### 2026-07-02 — T2.3 Facebook token refresh + Graph API service
 
