@@ -11,6 +11,8 @@ import { DomainEvent } from '../../../common/events/event-bus.port';
 export class MemberInvitedEvent extends DomainEvent {
   /** @inheritdoc */
   readonly eventId: string = uuidv7();
+  /** AMQP routing key for `fcp.events` topic exchange. */
+  readonly routingKey = 'workspace.member-invited' as const;
 
   /**
    * @param workspaceId    - UUID of the workspace the invitation was issued for.

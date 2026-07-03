@@ -9,6 +9,8 @@ import { DomainEvent } from '../../../common/events/event-bus.port';
 export class MemberRemovedEvent extends DomainEvent {
   /** @inheritdoc */
   readonly eventId: string = uuidv7();
+  /** AMQP routing key for `fcp.events` topic exchange. */
+  readonly routingKey = 'workspace.member-removed' as const;
 
   /**
    * @param workspaceId      - UUID of the workspace the member was removed from.

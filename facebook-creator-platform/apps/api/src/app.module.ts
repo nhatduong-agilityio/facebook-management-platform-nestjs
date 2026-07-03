@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
+import { RabbitmqModule } from './infrastructure/rabbitmq/rabbitmq.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { FacebookModule } from './modules/facebook/facebook.module';
@@ -22,7 +23,8 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  * - **IdentityModule** — Clerk JWT guard, user upsert, workspace RBAC guards.
  * - **WorkspaceModule** — workspace create/list/get endpoints; seeds owner membership on create.
  * - **FacebookModule** — Facebook OAuth connect-url, Page connection, token refresh, Graph API (T2.1–T2.3).
- * - **PostsModule** — Post CRUD (create/list/get/update/soft-delete), plan quota, PostCreatedEvent (T2.4).
+ * - **RabbitmqModule** — global `IEventBus` (RabbitMQ publisher), `AmqpConnection`, and `IOREDIS_CLIENT` for consumer dedup (T2.6).
+ * - **PostsModule** — Post CRUD (create/list/get/update/soft-delete), plan quota, PostCreatedEvent (T2.4); consumers for posts.created/posts.published (T2.6).
  * - **DevAuthModule** — `POST /dev-auth/token` token generator; loaded only when `NODE_ENV !== 'production'`.
  */
 @Module({
@@ -48,6 +50,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
       },
     }),
     DatabaseModule,
+    RabbitmqModule,
     HealthModule,
     IdentityModule,
     WorkspaceModule,

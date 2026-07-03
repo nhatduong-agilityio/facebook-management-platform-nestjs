@@ -153,6 +153,27 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > This is a cosmetic warning from `unplugin-swc` not yet updating for vitest 4.
 > Revisit when a newer `unplugin-swc` is released.
 
+## RabbitMQ + Redis (added T2.6, verified 2026-07-03)
+| Package | Version | Purpose |
+|---|---|---|
+| @golevelup/nestjs-rabbitmq | ^9.0.2 | RabbitMQ consumer/publisher via `@RabbitSubscribe` + `AmqpConnection` |
+| ioredis | ^5.11.1 | Redis client for consumer dedup keys (`dedup:<eventId>`) |
+
+> **ADR-028 Global `RabbitmqModule` provides `IEventBus` + `IOREDIS_CLIENT`:**
+> `RabbitmqModule` is `@Global()` so `IEventBus` (→ `RabbitMqEventBus`) and
+> `IOREDIS_CLIENT` (shared `ioredis` instance) are available project-wide without
+> explicit per-module imports. Feature modules no longer declare their own `IEventBus`
+> provider. `connectionInitOptions: { wait: false }` prevents startup blocking when
+> the broker is temporarily unavailable; the app still boots and RabbitMQ reconnects.
+> Exchange declaration: `fcp.events` (topic, durable) for all domain events;
+> `fcp.dlq` (fanout, durable) receives messages that are permanently nacked.
+>
+> **ADR-029 `DomainEvent.routingKey` drives AMQP routing:**
+> Each event subclass declares a `readonly routingKey = 'domain.action' as const`
+> property. `RabbitMqEventBus.publish` reads it to route to the correct binding
+> on `fcp.events`. This keeps routing logic with the event definition, not in the
+> publisher, and makes routing keys discoverable by grepping event files.
+
 ## Change log
 | Date | Decision |
 |---|---|
@@ -162,6 +183,7 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 | 2026-06-30 | **T1.2 boot-verification fixes.** (1) Removed `exports: [MikroOrmModule]` from DatabaseModule — `@mikro-orm/nestjs` registers providers globally so explicit export is not needed, and re-exporting dynamic modules by class reference throws `UnknownExportException` in NestJS. (2) Added `discovery: { warnWhenNoEntities: false }` to the MongoDB context so startup is not blocked until Audit Service entities are added in T3.x. |
 | 2026-07-01 | **T1.3 complete.** Clerk JWT guard (`ClerkAuthGuard`), `IdentityService.getOrCreateUser` (DB upsert with Clerk API fallback on first sign-in), `GET /auth/me`, RBAC role types + `WorkspaceRolesGuard`. ADR-024 below. |
 | 2026-07-01 | **T2.1 complete.** Facebook OAuth connect-url. CSRF state = `base64url(payload).<hmac-sha256>` signed with `FACEBOOK_APP_SECRET` — no DB/Redis storage needed; callback verifies signature. No new npm deps; `node:crypto` handles HMAC. Scopes: `pages_manage_posts`, `pages_read_engagement`, `pages_show_list`. |
+| 2026-07-03 | **T2.6 complete.** `RabbitmqModule` (global) wires `IEventBus → RabbitMqEventBus`; `IOREDIS_CLIENT` for consumer dedup. `PostCreatedConsumer` + `PostPublishedConsumer` in `PostsModule` (idempotent; DLX → `fcp.dlq`). ADR-028/029 below. |
 | 2026-07-02 | **Graph API version bumped to `v25.0`** (released 2026-02-18, current stable; v21.0 was used in T2.1). Both `FacebookOAuthAdapter` and `FacebookGraphApiAdapter` share the `GRAPH_VERSION` constant. v26.0 is due later in 2026 — revisit when released. |
 | 2026-07-02 | **T2.2 complete.** `POST /workspaces/:id/facebook/pages` OAuth callback. `IFacebookGraphApiProvider` port + `FacebookGraphApiAdapter` uses native `fetch` (Node 18+, no extra dep) — three Graph API calls: code→short token→long-lived token→/me/accounts. `timingSafeEqual` comparison (hex strings, equal-length) for CSRF HMAC verification — avoids buffer-length-mismatch throw on malformed state. `FacebookAccount` entity does NOT extend `BaseEntity` — DDL uses `connected_at`/`updated_at`, no `deleted_at` (same rationale as `WorkspaceMember`; T5.2 audit pass will evaluate). `MikroOrmFacebookAccountRepository.connectPage` uses `em.getReference(Workspace, id)` to set the FK without a SELECT — safe because `WorkspaceRolesGuard` already verified workspace existence. ADR-027 (fetch). |
 | 2026-07-01 | **Global ORM filter removed.** `database.module.ts` had `filters: { softDelete: ... }` at the ORM level (applies to all entities) AND `BaseEntity` had `@Filter` (entity-scoped, inherited). The global filter caused runtime 500s on `WorkspaceMember`/`Invitation` queries (no `deletedAt` column). Removed the global one; `@Filter` on `BaseEntity` is the sole mechanism — it inherits to all `BaseEntity` subclasses and does not affect entities that opt out. |
