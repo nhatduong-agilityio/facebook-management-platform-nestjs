@@ -4,12 +4,46 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T3.2` — Billing state machine + Stripe webhook (all in `services/billing`). DoD: guarded transitions + `billing_events` log; `POST /webhooks/stripe` (signature-verified, idempotent); publishes `billing.*` events; tests.
+- **Next task:** `T3.3` — Analytics service scaffold (`services/analytics/`). DoD: consumer on `posts.published` → Graph API fetch → `post_metrics` upsert; HTTP `GET /workspaces/:id/metrics` + `GET /posts/:id/metrics`; tests.
 - **Branch:** `nestjs-practice`
-- **Notes:** 175 tests passing (169 apps/api + 6 services/billing). Run `pnpm migration:billing` (`cd services/billing && pnpm mikro-orm migration:up`) to apply `Migration20260703000001_BillingSchema`. `pnpm test` now runs all workspace packages in parallel.
+- **Notes:** 187 tests passing (169 apps/api + 18 services/billing). Run `pnpm migration:billing` then apply `Migration20260703000002_BillingEvents` (`cd services/billing && pnpm mikro-orm migration:up`) to create `billing.billing_events`. Set `STRIPE_WEBHOOK_SECRET` env var before using `POST /api/v1/webhooks/stripe`.
 - **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-03 — T3.2 Billing state machine + Stripe webhook (addendum: TypeScript fixes)
+
+**TypeScript diagnostic fixes (resolved follow-up from prior session):**
+- `Ref<Plan>` property access (`sub.plan.code`, `.postLimit`) — replaced all occurrences with `unref(sub.plan).code` / `.postLimit` using MikroORM 7's `unref()` helper (see ADR-044). `unref()` returns the entity as-is if already unwrapped, so test helpers assigning plain objects still work.
+- Stripe SDK v22 `Invoice.subscription` — the top-level field was removed in v22; subscription ID is now at `invoice.parent?.subscription_details?.subscription` (ADR-045). Updated both `handleInvoicePaymentSucceeded` and `handleInvoicePaymentFailed` + the corresponding spec event mocks.
+- `SubscriptionActivatedPayload as Record<string, unknown>` — changed to `as unknown as Record<string, unknown>` (two non-overlapping interfaces require the intermediate unknown cast).
+- Removed `IBillingEventRepository` from `BillingService` constructor (it was unused — idempotency check lives in `BillingWebhookController`). Updated spec to match.
+- Spec: `vi.fn<Parameters<IStripeProvider['createCheckoutSession']>>()` → `vi.fn()` (Vitest 4 does not accept parameter-tuple as type arg); config mock `fallback: string` → `fallback: unknown`.
+- Tests after fixes: 187/187 (18 billing + 169 api). Lint: clean.
+
+**`libs/billing-contracts`** — added `SubscriptionActivatedPayload` + `SubscriptionCancelledPayload` event types (no PII); exported from `index.ts`.
+
+**`services/billing` (state machine):**
+- `ALLOWED_TRANSITIONS` guard table + `BillingService.transitionSubscription` — synchronous guard returning `Result`; persists `billing_events` row (from/to/workspaceId/planCode) in same UoW; caller owns `em.flush()`.
+- BR-F10 free-plan guard inside `transitionSubscription` — free plan cannot enter `grace_period` or `cancelled`.
+- `handleStripeEvent` routes: `checkout.session.completed` (update stripeIds), `invoice.payment_succeeded` (trialing/grace_period → active), `invoice.payment_failed` (active → grace_period), `customer.subscription.deleted` (→ cancelled). Unknown event types → no-op ok.
+- Publishes `billing.subscription_activated` / `billing.subscription_cancelled` after `em.flush()` (§6).
+
+**`services/billing` (webhook):**
+- `BillingWebhookController POST /api/v1/webhooks/stripe` — reads `req.rawBody`; verifies `Stripe-Signature` header with `IStripeProvider.verifyWebhookSignature` (Stripe SDK `webhooks.constructEvent`, constant-time HMAC); idempotency check on `billing_events.stripe_event_id` before processing; returns 200.
+- `rawBody: true` added to `NestFactory.create` in `main.ts`.
+
+**New entities / ports / adapters:**
+- `BillingEvent` entity (`billing.billing_events`); `IBillingEventRepository` port; `MikroOrmBillingEventRepository`.
+- `IBillingEventBus` port; `BillingRabbitMqAdapter` (AmqpConnection.publish, publisher-only, `enableControllerDiscovery: false`).
+- `IStripeProvider.verifyWebhookSignature` added; `ISubscriptionRepository.findByStripeSubscriptionId` added.
+- `Migration20260703000002_BillingEvents` — `billing.billing_events` with UNIQUE on `stripe_event_id` (BR-R04) + 2 indexes.
+- `RabbitMQModule.forRootAsync` added to `services/billing/app.module.ts`.
+
+**`apps/api`:** `BillingSubscriptionConsumer` — idempotent placeholder consumers on `api.billing.subscription_activated` + `api.billing.subscription_cancelled` (durable, DLX → `fcp.dlq`); extends `IdempotentConsumer`; logs only (full logic in T4.2/T4.3).
+
+- Tests: 18 services/billing (12 new state machine + handleStripeEvent tests), 169 apps/api. Total 187/187. Lint: clean.
+- **Setup required:** `cd services/billing && pnpm mikro-orm migration:up` + add `STRIPE_WEBHOOK_SECRET=whsec_...` to `.env`.
 
 ### 2026-07-03 — T3.1 (addendum) — `@fcp/billing-contracts` shared library
 

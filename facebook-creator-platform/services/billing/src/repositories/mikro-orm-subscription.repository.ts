@@ -18,6 +18,11 @@ export class MikroOrmSubscriptionRepository extends ISubscriptionRepository {
   }
 
   /** @inheritdoc */
+  async findByStripeSubscriptionId(stripeSubscriptionId: string): Promise<Subscription | null> {
+    return this.em.findOne(Subscription, { stripeSubscriptionId }, { populate: ['plan'] });
+  }
+
+  /** @inheritdoc */
   async save(subscription: Subscription): Promise<void> {
     this.em.persist(subscription);
   }
