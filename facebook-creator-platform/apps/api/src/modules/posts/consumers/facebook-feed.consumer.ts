@@ -80,7 +80,13 @@ export class FacebookFeedConsumer extends IdempotentConsumer {
       // Publish PostPublishedEvent after flush (§6 — never before commit)
       const workspaceId = post.workspace.id;
       await this.eventBus.publish(
-        new PostPublishedEvent(post.id, workspaceId, msg.facebookPostId),
+        new PostPublishedEvent(
+          post.id,
+          workspaceId,
+          msg.facebookPostId,
+          post.facebookAccount?.id ?? '',
+          post.createdByUserId ?? '',
+        ),
       );
 
       this.logger.log(

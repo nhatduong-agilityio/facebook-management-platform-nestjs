@@ -20,11 +20,19 @@ export class PostPublishedEvent extends DomainEvent {
    * @param postId              - UUID v7 of the post that was published.
    * @param workspaceId         - UUID of the workspace that owns the post.
    * @param facebookGraphPostId - Graph API post id captured synchronously during publishing.
+   * @param facebookAccountId   - UUID of the `FacebookAccount` (Page) that published the post.
+   *                             Used by the Analytics Service (T3.3) to resolve a page token
+   *                             via `GET /internal/facebook-accounts/:id/token` on apps/api.
+   * @param createdByUserId     - UUID of the user who created the post.
+   *                             Used by the Email Service (T4.3) to resolve a recipient email
+   *                             via `GET /internal/users/:id/email` on apps/api.
    */
   constructor(
     readonly postId: string,
     readonly workspaceId: string,
     readonly facebookGraphPostId: string,
+    readonly facebookAccountId: string,
+    readonly createdByUserId: string,
   ) {
     super();
   }

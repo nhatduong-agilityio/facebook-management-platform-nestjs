@@ -5,7 +5,10 @@ import { IEventBus } from '../../common/events/event-bus.port';
 import { IPostRepository } from './ports/post.repository.port';
 import { IPostQuotaProvider } from './ports/post-quota.provider.port';
 import { PostCreatedEvent } from './events/post-created.event';
+import { PostUpdatedEvent } from './events/post-updated.event';
 import { PostPublishedEvent } from './events/post-published.event';
+import { PostFailedEvent } from './events/post-failed.event';
+import { PostDeletedEvent } from './events/post-deleted.event';
 import { Post, type PostStatus } from './entities/post.entity';
 import { type CreatePostDto, type UpdatePostDto } from './dto/post.dto';
 import { type UpdatePostStatusDto } from './dto/update-post-status.dto';
@@ -107,7 +110,18 @@ export class PostsService {
       },
     );
 
-    await this.eventBus.publish(new PostCreatedEvent(post.id, workspaceId, userId));
+    await this.eventBus.publish(
+      new PostCreatedEvent(
+        post.id,
+        workspaceId,
+        userId,
+        post.title,
+        post.content,
+        post.status,
+        post.scheduledAt,
+        post.createdAt,
+      ),
+    );
 
     return ok(post);
   }
@@ -188,6 +202,18 @@ export class PostsService {
     if (dto.scheduledAt !== undefined) post.scheduledAt = new Date(dto.scheduledAt);
 
     await this.postRepo.save(post);
+
+    await this.eventBus.publish(
+      new PostUpdatedEvent(
+        post.id,
+        workspaceId,
+        post.title,
+        post.content,
+        post.scheduledAt,
+        post.updatedAt,
+      ),
+    );
+
     return ok(post);
   }
 
@@ -209,6 +235,9 @@ export class PostsService {
 
     post.deletedAt = new Date();
     await this.postRepo.save(post);
+
+    await this.eventBus.publish(new PostDeletedEvent(post.id, workspaceId, post.createdByUserId));
+
     return ok(undefined);
   }
 
@@ -295,6 +324,7 @@ export class PostsService {
       post.lastError = dto.lastError;
     }
 
+
     // Retry path: clear the previous error so the post is clean for re-scheduling.
     if (dto.status === 'draft' && post.status === 'failed') {
       post.lastError = undefined;
@@ -305,7 +335,20 @@ export class PostsService {
 
     if (dto.status === 'published' && post.facebookGraphPostId) {
       await this.eventBus.publish(
-        new PostPublishedEvent(post.id, workspaceId, post.facebookGraphPostId),
+        new PostPublishedEvent(
+          post.id,
+          workspaceId,
+          post.facebookGraphPostId,
+          // Ref<T> always exposes the PK — no population needed
+          post.facebookAccount?.id ?? '',
+          post.createdByUserId,
+        ),
+      );
+    }
+
+    if (dto.status === 'failed') {
+      await this.eventBus.publish(
+        new PostFailedEvent(post.id, workspaceId, post.createdByUserId, post.lastError),
       );
     }
 

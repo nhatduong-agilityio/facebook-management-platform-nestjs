@@ -69,6 +69,8 @@ describe('FacebookFeedConsumer', () => {
       id: 'post-uuid-1',
       status: 'publishing',
       facebookGraphPostId: 'page-123_post-456',
+      facebookAccount: { id: 'fa-uuid-1' },
+      createdByUserId: 'user-uuid-1',
       workspace: { id: 'ws-uuid-1' },
       publishedAt: undefined as Date | undefined,
     } as unknown as Post;
