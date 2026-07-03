@@ -174,6 +174,23 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > on `fcp.events`. This keeps routing logic with the event definition, not in the
 > publisher, and makes routing keys discoverable by grepping event files.
 
+## Facebook webhook consumers (added T2.7, 2026-07-03)
+
+> **ADR-030 Consumers use `orm.em.fork()` instead of injected `EntityManager`:**
+> RabbitMQ consumers run outside any HTTP request context. The `EntityManager` provided
+> by `@mikro-orm/nestjs` is request-scoped; injecting it directly in a consumer gives
+> the global EM whose identity map is shared across all messages — a bug waiting to happen.
+> `MikroORM` is injected instead; each handler calls `this.orm.em.fork()` to get a
+> fresh, isolated EM per message. This pattern is recommended by MikroORM docs for
+> workers and queue processors.
+>
+> **ADR-031 `FacebookAccount.deletedAt` added via migration (T2.7):**
+> `FacebookAccount` does not extend `BaseEntity` (T2.2 decision — DDL has no `deleted_at`).
+> T2.7 needs to soft-delete accounts on deauthorization, so `deleted_at timestamptz NULL`
+> is added via `Migration20260703000000_FacebookAccountSoftDelete`. No global ORM filter
+> is applied — repository queries filter `{ deletedAt: null }` explicitly. T5.2 schema
+> audit will evaluate whether a `@Filter` should be added.
+
 ## Change log
 | Date | Decision |
 |---|---|
@@ -183,6 +200,7 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 | 2026-06-30 | **T1.2 boot-verification fixes.** (1) Removed `exports: [MikroOrmModule]` from DatabaseModule — `@mikro-orm/nestjs` registers providers globally so explicit export is not needed, and re-exporting dynamic modules by class reference throws `UnknownExportException` in NestJS. (2) Added `discovery: { warnWhenNoEntities: false }` to the MongoDB context so startup is not blocked until Audit Service entities are added in T3.x. |
 | 2026-07-01 | **T1.3 complete.** Clerk JWT guard (`ClerkAuthGuard`), `IdentityService.getOrCreateUser` (DB upsert with Clerk API fallback on first sign-in), `GET /auth/me`, RBAC role types + `WorkspaceRolesGuard`. ADR-024 below. |
 | 2026-07-01 | **T2.1 complete.** Facebook OAuth connect-url. CSRF state = `base64url(payload).<hmac-sha256>` signed with `FACEBOOK_APP_SECRET` — no DB/Redis storage needed; callback verifies signature. No new npm deps; `node:crypto` handles HMAC. Scopes: `pages_manage_posts`, `pages_read_engagement`, `pages_show_list`. |
+| 2026-07-03 | **T2.7 complete.** `POST /webhooks/facebook` with `X-Hub-Signature-256` HMAC verification; `FacebookFeedConsumer` drives `publishing→published`; `FacebookPageDeauthorizedConsumer` soft-deletes account + bulk-cancels posts. ADR-030/031 below. |
 | 2026-07-03 | **T2.6 complete.** `RabbitmqModule` (global) wires `IEventBus → RabbitMqEventBus`; `IOREDIS_CLIENT` for consumer dedup. `PostCreatedConsumer` + `PostPublishedConsumer` in `PostsModule` (idempotent; DLX → `fcp.dlq`). ADR-028/029 below. |
 | 2026-07-02 | **Graph API version bumped to `v25.0`** (released 2026-02-18, current stable; v21.0 was used in T2.1). Both `FacebookOAuthAdapter` and `FacebookGraphApiAdapter` share the `GRAPH_VERSION` constant. v26.0 is due later in 2026 — revisit when released. |
 | 2026-07-02 | **T2.2 complete.** `POST /workspaces/:id/facebook/pages` OAuth callback. `IFacebookGraphApiProvider` port + `FacebookGraphApiAdapter` uses native `fetch` (Node 18+, no extra dep) — three Graph API calls: code→short token→long-lived token→/me/accounts. `timingSafeEqual` comparison (hex strings, equal-length) for CSRF HMAC verification — avoids buffer-length-mismatch throw on malformed state. `FacebookAccount` entity does NOT extend `BaseEntity` — DDL uses `connected_at`/`updated_at`, no `deleted_at` (same rationale as `WorkspaceMember`; T5.2 audit pass will evaluate). `MikroOrmFacebookAccountRepository.connectPage` uses `em.getReference(Workspace, id)` to set the FK without a SELECT — safe because `WorkspaceRolesGuard` already verified workspace existence. ADR-027 (fetch). |

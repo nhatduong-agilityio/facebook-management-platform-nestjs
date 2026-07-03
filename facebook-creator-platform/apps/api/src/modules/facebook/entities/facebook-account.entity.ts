@@ -58,6 +58,13 @@ export class FacebookAccount {
   @Property({ type: 'timestamptz', onUpdate: () => new Date() })
   updatedAt: Date = new Date();
 
+  /**
+   * Set when the Page deauthorizes our app (T2.7). `null` means the account is active.
+   * Queries must filter `{ deletedAt: null }` explicitly — this entity has no `@Filter`.
+   */
+  @Property({ type: 'timestamptz', nullable: true })
+  deletedAt?: Date;
+
   // ---------------------------------------------------------------------------
   // Factory helpers — keep `ref()` and `em.getReference()` out of service code
   // (services may not import @mikro-orm/core per §14).

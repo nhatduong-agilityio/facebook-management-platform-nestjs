@@ -97,6 +97,20 @@ export class FacebookOAuthAdapter extends IFacebookOAuthProvider {
   }
 
   /** @inheritdoc */
+  verifyWebhookSignature(rawBody: Buffer, sigHeader: string): boolean {
+    const prefix = 'sha256=';
+    if (!sigHeader.startsWith(prefix)) return false;
+    const receivedHex = sigHeader.slice(prefix.length);
+    const expectedHex = createHmac('sha256', this.appSecret).update(rawBody).digest('hex');
+    if (receivedHex.length !== expectedHex.length) return false;
+    try {
+      return timingSafeEqual(Buffer.from(receivedHex, 'hex'), Buffer.from(expectedHex, 'hex'));
+    } catch {
+      return false;
+    }
+  }
+
+  /** @inheritdoc */
   extractWorkspaceId(state: string): string | null {
     const dotIndex = state.lastIndexOf('.');
     if (dotIndex === -1) return null;

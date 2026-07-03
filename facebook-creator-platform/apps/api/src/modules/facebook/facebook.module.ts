@@ -12,15 +12,19 @@ import { FacebookService } from './facebook.service';
 import { FacebookController } from './facebook.controller';
 import { FacebookCallbackController } from './facebook-callback.controller';
 import { FacebookWebhookController } from './facebook-webhook.controller';
+import { FacebookPageDeauthorizedConsumer } from './consumers/facebook-deauthorized.consumer';
 
 /**
  * Facebook integration module.
  *
- * Owns all Facebook OAuth and Graph API flows (T2.1 – T2.3).
+ * Owns all Facebook OAuth, Graph API, and webhook flows (T2.1–T2.7).
  * Imports `IdentityModule` to consume `ClerkAuthGuard` and `WorkspaceRolesGuard`.
  *
+ * `IEventBus` is resolved from the global `RabbitmqModule` (T2.6).
+ * `MikroORM` is resolved from the global `DatabaseModule` (registered by `@mikro-orm/nestjs`).
+ *
  * Port bindings:
- * - `IFacebookOAuthProvider` → `FacebookOAuthAdapter` (builds connect URLs + verifies state)
+ * - `IFacebookOAuthProvider` → `FacebookOAuthAdapter` (builds connect URLs + verifies webhook signatures)
  * - `IFacebookGraphApiProvider` → `FacebookGraphApiAdapter` (code exchange + page list)
  * - `IFacebookAccountRepository` → `MikroOrmFacebookAccountRepository` (persistence)
  */
@@ -32,6 +36,7 @@ import { FacebookWebhookController } from './facebook-webhook.controller';
     { provide: IFacebookOAuthProvider, useClass: FacebookOAuthAdapter },
     { provide: IFacebookGraphApiProvider, useClass: FacebookGraphApiAdapter },
     { provide: IFacebookAccountRepository, useClass: MikroOrmFacebookAccountRepository },
+    FacebookPageDeauthorizedConsumer,
   ],
   exports: [FacebookService],
 })
