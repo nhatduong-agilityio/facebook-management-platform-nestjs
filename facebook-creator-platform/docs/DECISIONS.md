@@ -174,6 +174,48 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > on `fcp.events`. This keeps routing logic with the event definition, not in the
 > publisher, and makes routing keys discoverable by grepping event files.
 
+## Services architecture + T3.1 (corrected 2026-07-03)
+
+> **ADR-032 Billing is a separate NestJS service (`services/billing/`), NOT an `apps/api` module.**
+> The ERD (`fcp-database.d2`) labels each schema by owner: `core (apps/api)`, `billing (billing-service)`,
+> `analytics (analytics-service)`, etc. The pnpm workspace has `services/*` alongside `apps/*`.
+> Initial T3.1 implementation incorrectly placed billing inside `apps/api/src/modules/billing/` — corrected.
+>
+> **ADR-033 Inter-service communication: sync HTTP for immediate responses, async RabbitMQ for propagation.**
+> - `apps/api → services/billing`: sync HTTP (checkout, quota check).
+> - `services/billing → platform`: async RabbitMQ events (subscription activated / cancelled — T3.2).
+> - Stripe webhooks go **directly** to `services/billing` on its own port; not proxied through `apps/api`.
+> - Same model applies to analytics (T3.3), notification (T4.2), email (T4.3), search (T4.1), audit (T3.4).
+>
+> **ADR-034 `apps/api` billing module is a thin HTTP proxy only.**
+> `apps/api/src/modules/billing/` owns no entities, migrations, or ORM repositories. It provides:
+> (1) `BillingController` — enforces Clerk JWT + workspace role guard, then forwards checkout to `services/billing`;
+> (2) `BillingHttpClientAdapter` — wraps `fetch` calls to `services/billing` (BILLING_SERVICE_URL env var);
+> (3) `BillingQuotaAdapter` — implements `IPostQuotaProvider` via HTTP; falls back to 10 on billing outage.
+>
+> **ADR-035 `stripe@^22.3.0` pinned in `services/billing/package.json` (verified 2026-07-03).**
+> `pnpm view stripe version` = `22.3.0`. Also added `@mikro-orm/decorators@^7.1.5` (required for
+> `@mikro-orm/decorators/legacy` decorator imports — same pattern as `apps/api`).
+>
+> **ADR-036 Plan + Subscription entities do not extend `BaseEntity`.**
+> DDL has no `deleted_at` on either table. Plans are static reference data; subscriptions use `status`
+> for lifecycle (T3.2 state machine). Extending `BaseEntity` would add a soft-delete filter and column
+> that the schema does not have.
+>
+> **ADR-037 Plan seed embedded in `services/billing` migration (`ON CONFLICT DO NOTHING`).**
+> Three rows (free/pro/team) seeded in `Migration20260703000001_BillingSchema` with fixed UUID v7 values.
+> Idempotent across environments. MikroORM seeders not chosen — extra package for 3 static rows.
+>
+> **ADR-038 Root `pnpm test` updated to `pnpm -r test`** — runs all workspace packages in parallel.
+> Added per-service aliases: `pnpm test:api`, `pnpm test:billing`, `pnpm migration:billing`.
+>
+> **ADR-039 `libs/billing-contracts/` — shared HTTP boundary types only; no `libs/billing-client` yet.**
+> `@fcp/billing-contracts` exports plain TypeScript interfaces (`CheckoutRequest`, `CheckoutResponse`,
+> `QuotaResponse`, `BillingErrorCode`, `BillingErrorResponse`) used by both `apps/api` and `services/billing`.
+> No NestJS or runtime dependencies — pure types. `libs/billing-client` (a reusable HTTP client wrapper)
+> deferred until a second service caller exists (analytics or notification); premature extraction before
+> that would add abstraction with zero reuse benefit. `pnpm-workspace.yaml` now includes `libs/*`.
+
 ## Facebook webhook consumers (added T2.7, 2026-07-03)
 
 > **ADR-030 Consumers use `orm.em.fork()` instead of injected `EntityManager`:**

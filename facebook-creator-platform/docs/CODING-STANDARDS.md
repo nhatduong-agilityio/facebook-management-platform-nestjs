@@ -350,19 +350,60 @@ Never test private methods. Never assert implementation details (which mocks wer
 in what order) — assert outcomes (the `Result` value, the entity state).
 
 ## 10. File & naming layout
+
 ```
 apps/api/src/
-  modules/<domain>/         # identity, workspace, facebook, posts
+  modules/<domain>/              # core schema domains: identity, workspace, facebook, posts
     <domain>.module.ts
     <domain>.controller.ts
-    <domain>.service.ts      # returns Result<T, AppError>
+    <domain>.service.ts          # returns Result<T, AppError>
     entities/<x>.entity.ts
     dto/<x>.dto.ts
     events/<x>.event.ts
     <x>.service.spec.ts
-  common/                    # errors, crypto, http, logging, base entity
-services/<name>/             # billing, analytics, search, notification, email, audit
+  common/                        # errors, crypto, http, logging, base entity
+  infrastructure/
+    rabbitmq/                    # global IEventBus
+    billing/                     # thin HTTP proxy — BillingHttpClient, quota adapter, checkout controller
 ```
+
+```
+services/<name>/                 # each is a full NestJS app (own package.json, main.ts, DB connection)
+  src/
+    main.ts
+    app.module.ts
+    <name>.module.ts
+    entities/
+    ports/
+    adapters/
+    repositories/
+    migrations/
+    <name>.service.ts
+    <name>.controller.ts         # internal HTTP endpoints called by apps/api
+    <name>.service.spec.ts
+  mikro-orm.config.ts
+  package.json                   # @fcp/<name>
+  tsconfig.json
+  vitest.config.ts
+```
+
+**Service roster (per ERD):**
+| Service | Schema | Listens for (RabbitMQ) | Exposes HTTP to apps/api |
+|---|---|---|---|
+| `services/billing` | `billing` | stripe webhooks (direct) | `POST /checkout`, `GET /workspaces/:id/quota` |
+| `services/analytics` | `analytics` | `posts.published` | `GET /workspaces/:id/metrics`, `GET /posts/:id/metrics` |
+| `services/notification` | `notification` | `workspace.*`, `posts.*`, `billing.*` | `GET /notifications`, `PATCH /:id/read` |
+| `services/email` | `email` | `workspace.member-invited`, `posts.published`, `billing.*` | none (fire-and-forget) |
+| `services/search` | none (Algolia) | `posts.created`, `posts.published` | search passthrough (optional) |
+| `services/audit` | MongoDB | every event | `GET /workspaces/:id/audit-logs` |
+
+**Inter-service communication rules:**
+- **Sync HTTP**: operations that need immediate response (checkout, quota check, search query, read notification list).
+  `apps/api` calls `services/<name>` via a typed HTTP client. No service calls another service directly.
+- **Async RabbitMQ**: state changes and data propagation (Stripe webhook result, subscription events, notifications, analytics, email, audit).
+  Services publish to `fcp.events`; other services consume. `apps/api` is also a consumer for events it cares about.
+- **Stripe webhooks**: sent directly to `services/billing` (not proxied through `apps/api`).
+
 - Files: `kebab-case`. Classes: `PascalCase`. Vars/functions: `camelCase`.
 - One exported class per file where practical.
 

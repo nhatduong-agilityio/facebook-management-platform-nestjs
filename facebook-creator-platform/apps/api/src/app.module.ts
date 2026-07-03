@@ -9,6 +9,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { FacebookModule } from './modules/facebook/facebook.module';
 import { PostsModule } from './modules/posts/posts.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
 
 /**
@@ -25,6 +26,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  * - **FacebookModule** — Facebook OAuth connect-url, Page connection, token refresh, Graph API (T2.1–T2.3).
  * - **RabbitmqModule** — global `IEventBus` (RabbitMQ publisher), `AmqpConnection`, and `IOREDIS_CLIENT` for consumer dedup (T2.6).
  * - **PostsModule** — Post CRUD (create/list/get/update/soft-delete), plan quota, PostCreatedEvent (T2.4); consumers for posts.created/posts.published (T2.6).
+ * - **BillingModule** — Thin proxy to `services/billing` (T3.1); exposes `POST /workspaces/:id/billing/checkout` and exports `IPostQuotaProvider` (HTTP-backed) for PostsModule.
  * - **DevAuthModule** — `POST /dev-auth/token` token generator; loaded only when `NODE_ENV !== 'production'`.
  */
 @Module({
@@ -56,6 +58,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     WorkspaceModule,
     FacebookModule,
     PostsModule,
+    BillingModule,
     ...(process.env.NODE_ENV !== 'production' ? [DevAuthModule] : []),
   ],
 })
