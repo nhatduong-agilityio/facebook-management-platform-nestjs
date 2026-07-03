@@ -1,0 +1,37 @@
+import { Module } from '@nestjs/common';
+import { IdentityModule } from '../identity/identity.module';
+import { IPostQuotaProvider } from '../posts/ports/post-quota.provider.port';
+import { IBillingHttpClient } from './ports/billing-http.client.port';
+import { BillingHttpClientAdapter } from './adapters/billing-http-client.adapter';
+import { BillingQuotaAdapter } from './adapters/billing-quota.adapter';
+import { BillingController } from './billing.controller';
+
+/**
+ * Thin proxy module in `apps/api` for billing operations.
+ *
+ * Owns NO entities or migrations — all billing domain logic lives in `services/billing`.
+ * This module's responsibilities:
+ * 1. Expose `POST /workspaces/:id/billing/checkout` with auth + role guards, then
+ *    forward to `services/billing` via HTTP.
+ * 2. Export `IPostQuotaProvider` (backed by HTTP call to billing service) so
+ *    `PostsModule` can check post limits without owning billing data.
+ *
+ * Communication:
+ * - Sync HTTP to `services/billing` for checkout and quota lookups.
+ * - `services/billing` publishes async RabbitMQ events (T3.2) for subscription
+ *   state changes, which `apps/api` consumers can subscribe to.
+ *
+ * Port bindings:
+ * - `IBillingHttpClient` → `BillingHttpClientAdapter` (native fetch, BILLING_SERVICE_URL)
+ * - `IPostQuotaProvider`  → `BillingQuotaAdapter` (exported for PostsModule)
+ */
+@Module({
+  imports: [IdentityModule],
+  controllers: [BillingController],
+  providers: [
+    { provide: IBillingHttpClient, useClass: BillingHttpClientAdapter },
+    { provide: IPostQuotaProvider, useClass: BillingQuotaAdapter },
+  ],
+  exports: [IPostQuotaProvider],
+})
+export class BillingModule {}

@@ -50,17 +50,26 @@ For blocked tasks always append an inline note on the same line:
 
 ## Week 3 — Billing + Analytics + Audit Service
 
-- [ ] **T3.1 Plans + subscriptions entities** (~3h) (app-gen ids, timestamps) + Stripe checkout. DoD: seed plans; `POST .../billing/checkout`; tests.
-- [ ] **T3.2 Billing state machine + webhook** (~5h) — guarded transitions + `billing_events` transition log; free-plan guard (BR-F10); `POST /billing/webhooks/stripe` (signature-verified, idempotent). DoD: webhook drives state machine; illegal transition -> err; matches `docs/reference/billing-state-machine.svg`.
-- [ ] **T3.3 Analytics service** (~4h) — consume PostPublished; Graph API metrics sync; `post_metrics` (logical postId, indexed). DoD: overview + per-post endpoints read analytics schema.
-- [ ] **T3.4 Audit Service (MongoDB)** (~3h) — schemaless `audit.events`; consume **every** event; app-gen `_id` (uuid v7); link `eventId` (idempotent). DoD: events produce audit docs once; no PII leak.
-- [ ] **T3.5 Audit read API + Analytics API** (~3h) — `GET /workspaces/:id/audit-logs` + `/:auditId` (Owner-only, read-only, pagination); analytics read endpoints. DoD: Owner-only enforced; cross-workspace -> 404; Swagger.
+> **Architecture note (corrected 2026-07-03):** Each "service" in Week 3–4 is a
+> **separate NestJS app** under `services/<name>/` with its own `package.json`,
+> `main.ts`, database connection (owns its Postgres schema), and RabbitMQ consumers.
+> `apps/api` communicates with services via **sync HTTP** (immediate-response calls
+> like checkout and quota) and receives **async RabbitMQ events** published by
+> services (subscription state changes, analytics, etc.).
+> Stripe webhooks go directly to `services/billing`, not through `apps/api`.
+> See `docs/CODING-STANDARDS.md` §10 for the full service roster and IPC rules.
+
+- [x] **T3.1 Plans + subscriptions + Stripe checkout** (~4h) — scaffold `services/billing/` as a full NestJS app (own DB connection to `billing` schema, migrations, entities); `POST /checkout` + `GET /workspaces/:id/quota` HTTP endpoints (called by apps/api); thin billing proxy in `apps/api` (`POST /workspaces/:id/billing/checkout` → HTTP → services/billing; `BillingHttpQuotaAdapter` implements `IPostQuotaProvider`). DoD: seed plans; checkout endpoint; quota adapter reads real plan limit; tests.
+- [ ] **T3.2 Billing state machine + webhook** (~5h) — in `services/billing`: guarded transitions + `billing_events` log; free-plan guard (BR-F10); `POST /webhooks/stripe` (signature-verified, idempotent via `stripe_event_id`); publishes `billing.subscription_activated` / `billing.subscription_cancelled` events to `fcp.events`. DoD: webhook drives state machine; illegal transition → err; matches `docs/reference/billing-state-machine.svg`; apps/api consumers wire up.
+- [ ] **T3.3 Analytics service** (~4h) — scaffold `services/analytics/` (full NestJS app, `analytics` schema); consumer on `posts.published` → Graph API fetch → `post_metrics` upsert; HTTP `GET /workspaces/:id/metrics` + `GET /posts/:id/metrics` (called by apps/api). DoD: PostPublished triggers metrics fetch; overview + per-post endpoints return data; tests.
+- [ ] **T3.4 Audit Service (MongoDB)** (~3h) — scaffold `services/audit/` (full NestJS app, MongoDB); consume **every** `fcp.events` topic event; schemaless `audit_events` doc (app-gen `_id` uuid v7, link `eventId`, no PII); idempotent via `eventId` unique index. DoD: every published event produces exactly one audit doc; no PII in doc; tests.
+- [ ] **T3.5 Audit read API + Analytics read API** (~3h) — in `apps/api`: `GET /workspaces/:id/audit-logs` + `/:auditId` calls `services/audit` HTTP; `GET /workspaces/:id/analytics` calls `services/analytics` HTTP. Owner-only; cross-workspace → 404; Swagger. DoD: Owner-only enforced; cross-workspace → 404; Swagger docs generated.
 
 ## Week 4 — Search, Notifications, Email
 
-- [ ] **T4.1 Search service** (~3h) — Algolia index consumer + query passthrough (search schema owns no tables, ADR-004). DoD: PostCreated indexes; search returns hits.
-- [ ] **T4.2 Notification service** (~3h) — in-app + Slack; one-way read status (BR-F08). DoD: `GET /notifications`, `PATCH /:id/read`; tests.
-- [ ] **T4.3 Email service** (~4h) — invitation/publish-result/subscription/token emails; dedupe_key unique (BR-R08). DoD: consumers + provider abstraction; dedupe enforced.
+- [ ] **T4.1 Search service** (~3h) — scaffold `services/search/` (full NestJS app, no Postgres tables — Algolia is the system of record, ADR-004); consumer on `posts.created` / `posts.published` → Algolia index; optional HTTP `GET /search?q=` passthrough in apps/api. DoD: PostCreated/Published trigger Algolia index; search returns hits; tests.
+- [ ] **T4.2 Notification service** (~3h) — scaffold `services/notification/` (full NestJS app, `notification` schema); consumers on workspace + posts + billing events → insert `notifications` + `notification_recipients`; HTTP `GET /workspaces/:id/notifications` + `PATCH /:id/read` (called by apps/api). DoD: events produce notification rows; read status (BR-F08); tests.
+- [ ] **T4.3 Email service** (~4h) — scaffold `services/email/` (full NestJS app, `email` schema); consumers on `workspace.member-invited`, `posts.published`, `billing.subscription_*`; provider abstraction (SendGrid / SES); `dedupe_key` unique enforced (BR-R08); logs to `email_delivery_logs`. DoD: consumers + provider abstraction; dedupe enforced; tests.
 - [ ] **T4.4 Cross-cutting tests + docs** (~6h) — unit + API tests fill gaps; Swagger complete; ADRs current. DoD: coverage targets met; Swagger builds.
 
 ## Week 5 — Hardening, Verification & Load Testing (verify, don't build)

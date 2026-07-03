@@ -4,12 +4,51 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T3.1` — Plans + subscriptions entities + Stripe checkout. DoD: seed plans; `POST .../billing/checkout`; tests.
+- **Next task:** `T3.2` — Billing state machine + Stripe webhook (all in `services/billing`). DoD: guarded transitions + `billing_events` log; `POST /webhooks/stripe` (signature-verified, idempotent); publishes `billing.*` events; tests.
 - **Branch:** `nestjs-practice`
-- **Notes:** 169 tests passing. Run `pnpm mikro-orm migration:up` to apply `Migration20260703000000_FacebookAccountSoftDelete` (adds `deleted_at` to `core.facebook_accounts`). Week 2 complete.
+- **Notes:** 175 tests passing (169 apps/api + 6 services/billing). Run `pnpm migration:billing` (`cd services/billing && pnpm mikro-orm migration:up`) to apply `Migration20260703000001_BillingSchema`. `pnpm test` now runs all workspace packages in parallel.
 - **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-03 — T3.1 (addendum) — `@fcp/billing-contracts` shared library
+
+- **`libs/billing-contracts/`** (new workspace package) — plain TypeScript interfaces only; no NestJS/ORM deps.
+  - `CheckoutRequest`, `CheckoutResponse` — HTTP boundary shape for `POST /checkout`.
+  - `QuotaResponse` — HTTP boundary shape for `GET /workspaces/:id/quota`.
+  - `BillingErrorCode`, `BillingErrorResponse` — wire error shape so consumers can deserialise without guessing.
+- **`pnpm-workspace.yaml`** — added `libs/*` glob.
+- **`services/billing`** updated: `CreateCheckoutDto implements CheckoutRequest`; `AppError.code` typed as `BillingErrorCode`; `toHttpException` response body typed as `BillingErrorResponse`.
+- **`apps/api`** updated: `IBillingHttpClient` methods use `CheckoutRequest`/`CheckoutResponse`; adapter casts quota response to `QuotaResponse`; `BillingController` return type uses `CheckoutResponse`.
+- Decision: `libs/billing-client` deferred until a second caller (analytics, notification) needs it — ADR-039.
+- Tests: 175/175. Lint: clean.
+
+### 2026-07-03 — T3.1 Plans + subscriptions + Stripe checkout (architecture corrected)
+
+**Architecture correction (ADR-032/033):** Initial T3.1 built billing inside `apps/api/src/modules/billing/`.
+Corrected after reviewing ERD (`fcp-database.d2`): billing is `billing-service`, separate from `core (apps/api)`.
+Moved all billing domain code to `services/billing/`. `apps/api` now holds a thin HTTP proxy only.
+
+**`services/billing/` (new NestJS app, `@fcp/billing`):**
+- `Plan` entity (`billing.plans`) — uuid v7 pk; no `deletedAt` (ADR-036).
+- `Subscription` entity (`billing.subscriptions`) — uuid v7 pk; `workspaceId` logical FK (scalar + `@Index`, BR-R06/R08); `plan` real FK; `status` state; factory `Subscription.create(workspaceId, plan)`.
+- Ports: `IPlanRepository`, `ISubscriptionRepository`, `IStripeProvider`.
+- `StripeAdapter` — `stripe.checkout.sessions.create`, stores `workspaceId` in metadata for T3.2.
+- `BillingService` — `getPostLimit(workspaceId)` + `createCheckoutSession(workspaceId, planCode)`.
+- HTTP endpoints: `POST /checkout`, `GET /workspaces/:id/quota`.
+- Migration `Migration20260703000001_BillingSchema` — `billing` schema + tables + 3 seeded plans (ADR-037).
+- Port: 3001 (configurable via `BILLING_PORT` env var).
+- Tests: 6 (service ×6).
+
+**`apps/api` thin proxy (no entities/migrations):**
+- `BillingHttpClientAdapter` — wraps `fetch` to `BILLING_SERVICE_URL` (default: `http://localhost:3001`).
+- `BillingQuotaAdapter` — implements `IPostQuotaProvider` via HTTP; falls back to 10 on outage.
+- `BillingController` — `POST /workspaces/:id/billing/checkout` with Clerk JWT + role guard, forwards to billing service.
+- `PostsModule` imports `BillingModule` and receives `IPostQuotaProvider` from it.
+
+**Root workspace:** `pnpm test` changed to `pnpm -r test` (runs apps/api + services/billing in parallel). 175/175 tests passing. Lint: clean. `stripe` removed from `apps/api`; `@mikro-orm/decorators` added to `services/billing`.
+
+**Setup required:** `pnpm migration:billing` (or `cd services/billing && pnpm mikro-orm migration:up`) to apply `Migration20260703000001_BillingSchema`.
 
 ### 2026-07-03 — T2.7 Facebook webhooks
 

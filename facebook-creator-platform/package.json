@@ -8,10 +8,14 @@
   "scripts": {
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "pnpm --filter @fcp/api test",
-    "build": "pnpm --filter @fcp/api build",
+    "test": "pnpm -r test",
+    "test:api": "pnpm --filter @fcp/api test",
+    "test:billing": "pnpm --filter @fcp/billing test",
+    "build": "pnpm -r build",
     "start:dev": "pnpm --filter @fcp/api start:dev",
+    "start:billing": "pnpm --filter @fcp/billing start:dev",
     "migration": "pnpm --filter @fcp/api mikro-orm migration:up",
+    "migration:billing": "pnpm --filter @fcp/billing mikro-orm migration:up",
     "prepare": "git config core.hooksPath $(git rev-parse --show-prefix).husky"
   },
   "devDependencies": {
