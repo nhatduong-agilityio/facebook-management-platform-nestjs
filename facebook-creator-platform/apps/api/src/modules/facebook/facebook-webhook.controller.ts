@@ -1,4 +1,6 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Post, Query, Req } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   ApiForbiddenResponse,
   ApiOkResponse,
@@ -7,7 +9,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { toHttpException } from '../../common/http/to-http-exception';
-import { FacebookService } from './facebook.service';
+import { FacebookService, type FacebookWebhookPayload } from './facebook.service';
 
 /**
  * Handles Facebook webhook lifecycle requests.
@@ -39,6 +41,43 @@ export class FacebookWebhookController {
    * @param verifyToken - `hub.verify_token`; must match `FACEBOOK_WEBHOOK_VERIFY_TOKEN`.
    * @param challenge   - `hub.challenge`; echoed back on success.
    */
+  /**
+   * Receives Facebook webhook event notifications.
+   *
+   * Facebook sends `POST /webhooks/facebook` with a JSON payload signed via
+   * `X-Hub-Signature-256: sha256=<HMAC-SHA256(FACEBOOK_APP_SECRET, rawBody)>`.
+   * The signature is verified before any payload is processed; an invalid
+   * signature returns 403 immediately.
+   *
+   * Recognized events dispatched as domain events to `fcp.events`:
+   * - `pages/feed` (verb=add) → `facebook.feed` → `FacebookFeedConsumer` drives `publishing→published`
+   * - `page` deauthorize     → `facebook.page.deauthorized` → `FacebookPageDeauthorizedConsumer`
+   *
+   * Facebook requires a 200 response within 20 seconds; async consumers process
+   * after this handler returns.
+   *
+   * @param sigHeader - `X-Hub-Signature-256` header value from Facebook.
+   * @param req       - Express request with `rawBody` buffer (requires `rawBody: true` in bootstrap).
+   * @param payload   - Parsed webhook JSON body.
+   */
+  @Post()
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Receive Facebook webhook event notifications' })
+  @ApiOkResponse({ description: 'Event acknowledged; async processing via RabbitMQ consumers' })
+  @ApiForbiddenResponse({ description: 'X-Hub-Signature-256 is missing or does not match' })
+  async handleWebhookEvent(
+    @Headers('x-hub-signature-256') sigHeader: string,
+    @Req() req: RawBodyRequest<Request>,
+    @Body() payload: FacebookWebhookPayload,
+  ): Promise<void> {
+    const rawBody = req.rawBody ?? Buffer.alloc(0);
+    const result = await this.facebookService.processWebhookPayload(rawBody, sigHeader ?? '', payload);
+    result.match(
+      () => undefined,
+      (e) => { throw toHttpException(e); },
+    );
+  }
+
   @Get()
   @ApiOperation({ summary: 'Facebook webhook hub.challenge verification' })
   @ApiQuery({ name: 'hub.mode', description: 'Must be "subscribe"' })

@@ -4,7 +4,26 @@ import { AppError } from '../../common/errors/app-error';
 import { IFacebookOAuthProvider, type ConnectUrl } from './ports/facebook-oauth.provider.port';
 import { IFacebookGraphApiProvider } from './ports/facebook-graph-api.provider.port';
 import { IFacebookAccountRepository } from './ports/facebook-account.repository.port';
+import { IEventBus } from '../../common/events/event-bus.port';
+import { FacebookFeedEvent } from './events/facebook-feed.event';
+import { FacebookPageDeauthorizedEvent } from './events/facebook-deauthorized.event';
 import { type ConnectedPageResponseDto } from './dto/connect-page.dto';
+
+/**
+ * Normalized shape of a Facebook webhook POST body.
+ * Facebook sends `pages/feed` and page-level changes under `entry[].changes[]`.
+ */
+export interface FacebookWebhookPayload {
+  object: string;
+  entry: Array<{
+    id: string;
+    time: number;
+    changes: Array<{
+      field: string;
+      value: Record<string, unknown>;
+    }>;
+  }>;
+}
 
 /**
  * Application service for Facebook integration flows.
@@ -19,6 +38,7 @@ export class FacebookService {
     private readonly oauthProvider: IFacebookOAuthProvider,
     private readonly graphApi: IFacebookGraphApiProvider,
     private readonly facebookAccounts: IFacebookAccountRepository,
+    private readonly eventBus: IEventBus,
   ) {}
 
   /**
@@ -76,6 +96,48 @@ export class FacebookService {
    * @param challenge   - Opaque nonce string to echo back to Facebook.
    * @returns `ok(challenge)` to confirm the handshake, or `err(FORBIDDEN)` on mismatch.
    */
+  /**
+   * Verifies the `X-Hub-Signature-256` HMAC and publishes normalized domain events
+   * for each recognized Facebook webhook change.
+   *
+   * Must be called **before** any business logic on incoming webhook payloads.
+   * Recognized changes published to `fcp.events`:
+   * - `field === 'feed'` + `verb === 'add'` → `FacebookFeedEvent` (routing key `facebook.feed`)
+   * - `field === 'page'`                    → `FacebookPageDeauthorizedEvent` (routing key `facebook.page.deauthorized`)
+   *
+   * Unknown change fields are silently ignored (forward-compatibility).
+   *
+   * @param rawBody   - Unmodified request body buffer for HMAC verification.
+   * @param sigHeader - Value of the `X-Hub-Signature-256` header.
+   * @param payload   - Parsed webhook body.
+   * @returns `ok(undefined)` on success, or `err(FORBIDDEN)` if the HMAC is invalid.
+   */
+  async processWebhookPayload(
+    rawBody: Buffer,
+    sigHeader: string,
+    payload: FacebookWebhookPayload,
+  ): Promise<Result<void, AppError>> {
+    if (!this.oauthProvider.verifyWebhookSignature(rawBody, sigHeader)) {
+      return err(AppError.forbidden('Invalid X-Hub-Signature-256'));
+    }
+
+    for (const entry of payload.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        if (change.field === 'feed') {
+          const postId = change.value['post_id'] as string | undefined;
+          const verb = change.value['verb'] as string | undefined;
+          if (postId && verb === 'add') {
+            await this.eventBus.publish(new FacebookFeedEvent(postId, entry.id));
+          }
+        } else if (change.field === 'page') {
+          await this.eventBus.publish(new FacebookPageDeauthorizedEvent(entry.id));
+        }
+      }
+    }
+
+    return ok(undefined);
+  }
+
   verifyWebhookChallenge(
     mode: string,
     verifyToken: string,

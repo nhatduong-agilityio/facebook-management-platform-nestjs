@@ -10,6 +10,7 @@ import { PostsService } from './posts.service';
 import { PostsController } from './posts.controller';
 import { PostCreatedConsumer } from './consumers/post-created.consumer';
 import { PostPublishedConsumer } from './consumers/post-published.consumer';
+import { FacebookFeedConsumer } from './consumers/facebook-feed.consumer';
 
 /**
  * Posts module: Post CRUD, plan-quota check, and domain event emission.
@@ -32,6 +33,7 @@ import { PostPublishedConsumer } from './consumers/post-published.consumer';
     { provide: IPostQuotaProvider, useClass: HardcodedPostQuotaAdapter },
     PostCreatedConsumer,
     PostPublishedConsumer,
+    FacebookFeedConsumer,
   ],
 })
 export class PostsModule {}

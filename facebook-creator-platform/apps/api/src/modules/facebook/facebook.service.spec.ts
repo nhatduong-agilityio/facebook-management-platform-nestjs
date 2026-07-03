@@ -1,15 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FacebookService } from './facebook.service';
+import { FacebookService, type FacebookWebhookPayload } from './facebook.service';
 import { IFacebookOAuthProvider } from './ports/facebook-oauth.provider.port';
 import { IFacebookGraphApiProvider } from './ports/facebook-graph-api.provider.port';
 import { IFacebookAccountRepository } from './ports/facebook-account.repository.port';
+import { IEventBus } from '../../common/events/event-bus.port';
 import type { FacebookAccount } from './entities/facebook-account.entity';
+import { FacebookFeedEvent } from './events/facebook-feed.event';
+import { FacebookPageDeauthorizedEvent } from './events/facebook-deauthorized.event';
 
 const mockOAuthProvider = {
   buildConnectUrl: vi.fn(),
   verifyState: vi.fn(),
   extractWorkspaceId: vi.fn(),
   verifyWebhookToken: vi.fn(),
+  verifyWebhookSignature: vi.fn(),
 } as unknown as IFacebookOAuthProvider;
 
 const mockGraphApi = {
@@ -24,11 +28,15 @@ const mockFacebookAccounts = {
   connectPage: vi.fn(),
 } as unknown as IFacebookAccountRepository;
 
+const mockEventBus = {
+  publish: vi.fn<Parameters<IEventBus['publish']>>().mockResolvedValue(undefined),
+} as unknown as IEventBus;
+
 describe('FacebookService', () => {
   let service: FacebookService;
 
   beforeEach(() => {
-    service = new FacebookService(mockOAuthProvider, mockGraphApi, mockFacebookAccounts);
+    service = new FacebookService(mockOAuthProvider, mockGraphApi, mockFacebookAccounts, mockEventBus);
     vi.clearAllMocks();
   });
 
@@ -209,6 +217,80 @@ describe('FacebookService', () => {
 
       expect(result.isErr()).toBe(true);
       expect(result._unsafeUnwrapErr().code).toBe('FORBIDDEN');
+    });
+  });
+
+  describe('processWebhookPayload', () => {
+    const RAW_BODY = Buffer.from('{"object":"page","entry":[]}');
+
+    const feedPayload: FacebookWebhookPayload = {
+      object: 'page',
+      entry: [
+        {
+          id: 'page-123',
+          time: 1234567890,
+          changes: [{ field: 'feed', value: { post_id: 'page-123_post-456', verb: 'add' } }],
+        },
+      ],
+    };
+
+    const deauthPayload: FacebookWebhookPayload = {
+      object: 'page',
+      entry: [
+        {
+          id: 'page-123',
+          time: 1234567890,
+          changes: [{ field: 'page', value: { verb: 'remove' } }],
+        },
+      ],
+    };
+
+    it('returns err(FORBIDDEN) when X-Hub-Signature-256 is invalid', async () => {
+      vi.mocked(mockOAuthProvider.verifyWebhookSignature).mockReturnValue(false);
+
+      const result = await service.processWebhookPayload(RAW_BODY, 'sha256=bad', feedPayload);
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('FORBIDDEN');
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
+    });
+
+    it('publishes FacebookFeedEvent for a valid pages/feed add event', async () => {
+      vi.mocked(mockOAuthProvider.verifyWebhookSignature).mockReturnValue(true);
+
+      const result = await service.processWebhookPayload(RAW_BODY, 'sha256=valid', feedPayload);
+
+      expect(result.isOk()).toBe(true);
+      expect(mockEventBus.publish).toHaveBeenCalledOnce();
+      const published = vi.mocked(mockEventBus.publish).mock.calls[0][0];
+      expect(published).toBeInstanceOf(FacebookFeedEvent);
+      expect((published as FacebookFeedEvent).facebookPostId).toBe('page-123_post-456');
+      expect((published as FacebookFeedEvent).pageId).toBe('page-123');
+    });
+
+    it('publishes FacebookPageDeauthorizedEvent for a page deauthorize change', async () => {
+      vi.mocked(mockOAuthProvider.verifyWebhookSignature).mockReturnValue(true);
+
+      const result = await service.processWebhookPayload(RAW_BODY, 'sha256=valid', deauthPayload);
+
+      expect(result.isOk()).toBe(true);
+      expect(mockEventBus.publish).toHaveBeenCalledOnce();
+      const published = vi.mocked(mockEventBus.publish).mock.calls[0][0];
+      expect(published).toBeInstanceOf(FacebookPageDeauthorizedEvent);
+      expect((published as FacebookPageDeauthorizedEvent).pageId).toBe('page-123');
+    });
+
+    it('does not publish for feed events with verb !== "add"', async () => {
+      vi.mocked(mockOAuthProvider.verifyWebhookSignature).mockReturnValue(true);
+      const removePayload: FacebookWebhookPayload = {
+        object: 'page',
+        entry: [{ id: 'page-1', time: 0, changes: [{ field: 'feed', value: { post_id: 'x', verb: 'remove' } }] }],
+      };
+
+      const result = await service.processWebhookPayload(RAW_BODY, 'sha256=valid', removePayload);
+
+      expect(result.isOk()).toBe(true);
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
     });
   });
 

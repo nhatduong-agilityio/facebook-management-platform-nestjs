@@ -4,12 +4,24 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.7` — Facebook webhooks (`POST /webhooks/facebook`; verify `X-Hub-Signature-256`; normalize payload; publish to RabbitMQ; `PostPublishedConsumer` drives `publishing→published`; deauth soft-deletes `FacebookAccount`).
+- **Next task:** `T3.1` — Plans + subscriptions entities + Stripe checkout. DoD: seed plans; `POST .../billing/checkout`; tests.
 - **Branch:** `nestjs-practice`
-- **Notes:** 157 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker). RabbitMQ event bus is live — swap `connectionInitOptions.wait` to `true` if broker must be ready before app starts.
+- **Notes:** 169 tests passing. Run `pnpm mikro-orm migration:up` to apply `Migration20260703000000_FacebookAccountSoftDelete` (adds `deleted_at` to `core.facebook_accounts`). Week 2 complete.
 - **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-03 — T2.7 Facebook webhooks
+
+- **`verifyWebhookSignature(rawBody, sigHeader)`** added to `IFacebookOAuthProvider` port + `FacebookOAuthAdapter` — strips `sha256=` prefix, `createHmac('sha256', appSecret).update(rawBody)`, `timingSafeEqual` with hex buffers.
+- **`FacebookWebhookPayload` type + `processWebhookPayload(rawBody, sigHeader, payload)`** added to `FacebookService` — HMAC check → `err(FORBIDDEN)`; iterates `entry[].changes[]`; publishes `FacebookFeedEvent` (field=feed, verb=add) or `FacebookPageDeauthorizedEvent` (field=page); `IEventBus` added as dependency.
+- **`POST /webhooks/facebook`** added to `FacebookWebhookController` — unguarded; reads raw body from `req.rawBody`; delegates to `processWebhookPayload`; returns HTTP 200 (Facebook requires 200 within 20s).
+- **Two new domain events:** `FacebookFeedEvent` (`routingKey = 'facebook.feed'`) and `FacebookPageDeauthorizedEvent` (`routingKey = 'facebook.page.deauthorized'`).
+- **`FacebookFeedConsumer`** (`posts/consumers/`) — `@RabbitSubscribe` on `api.facebook.feed` (durable, DLX → `fcp.dlq`); `orm.em.fork()` per message (ADR-030); finds `Post` by `facebookGraphPostId` in `publishing` state; sets `status=published`, `publishedAt=now()`; flushes; emits `PostPublishedEvent` after flush (§6).
+- **`FacebookPageDeauthorizedConsumer`** (`facebook/consumers/`) — `@RabbitSubscribe` on `api.facebook.deauthorized`; finds `FacebookAccount` by `pageId`; `em.transactional` — sets `account.deletedAt=now()` + `nativeUpdate(Post, …, {status:'failed'})` for `scheduled`/`publishing` posts (§13 cross-module entity access).
+- **`FacebookAccount.deletedAt`** added + `Migration20260703000000_FacebookAccountSoftDelete` (ADR-031). `findByPageId` updated to filter `{ deletedAt: null }`.
+- Tests: 12 new (service ×4, feed consumer ×4, deauth consumer ×4). 169/169 total. Lint: clean.
+- **Setup required:** `pnpm mikro-orm migration:up` to apply `Migration20260703000000_FacebookAccountSoftDelete`.
 
 ### 2026-07-03 — T2.6 RabbitMQ event infrastructure
 

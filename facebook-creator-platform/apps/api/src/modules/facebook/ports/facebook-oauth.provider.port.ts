@@ -57,6 +57,22 @@ export abstract class IFacebookOAuthProvider {
   abstract verifyWebhookToken(token: string): boolean;
 
   /**
+   * Verifies the `X-Hub-Signature-256` header on an incoming Facebook webhook POST.
+   *
+   * Facebook signs the raw request body with `HMAC-SHA256(FACEBOOK_APP_SECRET, rawBody)`
+   * and sends the result as `sha256=<hex>` in the `X-Hub-Signature-256` header.
+   * This method strips the `sha256=` prefix and compares with a timing-safe equality
+   * check to prevent timing attacks.
+   *
+   * Must be called before parsing any payload from an incoming webhook POST.
+   *
+   * @param rawBody   - Unmodified request body buffer (from `req.rawBody`; requires `rawBody: true` in bootstrap).
+   * @param sigHeader - Value of the `X-Hub-Signature-256` header (e.g. `sha256=abc123...`).
+   * @returns `true` if the signature is valid; `false` otherwise.
+   */
+  abstract verifyWebhookSignature(rawBody: Buffer, sigHeader: string): boolean;
+
+  /**
    * Extracts the `workspaceId` from a state token **without** verifying the HMAC.
    *
    * Use this only to determine which workspace a callback belongs to before calling
