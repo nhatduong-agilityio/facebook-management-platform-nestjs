@@ -233,6 +233,129 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > is applied — repository queries filter `{ deletedAt: null }` explicitly. T5.2 schema
 > audit will evaluate whether a `@Filter` should be added.
 
+## Pre-T3.3 architecture decisions — task audit (2026-07-03)
+
+> **ADR-049 `PostPublishedEvent` gains `facebookAccountId` and `createdByUserId`.**
+> The event previously carried only `postId`, `workspaceId`, `facebookGraphPostId`.
+> Two consuming services need extra fields:
+> - `services/analytics` (T3.3) needs `facebookAccountId` to resolve a page access token via
+>   `GET /internal/facebook-accounts/:id/token` on `apps/api`, which it needs to call the Graph API
+>   for post insights (`reach`, `impressions`). The `Post.facebookAccount` field (a `Ref<FacebookAccount>`)
+>   always exposes its PK even when unpopulated, so no extra DB query is needed at publish time.
+> - `services/email` (T4.3) needs `createdByUserId` to resolve the recipient's email via
+>   `GET /internal/users/:id/email` on `apps/api`.
+> Both fields are UUIDs — not PII.
+>
+> **ADR-050 Internal endpoint pattern for cross-service PII resolution.**
+> Supporting services (`analytics`, `email`) sometimes need data that lives in the `core` schema
+> owned by `apps/api` (page tokens, user emails). These are not included in event payloads (PII rule).
+> Instead: `apps/api` exposes a set of **internal-only HTTP routes** under `/internal/` that are not
+> Swagger-documented and are secured by a shared internal secret (`INTERNAL_API_SECRET` env var,
+> compared in a dedicated guard). Consuming services include this header on every internal call.
+> Internal endpoints defined:
+> - `GET /internal/facebook-accounts/:id/token` — returns decrypted page token for a given account ID.
+> - `GET /internal/users/:id/email` — returns email for a given user ID.
+> - `GET /internal/workspaces/:id/owner-email` — returns workspace owner email (used by email service
+>   for billing events where only `workspaceId` is available).
+> All internal endpoints return 404 on unknown ID and 401 on missing/bad secret. No Swagger. No Clerk JWT.
+
+## Pre-T3.3 architecture decisions (2026-07-03)
+
+> **ADR-046 `analytics.post_metrics` gets `workspace_id` (DDL divergence, intentional).**
+> The reference DDL omits `workspace_id` from `analytics.post_metrics`; a cross-schema Postgres view
+> (`core.vw_post_metrics_enriched`) joins to `core.posts` to recover it. That join is impossible inside
+> `services/analytics` — it is a separate NestJS app with its own DB connection scoped to the `analytics`
+> schema. `PostPublishedEvent` already carries `workspaceId`, so the consumer has the value at insert time.
+> Solution: add `workspace_id uuid NOT NULL` as a logical scalar FK (no DB constraint per BR-R06) with a
+> btree index (BR-R08). This is the only way to serve `GET /workspaces/:id/metrics` from a self-contained service.
+>
+> **ADR-047 `core.audit_logs` (Postgres, DDL) is superseded by MongoDB `audit_events` (services/audit).**
+> The reference DDL contains `core.audit_logs` — a structured Postgres table (actor, action, entity, old/new values).
+> This design pre-dates the event-sourcing pivot captured in ADR-016 and TASKS.md T3.4. The final design uses
+> `services/audit` (a separate NestJS app) writing schemaless docs to MongoDB, fed by consuming all RabbitMQ
+> events with routing key `#`. `GET /workspaces/:id/audit-logs` in `apps/api` calls `services/audit` HTTP.
+> The `core.audit_logs` Postgres table will NOT be created; its migration is skipped.
+>
+> **ADR-048 `analytics.*` routing key reserved; analytics service does NOT publish events in T3.3.**
+> The architecture diagram shows `analytics.*` as a routing key on the bus. T3.3 scope is: consume
+> `posts.published`, fetch Graph API metrics, upsert `post_metrics`. No downstream publish step.
+> If `analytics.metrics_updated` events are needed in a later task (e.g. for notification or audit), they
+> can be added then — adding them now without a confirmed consumer would be premature.
+
+## Pre-T4.x architecture decisions — Week 4 audit (2026-07-03)
+
+> **ADR-051 Full post event set: `PostCreatedEvent` enriched + `PostUpdatedEvent`, `PostFailedEvent`, `PostDeletedEvent` added.**
+>
+> The original `PostCreatedEvent` only carried `postId`, `workspaceId`, `createdByUserId`. This forced the
+> Search Service (T4.1) to call `GET /internal/posts/:id` to obtain indexable content — a runtime HTTP
+> dependency that violates CQRS principles (read models should be built from events, not back-channel reads).
+> Decision: events carry enough fields for downstream read-model construction without any callback.
+>
+> `PostCreatedEvent` now includes `title`, `content`, `status`, `scheduledAt`, `createdAt`.
+> Three new events added so Search, Email, and Notification are fully event-driven:
+> - `posts.updated` (`PostUpdatedEvent`) — emitted by `updatePost()`; Search Service updates Algolia record.
+> - `posts.failed` (`PostFailedEvent`) — emitted by `transitionStatus()` on `→ failed`; carries `createdByUserId`
+>   (for email recipient resolution) and `lastError`. Consumed by Notification, Email, Audit, Analytics.
+> - `posts.deleted` (`PostDeletedEvent`) — emitted by `deletePost()`; Search Service removes Algolia record.
+>
+> **ADR-052 CQRS projection pattern for workspace membership — no internal HTTP for member lists.**
+>
+> The Notification Service (T4.2) needs the list of user IDs in a workspace to populate
+> `notification_recipients`. Instead of calling `GET /internal/workspaces/:id/members` (runtime HTTP
+> dependency), the Notification Service maintains its own `workspace_members_projection` table:
+> ```
+> workspace_members_projection(workspace_id, user_id, role, synced_at)
+> ```
+> `apps/api` publishes four workspace membership events:
+> - `workspace.member-invited`  (MemberInvitedEvent — already exists)
+> - `workspace.member-joined`   (MemberJoinedEvent — added to T2.8: acceptInvitation)
+> - `workspace.member-removed`  (MemberRemovedEvent — already exists)
+> - `workspace.role-changed`    (MemberRoleChangedEvent — added to T2.8 scope or a dedicated PATCH endpoint)
+>
+> The projection consumer uses UPSERT semantics (`INSERT ... ON CONFLICT DO UPDATE`) to be order-safe
+> under replay. `synced_at` stores the event timestamp so stale updates can be rejected.
+> This makes `services/notification` fully autonomous — no runtime dependency on `apps/api`.
+>
+> **ADR-053 `facebook.token_expiring` event triggers token-reminder emails (not a cross-schema scan).**
+>
+> `email_delivery_logs` has `email_type IN ('... token_expiring ...')`. The Email Service must NOT
+> scan `core.facebook_accounts.token_expires_at` directly (cross-schema, BR-R06).
+> Instead: a new cron job in `apps/api` (`FacebookTokenExpiryScheduler`) runs daily, finds accounts
+> where `token_expires_at < now() + 7 days`, publishes `facebook.token_expiring` events.
+> The Email Service consumes `facebook.token_expiring` and sends the reminder email.
+> The Notification Service also consumes it for an in-app alert. Cron added to T2.9 scope.
+>
+> **ADR-054 `billing.payment_failed` event added to `services/billing` webhook handler.**
+>
+> `email_delivery_logs` has `email_type = 'payment_failed'` but the billing service previously only
+> published `billing.subscription_activated` and `billing.subscription_cancelled`.
+> `handleInvoicePaymentFailed` now also publishes `billing.payment_failed` after transitioning to
+> `grace_period`. Payload: `{ workspaceId, planCode }` (no PII, no `stripeSubscriptionId`).
+> Email Service sends `payment_failed` email; Notification Service sends in-app alert.
+>
+> **ADR-055 BullMQ for email retry — not in-process retry in `services/email`.**
+>
+> `email_delivery_logs.retry_count` implies retries. The retry strategy is BullMQ (Redis-backed job queue):
+> the email job producer enqueues a job with `attempts: 3, backoff: { type: 'exponential' }`.
+> On final failure BullMQ moves the job to a failed queue; the `services/email` failure handler updates
+> `EmailDeliveryLog.status = 'failed'` and `retry_count = 3`.
+> BullMQ is preferred over NestJS `@Retry` decorators because it survives process restarts and provides
+> a job dashboard. Added as a dependency of T4.3.
+>
+> **ADR-056 Email provider in T4.3 is Resend (not SendGrid), per DDL CHECK constraint.**
+>
+> DDL `email_delivery_logs.provider CHECK ('Resend', 'SES', 'SendGrid')`. Resend is chosen as the
+> initial `IEmailProvider` implementation (simpler API, TypeScript-native SDK, lower cost tier).
+> `IEmailProvider` abstraction allows swapping to SES or SendGrid without changing consumers.
+>
+> **ADR-057 Slack alerts in Notification Service — `ISlackProvider` + `NotificationOrchestrator`.**
+>
+> Architecture diagram `svc_notif` lists "In-App Notifications, Slack Alerts, Orchestration".
+> T4.2 includes `ISlackProvider` (Slack Incoming Webhook) + `SlackWebhookProvider` implementation.
+> `NotificationOrchestrator` decides per event which channels are triggered (in-app and/or Slack).
+> This makes it trivially extensible to Microsoft Teams (`ITeamsProvider`) later by adding an
+> implementation and updating `NotificationOrchestrator` — no consumer changes required.
+
 ## Change log
 | Date | Decision |
 |---|---|

@@ -35,7 +35,7 @@ describe('RabbitMqEventBus', () => {
   });
 
   it('publishes PostPublishedEvent to fcp.events with routing key posts.published', async () => {
-    const event = new PostPublishedEvent('post-2', 'ws-2', 'fb-post-99');
+    const event = new PostPublishedEvent('post-2', 'ws-2', 'fb-post-99', 'fa-uuid-2', 'user-uuid-2');
     await bus.publish(event);
 
     expect(mockAmqp.publish).toHaveBeenCalledOnce();
