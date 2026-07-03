@@ -6,6 +6,190 @@
   ],
   "tables": [
     {
+      "name": "billing_events",
+      "schema": "billing",
+      "columns": {
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": "now()",
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "event_payload": {
+          "name": "event_payload",
+          "type": "jsonb",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "json"
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "varchar(100)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 100,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": true,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
+        "stripe_event_id": {
+          "name": "stripe_event_id",
+          "type": "varchar(255)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": true,
+          "length": 255,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "string"
+        },
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "uuid",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "uuid"
+        }
+      },
+      "indexes": [
+        {
+          "columnNames": [
+            "id"
+          ],
+          "composite": false,
+          "constraint": true,
+          "keyName": "billing_events_pkey",
+          "primary": true,
+          "unique": true
+        },
+        {
+          "columnNames": [
+            "occurred_at"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "idx_billing_events_occurred_at",
+          "primary": false,
+          "unique": false
+        },
+        {
+          "columnNames": [
+            "subscription_id"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "idx_billing_events_subscription_id",
+          "primary": false,
+          "unique": false
+        },
+        {
+          "columnNames": [
+            "stripe_event_id"
+          ],
+          "composite": false,
+          "constraint": true,
+          "keyName": "uq_billing_events_stripe_event_id",
+          "primary": false,
+          "unique": true
+        }
+      ],
+      "checks": [],
+      "triggers": [],
+      "foreignKeys": {
+        "billing_events_subscription_id_fkey": {
+          "columnNames": [
+            "subscription_id"
+          ],
+          "constraintName": "billing_events_subscription_id_fkey",
+          "localTableName": "billing.billing_events",
+          "referencedColumnNames": [
+            "id"
+          ],
+          "referencedTableName": "billing.subscriptions",
+          "deleteRule": "restrict"
+        }
+      },
+      "comment": null
+    },
+    {
       "name": "plans",
       "schema": "billing",
       "columns": {

@@ -12,7 +12,9 @@ import { AppModule } from './app.module';
  * the public internet directly. `apps/api` communicates with this service via HTTP.
  */
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // rawBody: true is required for Stripe webhook signature verification (T3.2).
+  // The unmodified request buffer is available as req.rawBody in the webhook controller.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
 
   app.useLogger(app.get(Logger));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
