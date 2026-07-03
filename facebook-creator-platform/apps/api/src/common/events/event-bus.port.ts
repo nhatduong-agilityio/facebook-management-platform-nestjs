@@ -7,6 +7,8 @@
 export abstract class DomainEvent {
   /** UUID v7 of the event; used as the consumer dedup key (`dedup:<eventId>`). */
   abstract readonly eventId: string;
+  /** AMQP topic routing key used by `RabbitMqEventBus` to route this event (e.g. `posts.created`). */
+  abstract readonly routingKey: string;
   /** UTC timestamp when the event was raised. */
   readonly occurredAt: Date = new Date();
 }

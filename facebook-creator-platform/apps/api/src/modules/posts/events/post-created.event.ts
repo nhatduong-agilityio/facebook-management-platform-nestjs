@@ -13,6 +13,8 @@ import { DomainEvent } from '../../../common/events/event-bus.port';
 export class PostCreatedEvent extends DomainEvent {
   /** UUID v7 dedup key; consumers use `dedup:<eventId>` in Redis (§11). */
   readonly eventId: string = uuidv7();
+  /** AMQP routing key for `fcp.events` topic exchange. */
+  readonly routingKey = 'posts.created' as const;
 
   /**
    * @param postId          - UUID v7 of the newly created post.

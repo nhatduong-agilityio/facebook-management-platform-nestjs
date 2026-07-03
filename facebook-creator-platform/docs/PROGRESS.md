@@ -4,12 +4,25 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.6` — RabbitMQ event infrastructure (`@golevelup`; publish-after-commit; idempotent consumer base; DLQ + retry + dedup). DoD: publish PostCreated/PostPublished; consumer processes once; failing msg → DLQ after retries.
+- **Next task:** `T2.7` — Facebook webhooks (`POST /webhooks/facebook`; verify `X-Hub-Signature-256`; normalize payload; publish to RabbitMQ; `PostPublishedConsumer` drives `publishing→published`; deauth soft-deletes `FacebookAccount`).
 - **Branch:** `nestjs-practice`
-- **Notes:** 150 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker). State machine and `PostPublishedEvent` are ready for T2.6 to wire real publishing.
+- **Notes:** 157 tests passing. Run `pnpm mikro-orm migration:up` (requires Docker). RabbitMQ event bus is live — swap `connectionInitOptions.wait` to `true` if broker must be ready before app starts.
 - **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
 
 ## Log
+
+### 2026-07-03 — T2.6 RabbitMQ event infrastructure
+
+- **`RabbitmqModule`** (`src/infrastructure/rabbitmq/rabbitmq.module.ts`) — `@Global()` module; wires `RabbitMQModule.forRootAsync` (exchanges: `fcp.events` topic, `fcp.dlq` fanout, both durable); provides `IEventBus → RabbitMqEventBus`; provides `IOREDIS_CLIENT` (shared `ioredis` instance from `REDIS_URL`); exports both for all feature modules.
+- **`RabbitMqEventBus`** (`src/common/events/rabbitmq-event-bus.ts`) — `extends IEventBus`; injects `AmqpConnection`; `publish(event)` → `amqp.publish('fcp.events', event.routingKey, { ...event, occurredAt: iso })`. Replaces `NoopEventBus` globally.
+- **`DomainEvent.routingKey`** (abstract) added to `event-bus.port.ts` — routing key is declared on the event class, not the publisher. All four existing events updated: `posts.created`, `posts.published`, `workspace.member-invited`, `workspace.member-removed`.
+- **`IdempotentConsumer`** (`src/common/consumers/idempotent-consumer.base.ts`) — abstract base; `withDedup(eventId, fn)` gates logic behind Redis `SET NX EX 86400`; clears key and re-throws on transient error so RabbitMQ redelivers; callers return `Nack(false)` for permanent failures.
+- **`PostCreatedConsumer`** + **`PostPublishedConsumer`** (`src/modules/posts/consumers/`) — `@RabbitSubscribe` on `api.posts.created` / `api.posts.published` queues (durable, DLX → `fcp.dlq`); extend `IdempotentConsumer`; T2.6 placeholder (log only — full logic in T3.3/T4.1).
+- **`PostsModule`** — removed local `IEventBus` provider (global replaces it); added both consumers to `providers`.
+- **`WorkspaceModule`** — removed local `IEventBus` provider.
+- **`AppModule`** — imports `RabbitmqModule` before feature modules.
+- Tests: 7 new (`rabbitmq-event-bus.spec.ts` × 3, `post-created.consumer.spec.ts` × 4). 157/157 total. Lint: clean.
+- **Setup required:** Docker must be running (`docker compose up rabbitmq redis`). `RABBITMQ_URL` and `REDIS_URL` already in `.env.example`.
 
 ### 2026-07-02 — T2.5 Post status state machine
 
