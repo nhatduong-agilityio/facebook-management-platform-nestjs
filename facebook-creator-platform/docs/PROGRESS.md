@@ -4,11 +4,38 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T3.5` — Audit read API + Analytics read API in `apps/api`.
+- **Next task:** `T3.6` — Billing lifecycle event completeness in `services/billing`.
 - **Branch:** `nestjs-practice`
-- **Notes:** 235 tests passing (199 apps/api + 18 services/billing + 9 services/analytics + 9 services/audit). Add `MONGODB_URI=mongodb://localhost:27017/fcp_audit` and `AUDIT_PORT=3003` to `.env`. The `ensureIndexes: true` config creates the unique `eventId` index and `workspaceId` index on MongoDB startup — no manual migration step needed.
+- **Notes:** 244 tests passing (208 apps/api + 18 services/billing + 9 services/analytics + 9 services/audit). All four services now use `app.setGlobalPrefix('api/v1')`. All `*_SERVICE_URL` env vars **must include the `/api/v1` prefix** and are required via `getOrThrow`. See `.env.example` for exact values:
+  - `BILLING_SERVICE_URL=http://localhost:3001/api/v1`
+  - `ANALYTICS_SERVICE_URL=http://localhost:3002/api/v1`
+  - `AUDIT_SERVICE_URL=http://localhost:3003/api/v1`
+  - `APPS_API_INTERNAL_URL=http://localhost:3000/api/v1`
 
 ## Log
+
+### 2026-07-06 — T3.5 Audit read API + Analytics read API
+
+- **`apps/api/src/common/http/http-client.port.ts`** — `IHttpClient` abstract class (transport-agnostic GET) + `DownstreamServiceError` (carries HTTP status; 503 on connection failure — ECONNREFUSED never reaches clients).
+- **`apps/api/src/common/http/fetch-http-client.adapter.ts`** — `FetchHttpClientAdapter`: native fetch with `AbortSignal.timeout(5000)`; any network/timeout failure → `DownstreamServiceError(503)`.
+- **`apps/api/src/common/errors/app-error.ts`** — `SERVICE_UNAVAILABLE` code added + `AppError.serviceUnavailable()` factory.
+- **`apps/api/src/common/http/to-http-exception.ts`** — `SERVICE_UNAVAILABLE` → HTTP 503.
+- **`apps/api/src/modules/audit/`** — thin proxy module for audit read operations.
+  - `IAuditClient` port — transport-agnostic; `getWorkspaceAuditLogs` + `getAuditEvent`.
+  - `AuditHttpClientAdapter` — injects `IHttpClient`; `AUDIT_SERVICE_URL` via `getOrThrow`; `RawAuditEvent → AuditLogResponseDto` mapper (`receivedAt` string→Date); 404 from downstream → `null`.
+  - `AuditController` — `GET /workspaces/:workspaceId/audit-logs` + `GET /workspaces/:workspaceId/audit-logs/:auditId`; Owner-only; full Swagger incl. `@ApiServiceUnavailableResponse`.
+  - `AuditModule` — wires `IHttpClient → FetchHttpClientAdapter`, `IAuditClient → AuditHttpClientAdapter`.
+- **`apps/api/src/modules/analytics/`** — thin proxy module for analytics read operations.
+  - `IAnalyticsClient` port — transport-agnostic; `getWorkspaceMetrics`.
+  - `AnalyticsHttpClientAdapter` — injects `IHttpClient`; `ANALYTICS_SERVICE_URL` via `getOrThrow`; `RawMetricsSummary → MetricsSummaryDto` mapper.
+  - `AnalyticsController` — `GET /workspaces/:workspaceId/analytics`; Owner-only; full Swagger.
+  - `AnalyticsModule` — wires `IHttpClient → FetchHttpClientAdapter`, `IAnalyticsClient → AnalyticsHttpClientAdapter`.
+- **`AppModule`** — added `AuditModule` + `AnalyticsModule` to imports.
+- Tests: 9 new (audit controller ×6, analytics controller ×3). 244/244 total. Lint: clean.
+- **Post-implementation fixes (same session):**
+  - **Bug:** `ANALYTICS_SERVICE_URL` was documented without the `/api/v1` prefix → analytics service returned 404 → `mapDownstreamError` misclassified as 500 (404 < 500 threshold). Fix: corrected `.env.example` + improved `mapDownstreamError` in both controllers to emit `"Analytics service responded with unexpected 404"` so routing bugs are diagnosable from the response body without reading service logs.
+  - **Global prefix consistency:** `services/audit` had no `app.setGlobalPrefix('api/v1')` while billing and analytics already did. Added prefix to audit. `BillingHttpClientAdapter` was using `config.get('BILLING_SERVICE_URL', 'http://localhost:3001')` with a no-prefix default — calling wrong paths since T3.1. Changed to `config.getOrThrow('BILLING_SERVICE_URL')`. `.env.example` updated: added missing `BILLING_PORT` + `BILLING_SERVICE_URL`, corrected `AUDIT_SERVICE_URL`, filled in `APPS_API_INTERNAL_URL`.
+- **Setup:** All `*_SERVICE_URL` env vars **must include `/api/v1`** — see `.env.example` for exact values. (ADR-065)
 
 ### 2026-07-06 — T3.4 Audit Service (MongoDB)
 
@@ -21,8 +48,15 @@
 - **`AuditController`** — `GET /workspaces/:id/audit-logs` + `GET /audit-logs/:id` (no auth yet — T3.5 adds Owner guard + Swagger).
 - **`@Global() AuditMessagingModule`** — same RabbitMQ wrapper pattern as billing/analytics (ADR-063); `enableControllerDiscovery: true`; no Redis module.
 - `docs/DECISIONS.md` — ADR-064 (MongoDB dedup, wildcard consumer, append-only, PII strip list, no Redis).
-- Tests: 9 new (consumer ×5, service ×4). 235/235 total. Lint: clean.
-- **Setup:** Add `MONGODB_URL=mongodb://localhost:27017/fcp_audit` to `.env`. Indexes created automatically on startup via `ensureIndexes: true`.
+- Tests: 9 new (consumer ×5, service ×4). 235/235 total. Lint: clean. tsc: 0 errors.
+- **Post-implementation fixes (same session):**
+  - `@Index({ unique: true })` not valid in `@mikro-orm/decorators/legacy` → replaced with `@Unique({ properties: ['eventId'] })` at class level (same pattern as `PostMetrics`).
+  - `persistAndFlush` not exposed on `MongoEntityManager` type → replaced with `em.persist(doc); await em.flush()`.
+  - `Record<string, unknown>` where clause → `FilterQuery<AuditEvent>` from `@mikro-orm/core`.
+  - `import { EntityManager } from '@mikro-orm/mongodb'` → `@mikro-orm/core` — `@mikro-orm/nestjs` registers the EM under the core token; driver-specific import caused `UnknownDependenciesException` at startup.
+  - `MONGODB_URL` → `MONGODB_URI` in `app.module.ts` and `mikro-orm.config.ts` to match the existing env var name.
+  - Root `migration:audit` script removed from `package.json` (MongoDB does not support SQL migrations; indexes are created via `ensureIndexes: true` on startup).
+- **Setup:** Add `MONGODB_URI=mongodb://localhost:27017/fcp_audit` and `AUDIT_PORT=3003` to `.env`. Indexes created automatically on startup.
 
 
 

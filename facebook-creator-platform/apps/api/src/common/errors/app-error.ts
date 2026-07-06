@@ -11,6 +11,7 @@ export type AppErrorCode =
   | 'PLAN_LIMIT_EXCEEDED'     // owner's subscription plan cap reached
   | 'INVALID_STATE_TRANSITION'// attempted a state-machine transition that is not allowed
   | 'CROSS_WORKSPACE'         // operation spans workspace boundary (BR-R06)
+  | 'SERVICE_UNAVAILABLE'     // downstream service is unreachable or returned 5xx
   | 'INTERNAL';               // unexpected infrastructure or programmer error
 
 /**
@@ -80,5 +81,15 @@ export class AppError {
    */
   static internal(message: string, details?: Record<string, unknown>) {
     return new AppError('INTERNAL', message, details);
+  }
+
+  /**
+   * Creates a SERVICE_UNAVAILABLE error when a downstream service cannot be reached.
+   *
+   * @param serviceName - Human-readable name of the downstream service.
+   * @returns AppError with code SERVICE_UNAVAILABLE.
+   */
+  static serviceUnavailable(serviceName: string) {
+    return new AppError('SERVICE_UNAVAILABLE', `${serviceName} is currently unavailable`);
   }
 }

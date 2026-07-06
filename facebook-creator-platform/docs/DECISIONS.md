@@ -465,6 +465,43 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > This makes it trivially extensible to Microsoft Teams (`ITeamsProvider`) later by adding an
 > implementation and updating `NotificationOrchestrator` — no consumer changes required.
 
+> **ADR-065 `IHttpClient` + `DownstreamServiceError` pattern for outbound HTTP in proxy modules (T3.5).**
+>
+> Proxy adapters (`AuditHttpClientAdapter`, `AnalyticsHttpClientAdapter`) inject `IHttpClient` rather
+> than calling `fetch` directly. This decouples transport from mapping logic — swapping to Axios, undici,
+> or RabbitMQ RPC requires only a new `IHttpClient` implementation and a module binding change.
+>
+> `FetchHttpClientAdapter` wraps `fetch` with `AbortSignal.timeout(5000)` and normalises all failures
+> (ECONNREFUSED, DNS errors, AbortError) into `DownstreamServiceError(503)`. Non-2xx responses from the
+> downstream become `DownstreamServiceError(status)`. Raw network error strings (`ECONNREFUSED connect …`)
+> never reach the API response body.
+>
+> `DownstreamServiceError` (status ≥ 500) maps to `AppErrorCode.SERVICE_UNAVAILABLE` → HTTP 503. This
+> distinguishes "we couldn't reach the service" from "we caused an internal error" (500), making the
+> boundary visible to monitoring dashboards.
+>
+> Port names use `IAuditClient` / `IAnalyticsClient` (not `…HttpClient`) — transport-agnostic names
+> ensure the interface token survives a future swap to RabbitMQ RPC without confusing callers.
+>
+> Adapters use `config.getOrThrow('AUDIT_SERVICE_URL')` / `'ANALYTICS_SERVICE_URL'` — startup fails fast
+> if the env var is absent rather than silently calling `http://localhost:300x` in production.
+>
+> Explicit mapper functions (`toDto`) in each adapter own the raw→API DTO translation. The API's public
+> DTO is never just a type-cast of the downstream service's wire format; the mapping layer is the
+> documented contract between the two services.
+>
+> RabbitMQ Request/Reply is explicitly **not recommended** for these read endpoints: it adds a broker hop
+> and correlation-ID overhead to what is a synchronous blocking DB query, fighting the broker's strengths.
+> HTTP is correct here. Use RabbitMQ fire-and-forget for events (the existing pattern) and extract to
+> RabbitMQ RPC only if multiple consumers need load-balanced compute-heavy work.
+>
+> **Prefix rule (post-implementation):** All four services (`apps/api`, `services/billing`, `services/analytics`,
+> `services/audit`) use `app.setGlobalPrefix('api/v1')`. All `*_SERVICE_URL` env vars must therefore
+> include the full base path with prefix (e.g. `http://localhost:3002/api/v1`), consistent with
+> `APPS_API_INTERNAL_URL`. Adapters append only the resource path, never a version segment.
+> A downstream 4xx (e.g. 404 from a missing prefix) now surfaces as `"<Service> responded with unexpected 404"`
+> rather than a generic 500, making URL mismatches immediately diagnosable from the response body.
+
 ## Change log
 | Date | Decision |
 |---|---|
