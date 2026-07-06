@@ -29,4 +29,9 @@ export class MikroOrmInvitationRepository extends IInvitationRepository {
   findPendingByWorkspaceAndEmail(workspaceId: string, email: string): Promise<Invitation | null> {
     return this.repo.findOne({ workspace: workspaceId, email, status: 'pending' });
   }
+
+  /** @inheritdoc */
+  findByToken(token: string): Promise<Invitation | null> {
+    return this.repo.findOne({ token });
+  }
 }

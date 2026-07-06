@@ -10,9 +10,12 @@ import { IWorkspaceRepository } from './ports/workspace.repository.port';
 import { IWorkspaceMemberRepository } from './ports/workspace-member.repository.port';
 import { IInvitationRepository } from './ports/invitation.repository.port';
 import { MemberInvitedEvent } from './events/member-invited.event';
+import { MemberJoinedEvent } from './events/member-joined.event';
 import { MemberRemovedEvent } from './events/member-removed.event';
+import { MemberRoleChangedEvent } from './events/member-role-changed.event';
 import type { CreateWorkspaceDto } from './dto/workspace.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
+import type { WorkspaceRole } from '../identity/types/workspace-role.type';
 
 /**
  * Application service for workspace lifecycle and member management.
@@ -180,6 +183,101 @@ export class WorkspaceService {
     await this.eventBus.publish(new MemberRemovedEvent(workspaceId, removedUserId, removedByUserId));
 
     return ok(undefined);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Invitation acceptance (T2.8)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Accepts a workspace invitation identified by its single-use token.
+   *
+   * Validates the token exists, belongs to the given workspace, is still `pending`,
+   * and has not expired (BR-F03). Creates a `WorkspaceMember` and marks the invitation
+   * `accepted` in a single flush. Emits `MemberJoinedEvent` after commit (§6).
+   *
+   * @param workspaceId - UUID from the URL; must match the invitation's workspace.
+   * @param token       - 64-char hex token from the invitation email link.
+   * @param userId      - UUID of the authenticated user accepting the invite.
+   * @returns `ok(member)` or `err(NOT_FOUND | VALIDATION_ERROR | CONFLICT)`.
+   */
+  async acceptInvitation(
+    workspaceId: string,
+    token: string,
+    userId: string,
+  ): Promise<Result<WorkspaceMember, AppError>> {
+    const invitation = await this.invitations.findByToken(token);
+    if (!invitation || invitation.workspace.id !== workspaceId) {
+      return err(AppError.notFound('Invitation'));
+    }
+
+    if (invitation.status === 'accepted') {
+      return err(AppError.conflict('Invitation has already been accepted'));
+    }
+
+    if (invitation.status !== 'pending' || invitation.expiresAt <= new Date()) {
+      return err(new AppError('VALIDATION_ERROR', 'Invitation has expired or is no longer valid'));
+    }
+
+    const workspace = await this.workspaces.findById(workspaceId);
+    if (!workspace) return err(AppError.notFound('Workspace'));
+
+    // Mutate invitation status — entity is tracked by EM; flush below commits this too.
+    invitation.status = 'accepted';
+
+    const member = WorkspaceMember.forAcceptedInvite(workspace, userId, invitation.role);
+    // save() calls em.persist(member) + em.flush() which commits both the invitation
+    // status mutation and the member insert in one transaction (§6).
+    await this.members.save(member);
+
+    await this.eventBus.publish(
+      new MemberJoinedEvent(workspaceId, userId, invitation.role, invitation.id),
+    );
+
+    return ok(member);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Role management (T2.8)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Changes the role of an existing workspace member.
+   *
+   * Enforces BR-R02: an owner cannot be demoted if they are the sole owner.
+   * Emits `MemberRoleChangedEvent` after the update is flushed (§6, ADR-052).
+   *
+   * @param workspaceId     - UUID of the workspace.
+   * @param targetUserId    - UUID of the user whose role is being changed.
+   * @param newRole         - Role to assign.
+   * @param changedByUserId - UUID of the requesting user (must be owner, enforced by guard).
+   * @returns `ok(member)` or `err(NOT_FOUND | FORBIDDEN)`.
+   */
+  async changeMemberRole(
+    workspaceId: string,
+    targetUserId: string,
+    newRole: WorkspaceRole,
+    changedByUserId: string,
+  ): Promise<Result<WorkspaceMember, AppError>> {
+    const member = await this.members.findByWorkspaceAndUserId(workspaceId, targetUserId);
+    if (!member) return err(AppError.notFound('WorkspaceMember'));
+
+    if (member.role === 'owner' && newRole !== 'owner') {
+      const ownerCount = await this.members.countOwners(workspaceId);
+      if (ownerCount <= 1) {
+        return err(AppError.forbidden('Cannot demote the sole owner of a workspace (BR-R02)'));
+      }
+    }
+
+    const oldRole = member.role;
+    member.role = newRole;
+    await this.members.save(member);
+
+    await this.eventBus.publish(
+      new MemberRoleChangedEvent(workspaceId, targetUserId, oldRole, newRole, changedByUserId),
+    );
+
+    return ok(member);
   }
 
   // ---------------------------------------------------------------------------
