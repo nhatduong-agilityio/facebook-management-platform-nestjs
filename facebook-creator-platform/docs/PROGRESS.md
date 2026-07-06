@@ -4,11 +4,27 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T3.4` — Audit Service (`services/audit/`, MongoDB).
+- **Next task:** `T3.5` — Audit read API + Analytics read API in `apps/api`.
 - **Branch:** `nestjs-practice`
-- **Notes:** 226 tests passing (199 apps/api + 18 services/billing + 9 services/analytics). Run `pnpm mikro-orm migration:up` (in `apps/api`) to apply `Migration20260703000001_MessagingSchema`. Run `cd services/billing && pnpm mikro-orm migration:up` for billing migrations. Run `cd services/analytics && pnpm mikro-orm migration:up` for analytics schema. Set `STRIPE_WEBHOOK_SECRET`, `INTERNAL_API_SECRET`, `APPS_API_INTERNAL_URL` env vars.
+- **Notes:** 235 tests passing (199 apps/api + 18 services/billing + 9 services/analytics + 9 services/audit). Add `MONGODB_URI=mongodb://localhost:27017/fcp_audit` and `AUDIT_PORT=3003` to `.env`. The `ensureIndexes: true` config creates the unique `eventId` index and `workspaceId` index on MongoDB startup — no manual migration step needed.
 
 ## Log
+
+### 2026-07-06 — T3.4 Audit Service (MongoDB)
+
+- **`services/audit/`** scaffolded as a full NestJS app (`@fcp/audit`, port 3003 via `AUDIT_PORT`).
+- **`AuditEvent` entity** (`audit_events` collection) — `_id` uuid v7 string PK; `eventId` (unique index, idempotency key); `routingKey`; `workspaceId` (nullable, indexed for T3.5 workspace queries); `payload` (raw, PII stripped); `receivedAt`. Append-only — no `deletedAt` (CLAUDE.md exception).
+- **`AuditConsumer`** — single `@RabbitSubscribe({ routingKey: '#' })` on `audit.all` queue captures every event on `fcp.events`. Routing key read from `amqpMsg.fields.routingKey`. PII fields (`email`, `fullName`, `accessToken`, `pageToken`, `password`) stripped before insert. Missing `eventId` → `Nack(false)` (permanent discard).
+- **Idempotency** — MongoDB unique index on `eventId` (not Redis). Repository catches duplicate-key error code 11000 and returns silently (ADR-064). No Redis dependency in this service.
+- **`IAuditEventRepository`** port + `MikroOrmAuditEventRepository` adapter — `insert`, `findByWorkspace` (newest first, limit + cursor), `findById`.
+- **`AuditService`** — `getWorkspaceAuditLogs` + `getAuditEvent` (Result pattern).
+- **`AuditController`** — `GET /workspaces/:id/audit-logs` + `GET /audit-logs/:id` (no auth yet — T3.5 adds Owner guard + Swagger).
+- **`@Global() AuditMessagingModule`** — same RabbitMQ wrapper pattern as billing/analytics (ADR-063); `enableControllerDiscovery: true`; no Redis module.
+- `docs/DECISIONS.md` — ADR-064 (MongoDB dedup, wildcard consumer, append-only, PII strip list, no Redis).
+- Tests: 9 new (consumer ×5, service ×4). 235/235 total. Lint: clean.
+- **Setup:** Add `MONGODB_URL=mongodb://localhost:27017/fcp_audit` to `.env`. Indexes created automatically on startup via `ensureIndexes: true`.
+
+
 
 ### 2026-07-06 — T3.3 Analytics service
 
