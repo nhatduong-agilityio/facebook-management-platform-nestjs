@@ -14,8 +14,10 @@
     "build": "pnpm -r build",
     "start:dev": "pnpm --filter @fcp/api start:dev",
     "start:billing": "pnpm --filter @fcp/billing start:dev",
+    "start:analytics": "pnpm --filter @fcp/analytics start:dev",
     "migration": "pnpm --filter @fcp/api mikro-orm migration:up",
     "migration:billing": "pnpm --filter @fcp/billing mikro-orm migration:up",
+    "migration:analytics": "pnpm --filter @fcp/analytics mikro-orm migration:up",
     "prepare": "git config core.hooksPath $(git rev-parse --show-prefix).husky"
   },
   "devDependencies": {

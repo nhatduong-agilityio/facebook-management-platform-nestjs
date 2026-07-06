@@ -14,6 +14,7 @@ import { FacebookCallbackController } from './facebook-callback.controller';
 import { FacebookWebhookController } from './facebook-webhook.controller';
 import { FacebookPageDeauthorizedConsumer } from './consumers/facebook-deauthorized.consumer';
 import { FacebookTokenExpiryScheduler } from './jobs/facebook-token-expiry.job';
+import { InternalFacebookController } from './internal-api.controller';
 
 /**
  * Facebook integration module.
@@ -31,7 +32,7 @@ import { FacebookTokenExpiryScheduler } from './jobs/facebook-token-expiry.job';
  */
 @Module({
   imports: [IdentityModule, MikroOrmModule.forFeature([FacebookAccount])],
-  controllers: [FacebookController, FacebookCallbackController, FacebookWebhookController],
+  controllers: [FacebookController, FacebookCallbackController, FacebookWebhookController, InternalFacebookController],
   providers: [
     FacebookService,
     { provide: IFacebookOAuthProvider, useClass: FacebookOAuthAdapter },
