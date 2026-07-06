@@ -31,3 +31,38 @@ export interface SubscriptionCancelledPayload {
   /** ISO-8601 timestamp of when the transition occurred. */
   occurredAt: string;
 }
+
+/**
+ * Payload for the `billing.subscription_past_due` RabbitMQ event.
+ *
+ * Published by `services/billing` when Stripe marks a subscription `past_due`
+ * (`customer.subscription.updated` with `status === 'past_due'`). No PII — no Stripe IDs.
+ */
+export interface SubscriptionPastDuePayload {
+  /** Dedup key — uuid v7, unique per event emission. */
+  eventId: string;
+  /** UUID of the workspace whose subscription is past due. */
+  workspaceId: string;
+  /** Plan code the workspace is on. */
+  planCode: string;
+  /** ISO-8601 timestamp of when the transition occurred. */
+  occurredAt: string;
+}
+
+/**
+ * Payload for the `billing.subscription_renewed` RabbitMQ event.
+ *
+ * Published by `services/billing` on `invoice.payment_succeeded` when the
+ * subscription is already `active` (i.e. a recurring renewal, not first activation).
+ * No PII — no Stripe IDs.
+ */
+export interface SubscriptionRenewedPayload {
+  /** Dedup key — uuid v7, unique per event emission. */
+  eventId: string;
+  /** UUID of the workspace whose subscription renewed. */
+  workspaceId: string;
+  /** Plan code the workspace is on. */
+  planCode: string;
+  /** ISO-8601 timestamp of the renewal (start of the new billing period). */
+  renewedAt: string;
+}

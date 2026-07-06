@@ -4,15 +4,28 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T3.6` — Billing lifecycle event completeness in `services/billing`.
+- **Next task:** `T4.1` — Search service scaffold in `services/search/` (Algolia consumers).
 - **Branch:** `nestjs-practice`
-- **Notes:** 244 tests passing (208 apps/api + 18 services/billing + 9 services/analytics + 9 services/audit). All four services now use `app.setGlobalPrefix('api/v1')`. All `*_SERVICE_URL` env vars **must include the `/api/v1` prefix** and are required via `getOrThrow`. See `.env.example` for exact values:
-  - `BILLING_SERVICE_URL=http://localhost:3001/api/v1`
-  - `ANALYTICS_SERVICE_URL=http://localhost:3002/api/v1`
-  - `AUDIT_SERVICE_URL=http://localhost:3003/api/v1`
-  - `APPS_API_INTERNAL_URL=http://localhost:3000/api/v1`
+- **Notes:** 250 tests passing (208 apps/api + 24 services/billing + 9 services/analytics + 9 services/audit). All four services use `app.setGlobalPrefix('api/v1')`. `BILLING_SUCCESS_URL` / `BILLING_CANCEL_URL` are now in `.env.example` and handled by `BillingRedirectController` in `apps/api`.
 
 ## Log
+
+### 2026-07-06 — T3.6 Billing lifecycle event completeness
+
+- **`libs/billing-contracts/src/events.ts`** — added `SubscriptionPastDuePayload` (`{ eventId, workspaceId, planCode, occurredAt }`) and `SubscriptionRenewedPayload` (`{ eventId, workspaceId, planCode, renewedAt }`); exported from `index.ts`.
+- **`services/billing/src/entities/subscription.entity.ts`** — `'past_due'` added to `SubscriptionStatus` union (was `trialing | active | grace_period | cancelled`).
+- **`services/billing/src/billing.service.ts`**:
+  - `ALLOWED_TRANSITIONS` — added `past_due` row; `active/trialing/grace_period` can now enter `past_due`; `past_due` exits to `active` or `cancelled`.
+  - BR-F10 guard extended to block free plan from `past_due` (same rule as `grace_period`).
+  - `handleStripeEvent` switch — added `customer.subscription.updated` case.
+  - `handleSubscriptionUpdated` (new private) — guards `stripeSub.status !== 'past_due'` (ignores all other update events); idempotent on already-`past_due`/`cancelled`; transitions, flushes, publishes `billing.subscription_past_due`.
+  - `handleInvoicePaymentSucceeded` refactored — three explicit branches: `active` (renewal: log billing event + publish `billing.subscription_renewed`, no state change), `trialing/grace_period/past_due` (activation: transition + publish `billing.subscription_activated`), `cancelled` (no-op).
+  - `BILLING_SUCCESS_URL` / `BILLING_CANCEL_URL` fallback paths updated to include `/api/v1` prefix.
+- **`apps/api/src/modules/billing/billing-redirect.controller.ts`** (new) — `GET /api/v1/billing/success` + `GET /api/v1/billing/cancel`; no auth guard; `@ApiExcludeController`; handles Stripe browser redirects for API-only deployments.
+- **`apps/api/src/modules/billing/billing.module.ts`** — registered `BillingRedirectController`.
+- **`.env.example`** — added `BILLING_SUCCESS_URL` and `BILLING_CANCEL_URL` with the correct `api/v1`-prefixed defaults.
+- Tests: 6 new + 1 updated in `billing.service.spec.ts` (past_due arm ×4, renewal arm ×2, stale no-op test corrected). 250/250 total. Lint: clean.
+- **Follow-up (T4.2):** `apps/api` billing event consumers should react to `billing.subscription_past_due` (notify workspace members) — deferred to T4.2 notification service.
 
 ### 2026-07-06 — T3.5 Audit read API + Analytics read API
 

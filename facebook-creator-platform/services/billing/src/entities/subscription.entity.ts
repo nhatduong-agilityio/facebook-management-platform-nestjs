@@ -3,8 +3,8 @@ import { ref, type Ref } from '@mikro-orm/core';
 import { uuidv7 } from 'uuidv7';
 import { Plan } from './plan.entity';
 
-/** Valid lifecycle states for a subscription (BR-F05, ADR-017). */
-export type SubscriptionStatus = 'trialing' | 'active' | 'grace_period' | 'cancelled';
+/** Valid lifecycle states for a subscription (BR-F05, ADR-017, T3.6). */
+export type SubscriptionStatus = 'trialing' | 'active' | 'grace_period' | 'past_due' | 'cancelled';
 
 /**
  * A workspace's billing subscription.
