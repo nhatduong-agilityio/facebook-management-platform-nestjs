@@ -10,6 +10,10 @@ import { PostsController } from './posts.controller';
 import { PostCreatedConsumer } from './consumers/post-created.consumer';
 import { PostPublishedConsumer } from './consumers/post-published.consumer';
 import { FacebookFeedConsumer } from './consumers/facebook-feed.consumer';
+import { PublishJob } from './jobs/publish.job';
+import { PublishFallbackPollJob } from './jobs/publish-fallback-poll.job';
+import { IFacebookGraphApiProvider } from '../facebook/ports/facebook-graph-api.provider.port';
+import { FacebookGraphApiAdapter } from '../facebook/adapters/facebook-graph-api.adapter';
 
 /**
  * Posts module: Post CRUD, plan-quota check, and domain event emission.
@@ -30,9 +34,12 @@ import { FacebookFeedConsumer } from './consumers/facebook-feed.consumer';
   providers: [
     PostsService,
     { provide: IPostRepository, useClass: MikroOrmPostRepository },
+    { provide: IFacebookGraphApiProvider, useClass: FacebookGraphApiAdapter },
     PostCreatedConsumer,
     PostPublishedConsumer,
     FacebookFeedConsumer,
+    PublishJob,
+    PublishFallbackPollJob,
   ],
 })
 export class PostsModule {}

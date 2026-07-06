@@ -28,7 +28,16 @@ export interface FacebookPageData {
 }
 
 /**
- * Port (outbound): Facebook Graph API operations needed for the OAuth Page-connect flow.
+ * Result of a successful post submission to `POST /{pageId}/feed`.
+ */
+export interface PublishedPostResult {
+  /** The Facebook Graph API post id (format: `<pageId>_<postId>`). */
+  postId: string;
+}
+
+/**
+ * Port (outbound): Facebook Graph API operations needed for the OAuth Page-connect flow,
+ * post publishing, and fallback polling.
  *
  * Implementations read `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, and
  * `FACEBOOK_REDIRECT_URI` from the environment. Services depend on this abstract
@@ -65,4 +74,45 @@ export abstract class IFacebookGraphApiProvider {
    * @throws If the Graph API returns a non-2xx response or a malformed body.
    */
   abstract refreshPageToken(pageAccessToken: string): Promise<RefreshedToken>;
+
+  /**
+   * Publishes a post to a Facebook Page via `POST /{pageId}/feed`.
+   *
+   * Called synchronously by the Publish Job when a scheduled post's `scheduledAt`
+   * has elapsed. On success the caller transitions the post to `publishing` and stores
+   * the returned `postId` as `facebookGraphPostId`.
+   *
+   * @param pageId          - Facebook Page ID (e.g. `"112233445566"`).
+   * @param pageAccessToken - Plaintext Page access token (decrypted by caller — BR-F11).
+   * @param content         - Post body text (`message` field in Graph API).
+   * @param mediaUrl        - Optional media attachment URL (`link` field). Omitted if not set.
+   * @returns The Graph API post id in `<pageId>_<postId>` format.
+   * @throws If the Graph API returns a non-2xx response or a malformed body.
+   */
+  abstract publishPost(
+    pageId: string,
+    pageAccessToken: string,
+    content: string,
+    mediaUrl?: string,
+  ): Promise<PublishedPostResult>;
+
+  /**
+   * Checks whether a published post is reachable via the Graph API (`GET /{postId}`).
+   *
+   * Used by the fallback poll job (T2.9) to confirm `publishing → published` when a
+   * Facebook webhook was not received within `PUBLISH_TTL_MINUTES`.
+   *
+   * Returns `true` if the Graph API responds with an `id` field, `false` on a 4xx/5xx
+   * response (post removed, token expired, etc.). Any network-level error is re-thrown
+   * so the caller can log and continue to the next post.
+   *
+   * @param facebookGraphPostId - The `<pageId>_<postId>` string stored on the `Post` entity.
+   * @param pageAccessToken     - Plaintext Page access token (decrypted by caller — BR-F11).
+   * @returns `true` when the post is live; `false` when it is not accessible.
+   * @throws On network/infrastructure failure (not on a 4xx Graph API response).
+   */
+  abstract checkPostLive(
+    facebookGraphPostId: string,
+    pageAccessToken: string,
+  ): Promise<boolean>;
 }
