@@ -10,7 +10,8 @@ const FALLBACK_POST_LIMIT = 10;
  * HTTP client adapter for `services/billing`.
  *
  * Uses the native `fetch` API (Node 25 built-in). Reads `BILLING_SERVICE_URL`
- * from config (defaults to `http://localhost:3001` for local dev).
+ * from config via `getOrThrow` — must include the `/api/v1` prefix
+ * (e.g. `http://localhost:3001/api/v1`).
  *
  * On quota lookups, falls back to `FALLBACK_POST_LIMIT` (free-plan default) if the
  * billing service is unreachable — so existing workspaces degrade gracefully, never
@@ -22,7 +23,7 @@ export class BillingHttpClientAdapter extends IBillingHttpClient {
 
   constructor(private readonly config: ConfigService) {
     super();
-    this.baseUrl = this.config.get<string>('BILLING_SERVICE_URL', 'http://localhost:3001');
+    this.baseUrl = this.config.getOrThrow<string>('BILLING_SERVICE_URL');
   }
 
   /**

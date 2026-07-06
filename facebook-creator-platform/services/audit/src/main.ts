@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+  app.setGlobalPrefix('api/v1');
   const port = parseInt(process.env.AUDIT_PORT ?? '3003', 10);
   await app.listen(port);
 }
