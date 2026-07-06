@@ -6,11 +6,13 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -27,7 +29,7 @@ import { Roles } from '../identity/decorators/roles.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { WorkspaceService } from './workspace.service';
 import { CreateWorkspaceDto, WorkspaceResponseDto } from './dto/workspace.dto';
-import { InviteMemberDto, InvitationResponseDto, WorkspaceMemberResponseDto } from './dto/invite-member.dto';
+import { ChangeRoleDto, InviteMemberDto, InvitationResponseDto, WorkspaceMemberResponseDto } from './dto/invite-member.dto';
 import { Workspace } from './entities/workspace.entity';
 import { WorkspaceMember } from './entities/workspace-member.entity';
 import { Invitation } from './entities/invitation.entity';
@@ -185,6 +187,76 @@ export class WorkspaceController {
     const result = await this.workspaceService.removeMember(workspaceId, memberId, user.id);
     result.match(
       () => undefined,
+      (e) => { throw toHttpException(e); },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Invitation acceptance (T2.8)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Accepts a workspace invitation using the single-use token from the email link.
+   *
+   * This endpoint is guarded by `ClerkAuthGuard` (the accepting user must be
+   * authenticated) but does NOT require an existing workspace membership — the
+   * token is the workspace-level credential. Returns 409 when the invitation was
+   * already accepted and 400 when it has expired.
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @param token       - 64-char hex token from the invitation email.
+   * @param user        - Authenticated user accepting the invite.
+   */
+  @Post(':workspaceId/invitations/:token/accept')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Accept a workspace invitation' })
+  @ApiCreatedResponse({ type: WorkspaceMemberResponseDto })
+  @ApiNotFoundResponse({ description: 'Invitation not found or token/workspace mismatch' })
+  @ApiConflictResponse({ description: 'Invitation already accepted' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
+  async acceptInvitation(
+    @Param('workspaceId') workspaceId: string,
+    @Param('token') token: string,
+    @CurrentUser() user: User,
+  ): Promise<WorkspaceMemberResponseDto> {
+    const result = await this.workspaceService.acceptInvitation(workspaceId, token, user.id);
+    return result.match(
+      (member) => this.toMemberResponse(member),
+      (e) => { throw toHttpException(e); },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Role management (T2.8)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Changes the role of an existing workspace member.
+   *
+   * Requires Owner role. Returns 403 when demoting the sole owner (BR-R02).
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @param userId      - UUID of the user whose role should change.
+   * @param dto         - The new role.
+   * @param user        - Authenticated user performing the change.
+   */
+  @Patch(':workspaceId/members/:userId/role')
+  @UseGuards(WorkspaceRolesGuard)
+  @Roles('owner')
+  @ApiOperation({ summary: 'Change the role of a workspace member' })
+  @ApiOkResponse({ type: WorkspaceMemberResponseDto })
+  @ApiNotFoundResponse({ description: 'Member not found in workspace' })
+  @ApiForbiddenResponse({ description: 'Insufficient role or sole-owner demotion (BR-R02)' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
+  async changeMemberRole(
+    @Param('workspaceId') workspaceId: string,
+    @Param('userId') userId: string,
+    @Body() dto: ChangeRoleDto,
+    @CurrentUser() user: User,
+  ): Promise<WorkspaceMemberResponseDto> {
+    const result = await this.workspaceService.changeMemberRole(workspaceId, userId, dto.role, user.id);
+    return result.match(
+      (member) => this.toMemberResponse(member),
       (e) => { throw toHttpException(e); },
     );
   }

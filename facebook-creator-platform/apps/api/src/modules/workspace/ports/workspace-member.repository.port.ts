@@ -48,4 +48,27 @@ export abstract class IWorkspaceMemberRepository {
    * @param member - The entity to delete.
    */
   abstract remove(member: WorkspaceMember): Promise<void>;
+
+  /**
+   * Finds a membership record by workspace and user id.
+   *
+   * Used by the role-change endpoint (`PATCH /workspaces/:id/members/:userId/role`)
+   * where the URL carries the user's UUID, not the membership record UUID.
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @param userId      - UUID of the user.
+   * @returns The member, or `null` if not found in that workspace.
+   */
+  abstract findByWorkspaceAndUserId(workspaceId: string, userId: string): Promise<WorkspaceMember | null>;
+
+  /**
+   * Persists a new or mutated `WorkspaceMember` and flushes the Unit of Work.
+   *
+   * For new members this is equivalent to `em.persist(member) + em.flush()`.
+   * For already-tracked entities the `persist` call is a no-op and only the flush runs,
+   * committing any in-flight mutations (e.g. invitation status + member insert together).
+   *
+   * @param member - The entity to upsert.
+   */
+  abstract save(member: WorkspaceMember): Promise<void>;
 }

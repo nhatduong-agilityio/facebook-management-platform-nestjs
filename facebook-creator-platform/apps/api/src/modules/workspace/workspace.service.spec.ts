@@ -7,6 +7,8 @@ import { IEventBus } from '../../common/events/event-bus.port';
 import { Workspace } from './entities/workspace.entity';
 import { WorkspaceMember } from './entities/workspace-member.entity';
 import { Invitation } from './entities/invitation.entity';
+import { MemberJoinedEvent } from './events/member-joined.event';
+import { MemberRoleChangedEvent } from './events/member-role-changed.event';
 
 const mockWorkspaceRepo = {
   findById: vi.fn(),
@@ -18,14 +20,17 @@ const mockWorkspaceRepo = {
 const mockMemberRepo = {
   persist: vi.fn(),
   findByWorkspaceAndId: vi.fn(),
+  findByWorkspaceAndUserId: vi.fn(),
   findAllByWorkspaceId: vi.fn(),
   countOwners: vi.fn(),
   remove: vi.fn(),
+  save: vi.fn(),
 } as unknown as IWorkspaceMemberRepository;
 
 const mockInvitationRepo = {
   save: vi.fn(),
   findPendingByWorkspaceAndEmail: vi.fn(),
+  findByToken: vi.fn(),
 } as unknown as IInvitationRepository;
 
 const mockEventBus = {
@@ -299,6 +304,187 @@ describe('WorkspaceService', () => {
       const result = await service.removeMember('ws-1', 'm-1', 'owner-1');
 
       expect(result.isOk()).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // acceptInvitation (T2.8)
+  // ---------------------------------------------------------------------------
+
+  describe('acceptInvitation', () => {
+    const ws = Object.assign(new Workspace(), { id: 'ws-1', name: 'WS' });
+
+    function makeInvitation(overrides: Partial<Invitation> = {}): Invitation {
+      const inv = new Invitation();
+      // workspace.id is accessed on the Ref<Workspace>; simulate with a plain proxy
+      (inv as unknown as Record<string, unknown>)['workspace'] = { id: 'ws-1' };
+      inv.status = 'pending';
+      inv.role = 'editor';
+      inv.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      inv.id = 'inv-1';
+      return Object.assign(inv, overrides);
+    }
+
+    it('creates a WorkspaceMember and emits MemberJoinedEvent on success', async () => {
+      vi.mocked(mockInvitationRepo.findByToken).mockResolvedValue(makeInvitation());
+      vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(ws);
+      vi.mocked(mockMemberRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      const result = await service.acceptInvitation('ws-1', 'valid-token', 'user-42');
+
+      expect(result.isOk()).toBe(true);
+      const member = result._unsafeUnwrap();
+      expect(member.role).toBe('editor');
+      expect(member.userId).toBe('user-42');
+      expect(mockMemberRepo.save).toHaveBeenCalledOnce();
+
+      const publishedEvent = vi.mocked(mockEventBus.publish).mock.calls[0][0];
+      expect(publishedEvent).toBeInstanceOf(MemberJoinedEvent);
+      expect((publishedEvent as MemberJoinedEvent).userId).toBe('user-42');
+      expect((publishedEvent as MemberJoinedEvent).workspaceId).toBe('ws-1');
+    });
+
+    it('marks the invitation status as accepted before flushing', async () => {
+      const inv = makeInvitation();
+      vi.mocked(mockInvitationRepo.findByToken).mockResolvedValue(inv);
+      vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(ws);
+      vi.mocked(mockMemberRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      await service.acceptInvitation('ws-1', 'valid-token', 'user-42');
+
+      expect(inv.status).toBe('accepted');
+    });
+
+    it('returns err(NOT_FOUND) when token does not exist', async () => {
+      vi.mocked(mockInvitationRepo.findByToken).mockResolvedValue(null);
+
+      const result = await service.acceptInvitation('ws-1', 'bad-token', 'user-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+    });
+
+    it('returns err(NOT_FOUND) when token belongs to a different workspace', async () => {
+      vi.mocked(mockInvitationRepo.findByToken).mockResolvedValue(makeInvitation());
+      // workspaceId in URL does not match invitation.workspace.id ('ws-1')
+
+      const result = await service.acceptInvitation('ws-OTHER', 'valid-token', 'user-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+    });
+
+    it('returns err(CONFLICT) when invitation is already accepted', async () => {
+      vi.mocked(mockInvitationRepo.findByToken).mockResolvedValue(
+        makeInvitation({ status: 'accepted' }),
+      );
+
+      const result = await service.acceptInvitation('ws-1', 'used-token', 'user-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('CONFLICT');
+    });
+
+    it('returns err(VALIDATION_ERROR) when invitation is expired', async () => {
+      vi.mocked(mockInvitationRepo.findByToken).mockResolvedValue(
+        makeInvitation({ expiresAt: new Date(Date.now() - 1000) }),
+      );
+
+      const result = await service.acceptInvitation('ws-1', 'expired-token', 'user-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('VALIDATION_ERROR');
+    });
+
+    it('returns err(VALIDATION_ERROR) when invitation is revoked', async () => {
+      vi.mocked(mockInvitationRepo.findByToken).mockResolvedValue(
+        makeInvitation({ status: 'revoked' }),
+      );
+
+      const result = await service.acceptInvitation('ws-1', 'revoked-token', 'user-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // changeMemberRole (T2.8)
+  // ---------------------------------------------------------------------------
+
+  describe('changeMemberRole', () => {
+    it('returns ok(member) with updated role and emits MemberRoleChangedEvent', async () => {
+      const member = Object.assign(new WorkspaceMember(), {
+        id: 'm-1', userId: 'user-2', role: 'viewer',
+      });
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(member);
+      vi.mocked(mockMemberRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      const result = await service.changeMemberRole('ws-1', 'user-2', 'editor', 'owner-1');
+
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap().role).toBe('editor');
+
+      const event = vi.mocked(mockEventBus.publish).mock.calls[0][0] as MemberRoleChangedEvent;
+      expect(event).toBeInstanceOf(MemberRoleChangedEvent);
+      expect(event.oldRole).toBe('viewer');
+      expect(event.newRole).toBe('editor');
+      expect(event.userId).toBe('user-2');
+      expect(event.changedByUserId).toBe('owner-1');
+    });
+
+    it('returns err(NOT_FOUND) when member does not exist', async () => {
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(null);
+
+      const result = await service.changeMemberRole('ws-1', 'ghost', 'editor', 'owner-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+    });
+
+    it('returns err(FORBIDDEN) when demoting the sole owner (BR-R02)', async () => {
+      const member = Object.assign(new WorkspaceMember(), {
+        id: 'm-1', userId: 'owner-1', role: 'owner',
+      });
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(member);
+      vi.mocked(mockMemberRepo.countOwners).mockResolvedValue(1);
+
+      const result = await service.changeMemberRole('ws-1', 'owner-1', 'editor', 'owner-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('FORBIDDEN');
+    });
+
+    it('allows demoting an owner when another owner exists', async () => {
+      const member = Object.assign(new WorkspaceMember(), {
+        id: 'm-1', userId: 'owner-2', role: 'owner',
+      });
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(member);
+      vi.mocked(mockMemberRepo.countOwners).mockResolvedValue(2);
+      vi.mocked(mockMemberRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      const result = await service.changeMemberRole('ws-1', 'owner-2', 'editor', 'owner-1');
+
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap().role).toBe('editor');
+    });
+
+    it('allows promoting a viewer to owner without any guard check', async () => {
+      const member = Object.assign(new WorkspaceMember(), {
+        id: 'm-1', userId: 'user-3', role: 'viewer',
+      });
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(member);
+      vi.mocked(mockMemberRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      const result = await service.changeMemberRole('ws-1', 'user-3', 'owner', 'owner-1');
+
+      expect(result.isOk()).toBe(true);
+      expect(mockMemberRepo.countOwners).not.toHaveBeenCalled();
     });
   });
 });

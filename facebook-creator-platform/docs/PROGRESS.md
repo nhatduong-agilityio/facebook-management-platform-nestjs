@@ -4,11 +4,28 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.8` — Accept invitation endpoint + role-change endpoint. DoD: `POST /workspaces/:workspaceId/invitations/:token/accept`; emits `MemberJoinedEvent`; `PATCH /workspaces/:id/members/:userId/role` emits `MemberRoleChangedEvent`; tests.
+- **Next task:** `T2.9` — Publish Job + fallback poll + token-expiry scheduler.
 - **Branch:** `nestjs-practice`
-- **Notes:** 194 tests passing (176 apps/api + 18 services/billing). Run `pnpm mikro-orm migration:up` to apply `Migration20260703000001_MessagingSchema` (creates `messaging` schema + tables). Run `pnpm migration:billing` then `cd services/billing && pnpm mikro-orm migration:up` for billing migrations. Set `STRIPE_WEBHOOK_SECRET` env var before using `POST /api/v1/webhooks/stripe`.
+- **Notes:** 206 tests passing (188 apps/api + 18 services/billing). Run `pnpm mikro-orm migration:up` to apply `Migration20260703000001_MessagingSchema` (creates `messaging` schema + tables). Run `pnpm migration:billing` then `cd services/billing && pnpm mikro-orm migration:up` for billing migrations. Set `STRIPE_WEBHOOK_SECRET` env var before using `POST /api/v1/webhooks/stripe`.
 
 ## Log
+
+### 2026-07-06 — T2.8 Accept invitation + role-change endpoint
+
+- **`events/member-joined.event.ts`** — `MemberJoinedEvent`; `routingKey = 'workspace.member-joined'`; payload: `workspaceId, userId, role, invitationId`; no PII.
+- **`events/member-role-changed.event.ts`** — `MemberRoleChangedEvent`; `routingKey = 'workspace.role-changed'`; payload: `workspaceId, userId, oldRole, newRole, changedByUserId`; no PII.
+- **`IInvitationRepository`** updated — added `findByToken(token): Promise<Invitation | null>` (looks up invitation by its single-use 64-char hex token regardless of status; caller guards status + expiry).
+- **`IWorkspaceMemberRepository`** updated — added `findByWorkspaceAndUserId(workspaceId, userId)` and `save(member)` (persist + flush; one flush per request §6).
+- **`MikroOrmInvitationRepository`** — implements `findByToken` via `repo.findOne({ token })`.
+- **`MikroOrmWorkspaceMemberRepository`** — implements `findByWorkspaceAndUserId` + `save`.
+- **`ChangeRoleDto`** added to `dto/invite-member.dto.ts` — `role: WorkspaceRole` with `@IsIn(['owner', 'editor', 'viewer'])` and Swagger annotation.
+- **`WorkspaceService.acceptInvitation(workspaceId, token, userId)`** — token lookup → workspace match → status/expiry guards (BR-F03) → mutation `invitation.status='accepted'` → `WorkspaceMember.forAcceptedInvite` factory → `members.save(member)` commits both in one flush → emits `MemberJoinedEvent` after commit (§6). Returns `err(NOT_FOUND | CONFLICT | VALIDATION_ERROR)`.
+- **`WorkspaceService.changeMemberRole(workspaceId, targetUserId, newRole, changedByUserId)`** — lookup by userId → sole-owner guard for demotions (BR-R02) → `member.role = newRole` → `members.save(member)` → emits `MemberRoleChangedEvent` after commit (§6). Returns `err(NOT_FOUND | FORBIDDEN)`.
+- **`WorkspaceController`** — two new endpoints:
+  - `POST :workspaceId/invitations/:token/accept` — `ClerkAuthGuard` only (no `WorkspaceRolesGuard`; accepting user is not yet a member; token is the credential); HTTP 201.
+  - `PATCH :workspaceId/members/:userId/role` — `WorkspaceRolesGuard` Owner; HTTP 200; `ChangeRoleDto` body.
+- Tests: 12 new (`acceptInvitation` ×7, `changeMemberRole` ×5). 206/206 total (188 apps/api + 18 services/billing). Lint: clean.
+- No new migration — `acceptedAt` lives on `WorkspaceMember` (already in entity + factory); `Invitation` table needs no new column.
 
 ### 2026-07-06 — T2.6.5 Messaging schema migration
 

@@ -47,6 +47,20 @@ export class WorkspaceMemberResponseDto {
 }
 
 /**
+ * Request body for `PATCH /workspaces/:id/members/:userId/role`.
+ */
+export class ChangeRoleDto {
+  /**
+   * New role to assign. Owners can promote to `owner` or demote to `editor`/`viewer`,
+   * subject to the sole-owner guard (BR-R02).
+   */
+  @ApiProperty({ example: 'editor', enum: ['owner', 'editor', 'viewer'] })
+  @IsString()
+  @IsIn(['owner', 'editor', 'viewer'])
+  role!: WorkspaceRole;
+}
+
+/**
  * Response body for workspace invitation endpoints.
  */
 export class InvitationResponseDto {

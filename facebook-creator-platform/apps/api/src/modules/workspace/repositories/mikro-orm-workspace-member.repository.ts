@@ -44,4 +44,15 @@ export class MikroOrmWorkspaceMemberRepository extends IWorkspaceMemberRepositor
     this.em.remove(member);
     await this.em.flush();
   }
+
+  /** @inheritdoc */
+  findByWorkspaceAndUserId(workspaceId: string, userId: string): Promise<WorkspaceMember | null> {
+    return this.repo.findOne({ workspace: workspaceId, userId });
+  }
+
+  /** @inheritdoc */
+  async save(member: WorkspaceMember): Promise<void> {
+    this.em.persist(member);
+    await this.em.flush();
+  }
 }
