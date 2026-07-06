@@ -282,7 +282,8 @@ describe('BillingService', () => {
       );
     });
 
-    it('invoice.payment_succeeded is a no-op when subscription is already active', async () => {
+    it('invoice.payment_succeeded on active subscription triggers renewal arm (publishes billing.subscription_renewed)', async () => {
+      // T3.6: already-active subscriptions are renewals, not first activations.
       const sub = makeSubscription('active', proPlan, 'sub_active');
       vi.mocked(mockSubscriptions.findByStripeSubscriptionId).mockResolvedValue(sub);
 
@@ -300,8 +301,12 @@ describe('BillingService', () => {
       const result = await service.handleStripeEvent(event);
 
       expect(result.isOk()).toBe(true);
-      expect(mockEm.flush).not.toHaveBeenCalled();
-      expect(mockEventBus.publish).not.toHaveBeenCalled();
+      expect(sub.status).toBe('active'); // Stays active — no state change
+      expect(mockEm.flush).toHaveBeenCalledOnce();
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        'billing.subscription_renewed',
+        expect.objectContaining({ workspaceId: 'ws-1', planCode: 'pro' }),
+      );
     });
 
     it('customer.subscription.deleted transitions to cancelled and publishes billing.subscription_cancelled', async () => {
@@ -351,6 +356,137 @@ describe('BillingService', () => {
       expect(result.isOk()).toBe(true);
       expect(mockEm.flush).not.toHaveBeenCalled();
       expect(mockEventBus.publish).not.toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------------
+    // T3.6: customer.subscription.updated → past_due
+    // -------------------------------------------------------------------------
+    it('customer.subscription.updated (past_due) transitions active → past_due and publishes billing.subscription_past_due', async () => {
+      const sub = makeSubscription('active', proPlan, 'sub_upd');
+      vi.mocked(mockSubscriptions.findByStripeSubscriptionId).mockResolvedValue(sub);
+
+      const event = {
+        id: 'evt_upd_past_due',
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_upd', status: 'past_due' } as Stripe.Subscription },
+      } as unknown as Stripe.Event;
+
+      const result = await service.handleStripeEvent(event);
+
+      expect(result.isOk()).toBe(true);
+      expect(sub.status).toBe('past_due');
+      expect(mockEm.flush).toHaveBeenCalledOnce();
+      expect(mockEm.persist).toHaveBeenCalledOnce(); // billing_events row
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        'billing.subscription_past_due',
+        expect.objectContaining({ workspaceId: 'ws-1', planCode: 'pro' }),
+      );
+    });
+
+    it('customer.subscription.updated (past_due) is a no-op when subscription not found', async () => {
+      vi.mocked(mockSubscriptions.findByStripeSubscriptionId).mockResolvedValue(null);
+
+      const event = {
+        id: 'evt_upd_nf',
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_unknown', status: 'past_due' } as Stripe.Subscription },
+      } as unknown as Stripe.Event;
+
+      const result = await service.handleStripeEvent(event);
+
+      expect(result.isOk()).toBe(true);
+      expect(mockEm.flush).not.toHaveBeenCalled();
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
+    });
+
+    it('customer.subscription.updated (past_due) is a no-op when subscription is already past_due', async () => {
+      const sub = makeSubscription('past_due', proPlan, 'sub_already');
+      vi.mocked(mockSubscriptions.findByStripeSubscriptionId).mockResolvedValue(sub);
+
+      const event = {
+        id: 'evt_upd_idem',
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_already', status: 'past_due' } as Stripe.Subscription },
+      } as unknown as Stripe.Event;
+
+      const result = await service.handleStripeEvent(event);
+
+      expect(result.isOk()).toBe(true);
+      expect(mockEm.flush).not.toHaveBeenCalled();
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
+    });
+
+    it('customer.subscription.updated with non-past_due status is a no-op', async () => {
+      const event = {
+        id: 'evt_upd_other',
+        type: 'customer.subscription.updated',
+        data: { object: { id: 'sub_trial', status: 'trialing' } as Stripe.Subscription },
+      } as unknown as Stripe.Event;
+
+      const result = await service.handleStripeEvent(event);
+
+      expect(result.isOk()).toBe(true);
+      expect(mockEm.flush).not.toHaveBeenCalled();
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------------
+    // T3.6: invoice.payment_succeeded on already-active subscription (renewal)
+    // -------------------------------------------------------------------------
+    it('invoice.payment_succeeded on active subscription publishes billing.subscription_renewed and logs billing_events row', async () => {
+      const sub = makeSubscription('active', proPlan, 'sub_renew');
+      vi.mocked(mockSubscriptions.findByStripeSubscriptionId).mockResolvedValue(sub);
+
+      const start = 1750000000;
+      const end = 1752592000;
+      const event = {
+        id: 'evt_renew',
+        type: 'invoice.payment_succeeded',
+        data: {
+          object: {
+            parent: { subscription_details: { subscription: 'sub_renew' } },
+            lines: { data: [{ period: { start, end } }] },
+          } as unknown as Stripe.Invoice,
+        },
+      } as unknown as Stripe.Event;
+
+      const result = await service.handleStripeEvent(event);
+
+      expect(result.isOk()).toBe(true);
+      expect(sub.status).toBe('active'); // No state change
+      expect(sub.currentPeriodStart).toEqual(new Date(start * 1000));
+      expect(mockEm.persist).toHaveBeenCalledOnce(); // billing_events row
+      expect(mockEm.flush).toHaveBeenCalledOnce();
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        'billing.subscription_renewed',
+        expect.objectContaining({ workspaceId: 'ws-1', planCode: 'pro' }),
+      );
+    });
+
+    it('invoice.payment_succeeded on past_due subscription transitions past_due → active and publishes billing.subscription_activated', async () => {
+      const sub = makeSubscription('past_due', proPlan, 'sub_recover');
+      vi.mocked(mockSubscriptions.findByStripeSubscriptionId).mockResolvedValue(sub);
+
+      const event = {
+        id: 'evt_recover',
+        type: 'invoice.payment_succeeded',
+        data: {
+          object: {
+            parent: { subscription_details: { subscription: 'sub_recover' } },
+            lines: { data: [] },
+          } as unknown as Stripe.Invoice,
+        },
+      } as unknown as Stripe.Event;
+
+      const result = await service.handleStripeEvent(event);
+
+      expect(result.isOk()).toBe(true);
+      expect(sub.status).toBe('active');
+      expect(mockEm.flush).toHaveBeenCalledOnce();
+      expect(mockEventBus.publish).toHaveBeenCalledWith(
+        'billing.subscription_activated',
+        expect.objectContaining({ workspaceId: 'ws-1', planCode: 'pro' }),
+      );
     });
   });
 });

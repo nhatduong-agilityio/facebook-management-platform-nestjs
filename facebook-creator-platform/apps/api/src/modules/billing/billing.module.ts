@@ -5,6 +5,7 @@ import { IBillingHttpClient } from './ports/billing-http.client.port';
 import { BillingHttpClientAdapter } from './adapters/billing-http-client.adapter';
 import { BillingQuotaAdapter } from './adapters/billing-quota.adapter';
 import { BillingController } from './billing.controller';
+import { BillingRedirectController } from './billing-redirect.controller';
 import { BillingSubscriptionConsumer } from './consumers/billing-subscription.consumer';
 
 /**
@@ -29,7 +30,7 @@ import { BillingSubscriptionConsumer } from './consumers/billing-subscription.co
  */
 @Module({
   imports: [IdentityModule],
-  controllers: [BillingController],
+  controllers: [BillingController, BillingRedirectController],
   providers: [
     { provide: IBillingHttpClient, useClass: BillingHttpClientAdapter },
     { provide: IPostQuotaProvider, useClass: BillingQuotaAdapter },

@@ -7,6 +7,8 @@ import { uuidv7 } from 'uuidv7';
 import type {
   SubscriptionActivatedPayload,
   SubscriptionCancelledPayload,
+  SubscriptionPastDuePayload,
+  SubscriptionRenewedPayload,
 } from '@fcp/billing-contracts';
 import { AppError } from './common/app-error';
 import { IPlanRepository } from './ports/plan.repository.port';
@@ -20,12 +22,15 @@ import { BillingEvent } from './entities/billing-event.entity';
  * Allowed state transitions for the billing subscription state machine (§7).
  *
  * Terminal state `cancelled` has no outbound transitions.
+ * `past_due` is set by Stripe when all payment retries are exhausted; it can recover
+ * to `active` (invoice.payment_succeeded) or terminate to `cancelled`.
  * Free-plan guard (BR-F10) further restricts transitions for plan.code === 'free'.
  */
 const ALLOWED_TRANSITIONS: Record<SubscriptionStatus, SubscriptionStatus[]> = {
-  trialing: ['active', 'grace_period', 'cancelled'],
-  active: ['grace_period', 'cancelled'],
-  grace_period: ['active', 'cancelled'],
+  trialing: ['active', 'grace_period', 'past_due', 'cancelled'],
+  active: ['grace_period', 'past_due', 'cancelled'],
+  grace_period: ['active', 'past_due', 'cancelled'],
+  past_due: ['active', 'cancelled'],
   cancelled: [],
 };
 
@@ -105,11 +110,11 @@ export class BillingService {
 
     const successUrl = this.config.get<string>(
       'BILLING_SUCCESS_URL',
-      'http://localhost:3000/billing/success',
+      'http://localhost:3000/api/v1/billing/success',
     );
     const cancelUrl = this.config.get<string>(
       'BILLING_CANCEL_URL',
-      'http://localhost:3000/billing/cancel',
+      'http://localhost:3000/api/v1/billing/cancel',
     );
 
     const { url } = await this.stripe.createCheckoutSession({
@@ -133,7 +138,7 @@ export class BillingService {
    *
    * Guards:
    * - Transition must be in `ALLOWED_TRANSITIONS[currentStatus]` → `err(INVALID_STATE_TRANSITION)`.
-   * - Free-plan guard (BR-F10): free plan cannot enter `grace_period` or `cancelled`.
+   * - Free-plan guard (BR-F10): free plan cannot enter `grace_period`, `past_due`, or `cancelled`.
    *
    * @param sub          - The subscription to transition (must be tracked by the EM).
    * @param newStatus    - The target status.
@@ -165,11 +170,11 @@ export class BillingService {
 
     // BR-F10: free plan may only be trialing or active
     const planCode = unref(sub.plan).code;
-    if (planCode === 'free' && (newStatus === 'grace_period' || newStatus === 'cancelled')) {
+    if (planCode === 'free' && (newStatus === 'grace_period' || newStatus === 'past_due' || newStatus === 'cancelled')) {
       return err(
         new AppError(
           'INVALID_STATE_TRANSITION',
-          'Free plan cannot enter grace_period or cancelled',
+          'Free plan cannot enter grace_period, past_due or cancelled',
           {
             planCode,
             to: newStatus,
@@ -216,6 +221,8 @@ export class BillingService {
         return this.handleInvoicePaymentSucceeded(event);
       case 'invoice.payment_failed':
         return this.handleInvoicePaymentFailed(event);
+      case 'customer.subscription.updated':
+        return this.handleSubscriptionUpdated(event);
       case 'customer.subscription.deleted':
         return this.handleSubscriptionDeleted(event);
       default:
@@ -260,9 +267,14 @@ export class BillingService {
   }
 
   /**
-   * Handles `invoice.payment_succeeded` — transitions `trialing` or `grace_period` to `active`.
+   * Handles `invoice.payment_succeeded`.
    *
-   * Publishes `billing.subscription_activated` after commit.
+   * Three distinct cases:
+   * - `trialing` / `grace_period` / `past_due` → transition to `active`, publish
+   *   `billing.subscription_activated`.
+   * - `active` (renewal) → no state change; log a `billing_events` row and publish
+   *   `billing.subscription_renewed`.
+   * - `cancelled` → no-op (subscription already terminal).
    *
    * @param event - Verified Stripe event of type `invoice.payment_succeeded`.
    * @returns ok(void) on success, or err(AppError) for domain failures.
@@ -287,8 +299,36 @@ export class BillingService {
       sub.currentPeriodEnd = new Date(period.end * 1000);
     }
 
-    if (sub.status !== 'trialing' && sub.status !== 'grace_period') {
-      return ok(undefined); // Already active or cancelled — nothing to do.
+    const planCode = unref(sub.plan).code;
+
+    if (sub.status === 'active') {
+      // Renewal: subscription stays active; log the event and notify consumers.
+      const billingEvent = BillingEvent.create(
+        event.id,
+        event.type,
+        { fromStatus: 'active', toStatus: 'active', workspaceId: sub.workspaceId, planCode },
+        new Date(),
+        sub,
+      );
+      this.em.persist(billingEvent);
+      await this.em.flush();
+
+      const renewedAt = sub.currentPeriodStart?.toISOString() ?? new Date().toISOString();
+      const payload: SubscriptionRenewedPayload = {
+        eventId: uuidv7(),
+        workspaceId: sub.workspaceId,
+        planCode,
+        renewedAt,
+      };
+      await this.eventBus.publish(
+        'billing.subscription_renewed',
+        payload as unknown as Record<string, unknown>,
+      );
+      return ok(undefined);
+    }
+
+    if (sub.status !== 'trialing' && sub.status !== 'grace_period' && sub.status !== 'past_due') {
+      return ok(undefined); // cancelled — terminal state, nothing to do
     }
 
     const transResult = this.transitionSubscription(sub, 'active', event.id, event.type);
@@ -296,7 +336,6 @@ export class BillingService {
 
     await this.em.flush();
 
-    const planCode = unref(sub.plan).code;
     const payload: SubscriptionActivatedPayload = {
       eventId: uuidv7(),
       workspaceId: sub.workspaceId,
@@ -347,6 +386,54 @@ export class BillingService {
     if (transResult.isErr()) return err(transResult.error);
 
     await this.em.flush();
+    return ok(undefined);
+  }
+
+  /**
+   * Handles `customer.subscription.updated` — acts only when Stripe status is `past_due`.
+   *
+   * Stripe emits `customer.subscription.updated` for many changes (plan swap, trial end, etc.).
+   * We only react when `status === 'past_due'`, which means all Stripe payment retries are
+   * exhausted. Transitions our subscription to `past_due` and publishes
+   * `billing.subscription_past_due` so the notification service can alert workspace members.
+   *
+   * Idempotent: if the subscription is already `past_due` or `cancelled`, the event is a no-op.
+   *
+   * @param event - Verified Stripe event of type `customer.subscription.updated`.
+   * @returns ok(void) on success, or err(AppError) for domain failures.
+   */
+  private async handleSubscriptionUpdated(event: Stripe.Event): Promise<Result<void, AppError>> {
+    const stripeSub = event.data.object as Stripe.Subscription;
+
+    if (stripeSub.status !== 'past_due') {
+      return ok(undefined); // Only react to past_due transitions.
+    }
+
+    const sub = await this.subscriptions.findByStripeSubscriptionId(stripeSub.id);
+    if (!sub) return ok(undefined);
+
+    // Idempotent: already in past_due or terminal state.
+    if (sub.status === 'past_due' || sub.status === 'cancelled') {
+      return ok(undefined);
+    }
+
+    const transResult = this.transitionSubscription(sub, 'past_due', event.id, event.type);
+    if (transResult.isErr()) return err(transResult.error);
+
+    await this.em.flush();
+
+    const planCode = unref(sub.plan).code;
+    const payload: SubscriptionPastDuePayload = {
+      eventId: uuidv7(),
+      workspaceId: sub.workspaceId,
+      planCode,
+      occurredAt: new Date().toISOString(),
+    };
+    await this.eventBus.publish(
+      'billing.subscription_past_due',
+      payload as unknown as Record<string, unknown>,
+    );
+
     return ok(undefined);
   }
 
