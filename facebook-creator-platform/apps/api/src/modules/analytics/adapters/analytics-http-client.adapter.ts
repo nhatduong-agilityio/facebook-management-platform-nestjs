@@ -1,20 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { MetricsSummaryResponse } from '@fcp/analytics-contracts';
 import { IHttpClient } from '../../../common/http/http-client.port';
 import { IAnalyticsClient } from '../ports/analytics-http.client.port';
 import type { MetricsSummaryDto } from '../dto/analytics.dto';
 
-/** Raw shape returned by `services/analytics` over HTTP. */
-interface RawMetricsSummary {
-  reach: number;
-  impressions: number;
-  likes: number;
-  comments: number;
-  shares: number;
-}
-
-/** Maps the raw HTTP response to the API's public `MetricsSummaryDto`. */
-function toDto(raw: RawMetricsSummary): MetricsSummaryDto {
+/** Maps the wire response to the API's public `MetricsSummaryDto`. */
+function toDto(raw: MetricsSummaryResponse): MetricsSummaryDto {
   return {
     reach: raw.reach,
     impressions: raw.impressions,
@@ -56,7 +48,7 @@ export class AnalyticsHttpClientAdapter extends IAnalyticsClient {
    * @returns Mapped `MetricsSummaryDto`.
    */
   async getWorkspaceMetrics(workspaceId: string): Promise<MetricsSummaryDto> {
-    const raw = await this.http.get<RawMetricsSummary>(
+    const raw = await this.http.get<MetricsSummaryResponse>(
       `${this.baseUrl}/workspaces/${workspaceId}/metrics`,
     );
     return toDto(raw);

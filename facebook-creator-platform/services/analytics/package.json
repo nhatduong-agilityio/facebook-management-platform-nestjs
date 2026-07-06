@@ -13,6 +13,7 @@
     "mikro-orm": "mikro-orm"
   },
   "dependencies": {
+    "@fcp/analytics-contracts": "workspace:*",
     "@golevelup/nestjs-rabbitmq": "^9.0.2",
     "@mikro-orm/core": "^7.1.5",
     "@mikro-orm/decorators": "^7.1.5",
