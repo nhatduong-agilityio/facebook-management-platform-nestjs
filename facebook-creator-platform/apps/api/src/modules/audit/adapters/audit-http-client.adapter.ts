@@ -1,21 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { AuditEventResponse } from '@fcp/audit-contracts';
 import { IHttpClient, DownstreamServiceError } from '../../../common/http/http-client.port';
 import { IAuditClient } from '../ports/audit-http.client.port';
 import type { AuditLogResponseDto } from '../dto/audit-log.dto';
 
-/** Raw shape returned by `services/audit` over HTTP. `receivedAt` is an ISO string in transit. */
-interface RawAuditEvent {
-  _id: string;
-  eventId: string;
-  routingKey: string;
-  workspaceId: string | null;
-  payload: Record<string, unknown>;
-  receivedAt: string;
-}
-
-/** Maps the raw HTTP response shape to the API's public `AuditLogResponseDto`. */
-function toDto(raw: RawAuditEvent): AuditLogResponseDto {
+/** Maps the wire response to the API's public `AuditLogResponseDto`. */
+function toDto(raw: AuditEventResponse): AuditLogResponseDto {
   return {
     _id: raw._id,
     eventId: raw.eventId,
@@ -62,7 +53,7 @@ export class AuditHttpClientAdapter extends IAuditClient {
     const url = new URL(`${this.baseUrl}/workspaces/${workspaceId}/audit-logs`);
     if (limit !== undefined) url.searchParams.set('limit', String(limit));
 
-    const raw = await this.http.get<RawAuditEvent[]>(url.toString());
+    const raw = await this.http.get<AuditEventResponse[]>(url.toString());
     return raw.map(toDto);
   }
 
@@ -74,7 +65,7 @@ export class AuditHttpClientAdapter extends IAuditClient {
    */
   async getAuditEvent(id: string): Promise<AuditLogResponseDto | null> {
     try {
-      const raw = await this.http.get<RawAuditEvent>(`${this.baseUrl}/audit-logs/${id}`);
+      const raw = await this.http.get<AuditEventResponse>(`${this.baseUrl}/audit-logs/${id}`);
       return toDto(raw);
     } catch (e) {
       if (e instanceof DownstreamServiceError && e.status === 404) return null;

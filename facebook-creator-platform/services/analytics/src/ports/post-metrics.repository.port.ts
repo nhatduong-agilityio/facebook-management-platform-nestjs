@@ -1,3 +1,4 @@
+import type { MetricsSummaryResponse } from '@fcp/analytics-contracts';
 import type { PostMetrics } from '../entities/post-metrics.entity';
 
 /**
@@ -15,17 +16,8 @@ export interface PostMetricsData {
   shares: number;
 }
 
-/**
- * Aggregated metrics summary for a workspace or post.
- * Returned by the HTTP read endpoints.
- */
-export interface MetricsSummary {
-  reach: number;
-  impressions: number;
-  likes: number;
-  comments: number;
-  shares: number;
-}
+/** Alias for `MetricsSummaryResponse` — keeps internal call sites unchanged. */
+export type MetricsSummary = MetricsSummaryResponse;
 
 /**
  * Port: persistence contract for `PostMetrics` aggregates.

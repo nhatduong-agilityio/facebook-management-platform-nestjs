@@ -2,21 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { PostPublishedPayload } from '@fcp/analytics-contracts';
 import { IPostMetricsRepository } from './ports/post-metrics.repository.port';
 import { IInternalApiClient } from './ports/internal-api.client.port';
 import { IFacebookInsightsProvider } from './ports/facebook-insights.provider.port';
-
-/**
- * Payload carried by the `posts.published` event (matches `PostPublishedEvent` in apps/api).
- * Only UUIDs — no PII (ADR-049).
- */
-interface PostPublishedPayload {
-  eventId: string;
-  postId: string;
-  workspaceId: string;
-  facebookGraphPostId: string;
-  facebookAccountId: string;
-}
 
 /**
  * Consumes `posts.published` events from the `fcp.events` topic exchange.
