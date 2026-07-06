@@ -376,6 +376,21 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > and the service has no other infrastructure files. Extract to `src/infrastructure/` if a second adapter or
 > spec is needed for the same concern (see ADR-058 extraction trigger pattern).
 
+> **ADR-064 Audit service: MongoDB unique index for idempotency; wildcard consumer; append-only entity; PII strip list (T3.4).**
+> - **Idempotency**: MongoDB unique index on `eventId` (not Redis `SET NX`). The repository catches duplicate-key error
+>   code 11000 and returns silently. This is the correct mechanism for append-only collections — no dedup key to clean up on failure.
+> - **Wildcard consumer**: One `@RabbitSubscribe({ routingKey: '#' })` on queue `audit.all` captures all 14+ events on
+>   `fcp.events` without registering a separate handler per routing key. The actual routing key is read from
+>   `amqpMsg.fields.routingKey` (passed as the second parameter by `@golevelup/nestjs-rabbitmq`) and stored in the doc.
+> - **Append-only entity**: `AuditEvent` has no `deletedAt` / `updatedAt` — it is the append-only exception listed in CLAUDE.md.
+>   `_id` is a UUID v7 string (not MongoDB ObjectId) for consistency with all other PKs (ADR-013).
+> - **`workspaceId` as top-level field**: Extracted from the payload (nullable for platform-level events like
+>   `facebook.page.deauthorized`) and stored + indexed as a top-level field. Required for T3.5 `GET /workspaces/:id/audit-logs`.
+> - **PII strip fields**: `email`, `fullName`, `accessToken`, `pageToken`, `password`. Stripping is defence-in-depth —
+>   publishers are responsible for clean payloads, but `MemberInvitedEvent` intentionally carries `email` for the Email Service.
+> - **No Redis**: `services/audit` has no Redis dependency. Dedup is fully handled by the MongoDB unique index.
+> - **`@mikro-orm/mongodb` version**: `^7.1.5` (same as all MikroORM packages, verified 2026-07-06).
+
 ## Pre-T4.x architecture decisions — Week 4 audit (2026-07-03)
 
 > **ADR-051 Full post event set: `PostCreatedEvent` enriched + `PostUpdatedEvent`, `PostFailedEvent`, `PostDeletedEvent` added.**
