@@ -4,12 +4,23 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T3.3` — Analytics service scaffold (`services/analytics/`). DoD: consumer on `posts.published` → Graph API fetch → `post_metrics` upsert; HTTP `GET /workspaces/:id/metrics` + `GET /posts/:id/metrics`; tests.
+- **Next task:** `T2.8` — Accept invitation endpoint + role-change endpoint. DoD: `POST /workspaces/:workspaceId/invitations/:token/accept`; emits `MemberJoinedEvent`; `PATCH /workspaces/:id/members/:userId/role` emits `MemberRoleChangedEvent`; tests.
 - **Branch:** `nestjs-practice`
-- **Notes:** 187 tests passing (169 apps/api + 18 services/billing). Run `pnpm migration:billing` then apply `Migration20260703000002_BillingEvents` (`cd services/billing && pnpm mikro-orm migration:up`) to create `billing.billing_events`. Set `STRIPE_WEBHOOK_SECRET` env var before using `POST /api/v1/webhooks/stripe`.
-- **Pre-T2 follow-up (not in T1.5 DoD):** `acceptInvitation` endpoint — infrastructure ready; deferred.
+- **Notes:** 194 tests passing (176 apps/api + 18 services/billing). Run `pnpm mikro-orm migration:up` to apply `Migration20260703000001_MessagingSchema` (creates `messaging` schema + tables). Run `pnpm migration:billing` then `cd services/billing && pnpm mikro-orm migration:up` for billing migrations. Set `STRIPE_WEBHOOK_SECRET` env var before using `POST /api/v1/webhooks/stripe`.
 
 ## Log
+
+### 2026-07-06 — T2.6.5 Messaging schema migration
+
+- **`Migration20260703000001_MessagingSchema`** — creates `messaging` schema; `messaging.event_message_logs` (app-UUID PK, no DB DEFAULT, `processing_status` CHECK, 2 indexes) and `messaging.dead_letter_messages` (FK to event_message_logs ON DELETE RESTRICT, UNIQUE on event_id per BR-R09). `dead_letter_messages.id` uses `DEFAULT gen_random_uuid()` per reference DDL — infra-table exception to ADR-013.
+- **`IMessagingLogRepository`** port (`src/common/events/messaging-log.port.ts`) — `insertPending`, `markProcessed`, `markFailed`, `markDlq`, `insertDeadLetter`; lives in `common/events/` alongside the event bus.
+- **`PostgresMessagingLogRepository`** adapter (`src/infrastructure/rabbitmq/messaging-log.repository.ts`) — raw SQL via `MikroORM.em.getConnection().execute()`; no entity/flush lifecycle for infra writes; injects `MikroORM` (not `EntityManager`) per ADR-030.
+- **`RabbitMqEventBus`** updated — injects `IMessagingLogRepository`; `publish()` calls `insertPending` before `amqp.publish`, `markProcessed` on success, `markFailed` + rethrows on error.
+- **`DlqConsumer`** (`src/infrastructure/rabbitmq/consumers/dlq.consumer.ts`) — `@RabbitSubscribe` on `fcp.dlq` fanout, queue `dlq.logger`; extracts `eventId` from payload; calls `markDlq` + `insertDeadLetter`; returns `Nack(false)` if `eventId` absent (no infinite loop).
+- **`RabbitmqModule`** updated — registers `IMessagingLogRepository → PostgresMessagingLogRepository` + `DlqConsumer`; exports `IMessagingLogRepository`.
+- `verify-seed.sql` already references `messaging.*` tables — no change needed.
+- Tests: 7 new (3 event-bus log-flow tests + 4 DLQ consumer tests). 194/194 total (176 apps/api + 18 services/billing). Lint: clean.
+- **Setup required:** `pnpm mikro-orm migration:up` (in `apps/api`) to apply `Migration20260703000001_MessagingSchema`.
 
 ### 2026-07-03 — T3.2 Billing state machine + Stripe webhook (addendum: TypeScript fixes)
 

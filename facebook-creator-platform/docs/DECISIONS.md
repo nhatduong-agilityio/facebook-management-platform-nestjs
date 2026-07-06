@@ -246,18 +246,20 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 >   `GET /internal/users/:id/email` on `apps/api`.
 > Both fields are UUIDs — not PII.
 >
-> **ADR-050 Internal endpoint pattern for cross-service PII resolution.**
-> Supporting services (`analytics`, `email`) sometimes need data that lives in the `core` schema
-> owned by `apps/api` (page tokens, user emails). These are not included in event payloads (PII rule).
-> Instead: `apps/api` exposes a set of **internal-only HTTP routes** under `/internal/` that are not
-> Swagger-documented and are secured by a shared internal secret (`INTERNAL_API_SECRET` env var,
-> compared in a dedicated guard). Consuming services include this header on every internal call.
-> Internal endpoints defined:
-> - `GET /internal/facebook-accounts/:id/token` — returns decrypted page token for a given account ID.
-> - `GET /internal/users/:id/email` — returns email for a given user ID.
-> - `GET /internal/workspaces/:id/owner-email` — returns workspace owner email (used by email service
->   for billing events where only `workspaceId` is available).
+> **ADR-050 Internal endpoint pattern for cross-service PII resolution (consolidated resource design).**
+> Supporting services (`analytics`, `email`, `notification`) sometimes need data that lives in the `core`
+> schema owned by `apps/api` (page tokens, user emails, workspace membership). These are not included in
+> event payloads (PII rule). Instead: `apps/api` exposes a set of **internal-only HTTP routes** under
+> `/internal/` that are not Swagger-documented and are secured by a shared internal secret
+> (`INTERNAL_API_SECRET` env var, compared in a dedicated guard). Consuming services include this header
+> on every internal call. Endpoints are resource-based (not action-scoped) so new callers add fields
+> rather than new endpoints:
+> - `GET /internal/facebook-accounts/:id` — returns `{ id, pageToken }` (decrypted AES token); used by `services/analytics`.
+> - `GET /internal/users/:id` — returns `{ id, email }`; used by `services/email`.
+> - `GET /internal/workspaces/:id` — returns `{ id, ownerId, ownerEmail }`; used by `services/email` for billing events.
+> - `GET /internal/workspaces/:id/members` — returns `[{ userId, role }]`; used by `services/notification` for projection cold-start reconciliation (ADR-059).
 > All internal endpoints return 404 on unknown ID and 401 on missing/bad secret. No Swagger. No Clerk JWT.
+> Design rule: never add a new `/internal/<resource>/:id/<field>` path — extend the resource response DTO instead.
 
 ## Pre-T3.3 architecture decisions (2026-07-03)
 
@@ -281,6 +283,40 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > `posts.published`, fetch Graph API metrics, upsert `post_metrics`. No downstream publish step.
 > If `analytics.metrics_updated` events are needed in a later task (e.g. for notification or audit), they
 > can be added then — adding them now without a confirmed consumer would be premature.
+
+## Architecture decisions — post-review additions (2026-07-06)
+
+> **ADR-058 Background jobs stay in `apps/api` for current scale; extraction deferred.**
+> `PublishJob`, `PublishFallbackPollJob`, and `FacebookTokenExpiryScheduler` currently live in `apps/api`.
+> Architecturally they are not HTTP-request handlers — they are long-running workers that happen to share
+> the same process. At current scale this is acceptable: shared DB connection pool, no independent scaling
+> requirement, single deploy unit. The extraction trigger is any of: (1) jobs delay API startup, (2) jobs
+> need independent horizontal scaling, (3) job deploy frequency diverges from API deploy frequency.
+> If extracted, the target is `services/jobs/` — a separate NestJS app consuming RabbitMQ and running
+> `@nestjs/schedule` crons, with its own process but sharing the same `core` schema. Do not extract
+> until at least one trigger is observed.
+
+> **ADR-059 Notification Service projection cold-start reconciliation via internal snapshot.**
+> `workspace_members_projection` is built from RabbitMQ events. If the Notification Service goes down
+> and misses membership events, the projection silently drifts. On service boot, the Notification Service
+> reads all distinct `workspace_id` values already present in its projection, calls
+> `GET /internal/workspaces/:id/members` on `apps/api` for each, and re-upserts the result using the
+> same conflict-resolution logic (`INSERT … ON CONFLICT DO UPDATE`) as the event consumers. This recovers
+> from missed events without full event replay. Skipped for workspaces not yet in the projection (first
+> boot) — event consumers will populate them naturally. Added to T4.2 DoD.
+> Limitation: on the very first deploy, if membership events were published before the Notification
+> Service was running, those workspaces will never appear in the projection until a new membership event
+> arrives. Acceptable for current scale; full event sourcing / replay is the long-term fix.
+
+> **ADR-060 Billing lifecycle events extended to cover `past_due` and `subscription_renewed`.**
+> T3.2 published only `billing.subscription_activated` and `billing.subscription_cancelled`.
+> Two additional Stripe lifecycle events are needed for a complete notification surface:
+> - `customer.subscription.updated` with `status: past_due` → transition to `past_due`, publish
+>   `billing.subscription_past_due`. Notification Service alerts workspace members (in-app + Slack).
+> - `invoice.payment_succeeded` where subscription is already `active` (renewal, not initial checkout)
+>   → publish `billing.subscription_renewed`. No downstream notification required at current scope;
+>   recorded in `billing_events` log. Available for future Audit / Analytics consumers.
+> Both are idempotent via `stripe_event_id` unique key (same pattern as T3.2). Added as T3.6.
 
 ## Pre-T4.x architecture decisions — Week 4 audit (2026-07-03)
 
@@ -359,6 +395,7 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-06 | **Architectural review improvements applied to TASKS.md.** (1) T5.8 messaging schema migration moved to T2.6.5 — tables must exist from the point RabbitMQ is in use, not as a Week 5 cleanup. (2) T3.6 added: billing lifecycle event completeness (`billing.subscription_past_due`, `billing.subscription_renewed`). (3) T4.1 gains `posts.failed → Algolia` consumer (five consumers, not four). (4) T4.2 gains `billing.subscription_past_due` notification consumer + projection cold-start reconciliation (ADR-059). (5) ADR-050 internal endpoints consolidated to resource-based design: `/internal/facebook-accounts/:id`, `/internal/users/:id`, `/internal/workspaces/:id`, `/internal/workspaces/:id/members` — no more action-scoped sub-paths. (6) ADR-058 documents services/jobs extraction trigger conditions (deferred). |
 | 2026-06-29 | Initial version pinning; TS held at 5.9, ESLint at 9 (see rationale). |
 | 2026-06-29 | **Roadmap reorder (no effort change, ~222h):** moved MikroORM, BaseEntity (uuid v7 + timestamps + soft delete), PII `EncryptedText`, and the Result pattern from Week 5 into Week 1 (T1.2). These are foundational/cross-cutting — every feature inherits them, so building features first and "migrating" later would force a full rewrite of entities, repositories, and service signatures. Moved the Audit Service to Week 3 (after the event bus is stable, so audit can be exercised end-to-end). Week 5 is now verification + Artillery load testing, not building. This removes hidden rework and de-risks the schedule. |
 | 2026-06-30 | **T1.2 complete.** MikroORM v7 wired to PG + Mongo; BaseEntity (uuid v7 + timestamps + soft-delete); AppError + toHttpException; EncryptedText (AES-256-GCM); Pino logger with PII redaction; User entity + initial migration. See ADR-021/022/023 for v7 decorator split, TsMorph metadata provider, and offline migration workflow. |
