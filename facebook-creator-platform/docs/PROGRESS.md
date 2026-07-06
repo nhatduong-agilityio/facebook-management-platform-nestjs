@@ -4,11 +4,27 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T2.9` — Publish Job + fallback poll + token-expiry scheduler.
+- **Next task:** `T3.3` — Analytics service (`services/analytics/`).
 - **Branch:** `nestjs-practice`
-- **Notes:** 206 tests passing (188 apps/api + 18 services/billing). Run `pnpm mikro-orm migration:up` to apply `Migration20260703000001_MessagingSchema` (creates `messaging` schema + tables). Run `pnpm migration:billing` then `cd services/billing && pnpm mikro-orm migration:up` for billing migrations. Set `STRIPE_WEBHOOK_SECRET` env var before using `POST /api/v1/webhooks/stripe`.
+- **Notes:** 217 tests passing (199 apps/api + 18 services/billing). Run `pnpm mikro-orm migration:up` to apply `Migration20260703000001_MessagingSchema` (creates `messaging` schema + tables). Run `pnpm migration:billing` then `cd services/billing && pnpm mikro-orm migration:up` for billing migrations. Set `STRIPE_WEBHOOK_SECRET` env var before using `POST /api/v1/webhooks/stripe`.
 
 ## Log
+
+### 2026-07-06 — T2.9 Publish Job + fallback poll + token-expiry scheduler
+
+- **`@nestjs/schedule@^6.1.3`** added to `apps/api/package.json` (ADR-054). `ScheduleModule.forRoot()` imported in `AppModule`.
+- **`FacebookTokenExpiringEvent`** (`facebook/events/facebook-token-expiring.event.ts`) — `routingKey='facebook.token_expiring'`; payload: `accountId, workspaceId, pageId, tokenExpiresAt`; no token value (BR-F11).
+- **`IFacebookGraphApiProvider`** extended with two new abstract methods:
+  - `publishPost(pageId, token, content, mediaUrl?)` → `{ postId }` — `POST /{pageId}/feed`
+  - `checkPostLive(graphPostId, token)` → `boolean` — `GET /{postId}?fields=id`; returns `false` on 4xx (post gone/token expired), rethrows on network failure.
+- **`FacebookGraphApiAdapter`** implements both methods.
+- **`PublishJob`** (`posts/jobs/publish.job.ts`) — `@Cron(EVERY_MINUTE)`; injects `MikroORM`, `IFacebookGraphApiProvider`, `IEventBus`, `Logger`; forks EM per run; loads `scheduled` posts with `scheduledAt <= now()`; calls Graph API per post; on success → `publishing` + sets `facebookGraphPostId`; on error / no account → `failed` + `PostFailedEvent`.
+- **`PublishFallbackPollJob`** (`posts/jobs/publish-fallback-poll.job.ts`) — `@Cron('0 */5 * * * *')`; reads `PUBLISH_TTL_MINUTES` (default 30) from env; loads `publishing` posts with `updatedAt <= now() - TTL`; calls `checkPostLive`; if live → `published` + `PostPublishedEvent`; if within TTL×3 → no-op; if beyond TTL×3 → `failed` + `PostFailedEvent`.
+- **`FacebookTokenExpiryScheduler`** (`facebook/jobs/facebook-token-expiry.job.ts`) — `@Cron(EVERY_DAY_AT_MIDNIGHT)`; finds accounts with `tokenExpiresAt < now() + 7 days`; emits `FacebookTokenExpiringEvent` per account; no PII in payload.
+- **`PostsModule`** — added `PublishJob`, `PublishFallbackPollJob` + `IFacebookGraphApiProvider → FacebookGraphApiAdapter` binding.
+- **`FacebookModule`** — added `FacebookTokenExpiryScheduler`.
+- `docs/DECISIONS.md` — ADR-053 (token-expiry events) + ADR-054 (forked EM per job run).
+- Tests: 11 new (publish.job ×4, publish-fallback-poll.job ×4, facebook-token-expiry.job ×3). 217/217 total (199 apps/api + 18 services/billing). Lint: clean.
 
 ### 2026-07-06 — T2.8 Accept invitation + role-change endpoint
 

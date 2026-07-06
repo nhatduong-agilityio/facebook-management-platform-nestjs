@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   IFacebookGraphApiProvider,
   type FacebookPageData,
+  type PublishedPostResult,
   type RefreshedToken,
 } from '../ports/facebook-graph-api.provider.port';
 
@@ -150,6 +151,52 @@ export class FacebookGraphApiAdapter extends IFacebookGraphApiProvider {
 
     const data = (await res.json()) as LongLivedTokenResponse;
     return data.access_token;
+  }
+
+  /** @inheritdoc */
+  async publishPost(
+    pageId: string,
+    pageAccessToken: string,
+    content: string,
+    mediaUrl?: string,
+  ): Promise<PublishedPostResult> {
+    const body: Record<string, string> = {
+      message: content,
+      access_token: pageAccessToken,
+    };
+    if (mediaUrl) body['link'] = mediaUrl;
+
+    const res = await fetch(`${GRAPH_BASE}/${pageId}/feed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Facebook Graph API POST /${pageId}/feed failed (${res.status}): ${text}`);
+    }
+
+    const data = (await res.json()) as { id: string };
+    return { postId: data.id };
+  }
+
+  /** @inheritdoc */
+  async checkPostLive(facebookGraphPostId: string, pageAccessToken: string): Promise<boolean> {
+    const params = new URLSearchParams({
+      fields: 'id',
+      access_token: pageAccessToken,
+    });
+
+    const res = await fetch(`${GRAPH_BASE}/${facebookGraphPostId}?${params.toString()}`);
+
+    if (!res.ok) {
+      // 4xx means the post is gone / token invalid — treat as not live (not a network error)
+      return false;
+    }
+
+    const data = (await res.json()) as { id?: string };
+    return typeof data.id === 'string' && data.id.length > 0;
   }
 
   /**

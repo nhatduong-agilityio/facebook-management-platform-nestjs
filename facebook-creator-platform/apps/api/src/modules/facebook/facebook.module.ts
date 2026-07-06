@@ -13,6 +13,7 @@ import { FacebookController } from './facebook.controller';
 import { FacebookCallbackController } from './facebook-callback.controller';
 import { FacebookWebhookController } from './facebook-webhook.controller';
 import { FacebookPageDeauthorizedConsumer } from './consumers/facebook-deauthorized.consumer';
+import { FacebookTokenExpiryScheduler } from './jobs/facebook-token-expiry.job';
 
 /**
  * Facebook integration module.
@@ -37,6 +38,7 @@ import { FacebookPageDeauthorizedConsumer } from './consumers/facebook-deauthori
     { provide: IFacebookGraphApiProvider, useClass: FacebookGraphApiAdapter },
     { provide: IFacebookAccountRepository, useClass: MikroOrmFacebookAccountRepository },
     FacebookPageDeauthorizedConsumer,
+    FacebookTokenExpiryScheduler,
   ],
   exports: [FacebookService],
 })

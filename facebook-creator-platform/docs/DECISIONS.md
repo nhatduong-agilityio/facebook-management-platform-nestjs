@@ -153,6 +153,27 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > This is a cosmetic warning from `unplugin-swc` not yet updating for vitest 4.
 > Revisit when a newer `unplugin-swc` is released.
 
+## Scheduler (added T2.9, verified 2026-07-06)
+| Package | Version | Purpose |
+|---|---|---|
+| @nestjs/schedule | ^6.1.3 | Cron-based background jobs (`@Cron`, `ScheduleModule.forRoot()`) |
+
+> **ADR-053 Token-expiry events via cron scan (not eager push):**
+> `FacebookTokenExpiryScheduler` runs daily at midnight and scans all `facebook_accounts`
+> where `tokenExpiresAt < now() + 7 days`. It emits one `FacebookTokenExpiringEvent`
+> per account (routing key `facebook.token_expiring`). The Email Service (T4.3) consumes
+> the event and sends the renewal reminder. The scheduler does NOT send email directly —
+> keeping email logic out of `apps/api`. Token values are never included in the event
+> payload (BR-F11). No PII is emitted; `pageId` is a Facebook-issued external identifier.
+>
+> **ADR-054 Jobs use forked EntityManager per run (ADR-030 extension):**
+> `PublishJob`, `PublishFallbackPollJob`, and `FacebookTokenExpiryScheduler` all inject
+> `MikroORM` (not `EntityManager`) and call `orm.em.fork()` at the start of each cron
+> run. This follows the same pattern established for consumers (ADR-030): forked EM
+> provides a clean identity map and transaction scope isolated from all other runs.
+> Each post is flushed individually inside the publish loop so a single Graph API failure
+> does not block other posts in the same tick.
+
 ## RabbitMQ + Redis (added T2.6, verified 2026-07-03)
 | Package | Version | Purpose |
 |---|---|---|

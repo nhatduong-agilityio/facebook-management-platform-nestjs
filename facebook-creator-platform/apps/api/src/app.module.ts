@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
@@ -53,6 +54,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     }),
     DatabaseModule,
     RabbitmqModule,
+    ScheduleModule.forRoot(),
     HealthModule,
     IdentityModule,
     WorkspaceModule,
