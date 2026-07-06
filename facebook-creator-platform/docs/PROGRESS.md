@@ -4,11 +4,34 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T3.3` — Analytics service (`services/analytics/`).
+- **Next task:** `T3.4` — Audit Service (`services/audit/`, MongoDB).
 - **Branch:** `nestjs-practice`
-- **Notes:** 217 tests passing (199 apps/api + 18 services/billing). Run `pnpm mikro-orm migration:up` to apply `Migration20260703000001_MessagingSchema` (creates `messaging` schema + tables). Run `pnpm migration:billing` then `cd services/billing && pnpm mikro-orm migration:up` for billing migrations. Set `STRIPE_WEBHOOK_SECRET` env var before using `POST /api/v1/webhooks/stripe`.
+- **Notes:** 226 tests passing (199 apps/api + 18 services/billing + 9 services/analytics). Run `pnpm mikro-orm migration:up` (in `apps/api`) to apply `Migration20260703000001_MessagingSchema`. Run `cd services/billing && pnpm mikro-orm migration:up` for billing migrations. Run `cd services/analytics && pnpm mikro-orm migration:up` for analytics schema. Set `STRIPE_WEBHOOK_SECRET`, `INTERNAL_API_SECRET`, `APPS_API_INTERNAL_URL` env vars.
 
 ## Log
+
+### 2026-07-06 — T3.3 Analytics service
+
+- **`services/analytics/`** scaffolded as a full NestJS app (`@fcp/analytics`, port 3002 via `ANALYTICS_PORT`).
+- **`PostMetrics` entity** (`analytics.post_metrics`) — uuid v7 PK (app-generated); `postId` + `workspaceId` as logical scalar FKs (ADR-046, BR-R06) with btree indexes; `metricDate` (Date); `reach`, `impressions`, `likes`, `comments`, `shares`; UNIQUE `(postId, metricDate)` for idempotent upsert.
+- **`Migration20260706000001_AnalyticsSchema`** — `CREATE SCHEMA analytics` + `post_metrics` table + 3 btree indexes.
+- **Ports:** `IPostMetricsRepository` (upsert + findByPost + aggregateByWorkspace), `IInternalApiClient` (getFacebookAccount), `IFacebookInsightsProvider` (getPostInsights).
+- **Adapters:** `MikroOrmPostMetricsRepository` (upsert via `em.upsert`; aggregate via raw SQL `em.getConnection().execute()`), `InternalApiHttpAdapter` (calls `GET /internal/facebook-accounts/:id` with `x-internal-secret`), `FacebookInsightsAdapter` (calls Graph API `v25.0 /{graphPostId}/insights`; returns zeros on 4xx).
+- **`PostPublishedConsumer`** — `@RabbitSubscribe` on `analytics.posts.published`; Redis `SET NX EX` dedup; resolves token via internal API → Graph API insights → upsert; clears dedup key + rethrows on failure.
+- **`AnalyticsService`** — `getWorkspaceMetrics(workspaceId)` + `getPostMetrics(postId)` (read-side only).
+- **`AnalyticsController`** — `GET /workspaces/:id/metrics` + `GET /posts/:id/metrics`.
+- **`apps/api` internal endpoint** (ADR-050):
+  - `InternalSecretGuard` (`common/guards/`) — checks `x-internal-secret` header against `INTERNAL_API_SECRET` env var.
+  - `InternalFacebookController` (`modules/facebook/`) — `GET /internal/facebook-accounts/:id` returns `{ id, pageToken }` (decrypted token from `EncryptedText`); no Swagger, no Clerk JWT.
+  - `IFacebookAccountRepository.findById(id)` added to port + repository.
+- `docs/DECISIONS.md` — ADR-061 (analytics service env vars, global module pattern), ADR-062 (tsconfig split), ADR-063 (`@Global()` wrapper for RabbitMQ + Redis in services).
+- Tests: 9 new (consumer ×5, service ×4). 226/226 total. Lint: clean.
+- **Post-implementation fixes (same session):**
+  - `tsconfig.json` in both services corrected: keep `rootDir: ./src`, drop `mikro-orm.config.ts` from `include` (CLI uses `useTsNode`); `tsconfig.build.json` added to exclude specs from `nest build`; `vitest.config.ts` updated with `exclude: ['**/dist/**']`.
+  - `@golevelup/nestjs-rabbitmq` v9 is not `@Global()` — `AmqpConnection` not visible in feature modules. Fix: inline `@Global() AnalyticsMessagingModule` + `@Global() RedisModule` wrapper classes in `app.module.ts` (same pattern applied to `services/billing` for `AmqpConnection`).
+  - `aggregateByWorkspace` rewritten: `em.getKnex()` does not exist on MikroORM 7 EM; replaced with `em.getConnection().execute()` raw SQL.
+  - `FacebookInsightsAdapter`: `res.json()` → `unknown` under strict TS; cast to `InsightsResponse`. Graph API version corrected from `v21.0` → `v25.0` to match codebase standard.
+- **Setup:** `cd services/analytics && pnpm mikro-orm migration:up` + add `ANALYTICS_PORT=3002`, `APPS_API_INTERNAL_URL=http://localhost:3000/api/v1`, `INTERNAL_API_SECRET=<secret>` to `.env`.
 
 ### 2026-07-06 — T2.9 Publish Job + fallback poll + token-expiry scheduler
 

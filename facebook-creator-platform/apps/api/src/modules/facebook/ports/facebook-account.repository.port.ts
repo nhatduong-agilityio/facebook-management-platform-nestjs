@@ -23,6 +23,18 @@ export interface FacebookPageConnectData {
  */
 export abstract class IFacebookAccountRepository {
   /**
+   * Finds a `FacebookAccount` by its primary key.
+   *
+   * Used by the internal API endpoint (`GET /internal/facebook-accounts/:id`)
+   * to resolve a decrypted page token for cross-service token resolution (ADR-050).
+   * No workspace scope — callers must be authorised via `InternalSecretGuard`.
+   *
+   * @param id - UUID v7 of the `FacebookAccount` record.
+   * @returns The matching account, or `null` if none exists.
+   */
+  abstract findById(id: string): Promise<FacebookAccount | null>;
+
+  /**
    * Finds a `FacebookAccount` by its Facebook Page ID.
    *
    * @param pageId - Facebook Page ID to look up.

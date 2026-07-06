@@ -339,6 +339,43 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 >   recorded in `billing_events` log. Available for future Audit / Analytics consumers.
 > Both are idempotent via `stripe_event_id` unique key (same pattern as T3.2). Added as T3.6.
 
+> **ADR-061 Analytics service: package, ports, and environment variables (T3.3).**
+> `services/analytics` is registered as `@fcp/analytics` in the pnpm workspace (`services/*` glob already covers it).
+> Environment variables required:
+> - `ANALYTICS_PORT` (default `3002`) — HTTP port for the analytics service.
+> - `APPS_API_INTERNAL_URL` — base URL of `apps/api` including prefix (e.g. `http://localhost:3000/api/v1`).
+> - `INTERNAL_API_SECRET` — shared secret for `x-internal-secret` header (same value on both sides — ADR-050).
+> - `DATABASE_URL`, `RABBITMQ_URL`, `REDIS_URL` — shared with all services.
+> `InternalSecretGuard` lives in `apps/api/src/common/guards/` so it can be reused by future internal
+> endpoints (`/internal/users/:id`, `/internal/workspaces/:id`) in T4.x tasks.
+> `enableControllerDiscovery: true` is set in `RabbitMQModule` so `@RabbitSubscribe` in `PostPublishedConsumer`
+> is picked up without explicit registration. All other services use `false` (they publish, not consume via decorators).
+> Redis is provided as a plain `ioredis` `Redis` instance with token `Redis` (class itself) in `AppModule`
+> so it can be injected directly in `PostPublishedConsumer` — same pattern as `billing` for dedup.
+
+> **ADR-062 `tsconfig.json` split pattern for NestJS services in monorepo.**
+> Each service (`services/billing`, `services/analytics`) has two tsconfig files:
+> - `tsconfig.json` — `rootDir: ./src`, `include: ["src/**/*"]` only. `mikro-orm.config.ts` is NOT included
+>   because the MikroORM CLI uses `useTsNode: true` (set in `package.json` `mikro-orm` key) and executes it
+>   via `ts-node` directly — no compiled output needed. Removing it from `include` prevents TS6059
+>   (`rootDir` violation) without removing `rootDir`.
+> - `tsconfig.build.json` — extends `tsconfig.json`, adds `tsBuildInfoFile`, excludes `**/*.spec.ts`.
+>   Used by `nest build` so spec files are not emitted to `dist/`.
+> `vitest.config.ts` sets `exclude: ['**/node_modules/**', '**/dist/**']` to prevent vitest from
+> discovering compiled `*.spec.js` artifacts in `dist/` if a prior build left them there.
+
+> **ADR-063 `@Global()` wrapper pattern for `@golevelup/nestjs-rabbitmq` v9 and `ioredis` in services.**
+> `RabbitMQModule` in `@golevelup/nestjs-rabbitmq` v9 is built via `ConfigurableModuleBuilder` without
+> `@Global()`. This means `AmqpConnection` is only visible to the module that imports `forRootAsync` —
+> feature modules (`BillingModule`, `AnalyticsModule`) cannot inject it without an import chain.
+> Fix: define a small inline `@Global() @Module({ imports: [RabbitMQModule.forRootAsync(...)], exports: [RabbitMQModule] })`
+> wrapper class in each service's `app.module.ts`. Same pattern for `Redis` (ioredis): a
+> `@Global() @Module({ providers: [Redis factory], exports: [Redis] })` wrapper ensures any feature module
+> can inject the client without importing anything explicitly.
+> These wrapper classes stay inline in `app.module.ts` (not extracted to files) as long as each is ≤20 lines
+> and the service has no other infrastructure files. Extract to `src/infrastructure/` if a second adapter or
+> spec is needed for the same concern (see ADR-058 extraction trigger pattern).
+
 ## Pre-T4.x architecture decisions — Week 4 audit (2026-07-03)
 
 > **ADR-051 Full post event set: `PostCreatedEvent` enriched + `PostUpdatedEvent`, `PostFailedEvent`, `PostDeletedEvent` added.**

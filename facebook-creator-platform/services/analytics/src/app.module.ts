@@ -7,18 +7,17 @@ import { PostgreSqlDriver } from '@mikro-orm/postgresql';
 import { Migrator } from '@mikro-orm/migrations';
 import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
 import { LoggerModule } from 'nestjs-pino';
-import { Plan } from './entities/plan.entity';
-import { Subscription } from './entities/subscription.entity';
-import { BillingEvent } from './entities/billing-event.entity';
-import { BillingModule } from './billing.module';
+import Redis from 'ioredis';
+import { PostMetrics } from './entities/post-metrics.entity';
+import { AnalyticsModule } from './analytics.module';
 
 /**
  * Global wrapper around `RabbitMQModule`.
  *
  * `RabbitMQModule` v9 is not decorated with `@Global()`, so `AmqpConnection`
- * would only be visible inside `AppModule`. Wrapping it here makes
- * `AmqpConnection` available to all feature modules (`BillingModule`, etc.)
- * without requiring each to import `RabbitMQModule` again.
+ * would only be visible inside `AppModule`. Wrapping it here — with
+ * `enableControllerDiscovery: true` so `@RabbitSubscribe` in `AnalyticsModule`
+ * is picked up — makes `AmqpConnection` available to all feature modules.
  */
 @Global()
 @Module({
@@ -33,23 +32,44 @@ import { BillingModule } from './billing.module';
           { name: 'fcp.dlq', type: 'fanout', options: { durable: true } },
         ],
         connectionInitOptions: { wait: false },
-        enableControllerDiscovery: false,
+        enableControllerDiscovery: true,
       }),
     }),
   ],
   exports: [RabbitMQModule],
 })
-class BillingMessagingModule {}
+class AnalyticsMessagingModule {}
 
 /**
- * Root application module for `services/billing`.
+ * Global wrapper that provides the `ioredis` Redis client.
+ *
+ * Defined as `@Global()` so `PostPublishedConsumer` (inside `AnalyticsModule`)
+ * can inject `Redis` without `AnalyticsModule` having to import this module explicitly.
+ */
+@Global()
+@Module({
+  providers: [
+    {
+      provide: Redis,
+      useFactory: (config: ConfigService) =>
+        new Redis(config.get<string>('REDIS_URL', 'redis://localhost:6379')),
+      inject: [ConfigService],
+    },
+  ],
+  exports: [Redis],
+})
+class RedisModule {}
+
+/**
+ * Root application module for `services/analytics`.
  *
  * Sets up:
- * - **ConfigModule** — loads the root `.env` file (shared with apps/api in monorepo).
- * - **LoggerModule** — Pino HTTP logger; redacts `stripeCustomerId` from logs.
- * - **MikroOrmModule** — PostgreSQL connection to the `billing` schema.
- * - **BillingMessagingModule** — global wrapper; makes `AmqpConnection` available to all modules.
- * - **BillingModule** — Plans, Subscriptions, Stripe Checkout, and state machine (T3.2).
+ * - **ConfigModule** — loads the root `.env` file (shared in monorepo).
+ * - **LoggerModule** — Pino HTTP logger.
+ * - **MikroOrmModule** — PostgreSQL connection to the `analytics` schema.
+ * - **AnalyticsMessagingModule** — global; makes `AmqpConnection` available to all modules.
+ * - **RedisModule** — global; makes `Redis` client available to all modules.
+ * - **AnalyticsModule** — consumer + HTTP read endpoints.
  */
 @Module({
   imports: [
@@ -59,10 +79,6 @@ class BillingMessagingModule {}
     }),
     LoggerModule.forRoot({
       pinoHttp: {
-        redact: {
-          paths: ['*.stripeCustomerId', '*.stripeSubscriptionId'],
-          censor: '[REDACTED]',
-        },
         transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
       },
     }),
@@ -70,8 +86,8 @@ class BillingMessagingModule {}
       useFactory: (config: ConfigService) => ({
         driver: PostgreSqlDriver,
         clientUrl: config.getOrThrow<string>('DATABASE_URL'),
-        schema: 'billing',
-        entities: [Plan, Subscription, BillingEvent],
+        schema: 'analytics',
+        entities: [PostMetrics],
         metadataProvider: TsMorphMetadataProvider,
         migrations: {
           path: './src/migrations',
@@ -83,8 +99,9 @@ class BillingMessagingModule {}
       }),
       inject: [ConfigService],
     }),
-    BillingMessagingModule,
-    BillingModule,
+    AnalyticsMessagingModule,
+    RedisModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}

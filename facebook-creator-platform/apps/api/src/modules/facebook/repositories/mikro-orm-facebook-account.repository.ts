@@ -29,6 +29,11 @@ export class MikroOrmFacebookAccountRepository extends IFacebookAccountRepositor
   }
 
   /** @inheritdoc */
+  findById(id: string): Promise<FacebookAccount | null> {
+    return this.repo.findOne({ id, deletedAt: null });
+  }
+
+  /** @inheritdoc */
   findByPageId(pageId: string): Promise<FacebookAccount | null> {
     return this.repo.findOne({ pageId, deletedAt: null });
   }
