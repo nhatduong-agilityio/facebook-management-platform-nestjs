@@ -16,6 +16,7 @@
     "start:billing": "pnpm --filter @fcp/billing start:dev",
     "start:analytics": "pnpm --filter @fcp/analytics start:dev",
     "start:audit": "pnpm --filter @fcp/audit start:dev",
+    "start:search": "pnpm --filter @fcp/search start:dev",
     "migration": "pnpm --filter @fcp/api mikro-orm migration:up",
     "migration:billing": "pnpm --filter @fcp/billing mikro-orm migration:up",
     "migration:analytics": "pnpm --filter @fcp/analytics mikro-orm migration:up",

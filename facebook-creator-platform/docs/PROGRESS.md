@@ -4,11 +4,36 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T4.1` — Search service scaffold in `services/search/` (Algolia consumers).
+- **Next task:** `T4.2` — Notification service scaffold in `services/notification/`.
 - **Branch:** `nestjs-practice`
-- **Notes:** 250 tests passing (208 apps/api + 24 services/billing + 9 services/analytics + 9 services/audit). All four services use `app.setGlobalPrefix('api/v1')`. `BILLING_SUCCESS_URL` / `BILLING_CANCEL_URL` are now in `.env.example` and handled by `BillingRedirectController` in `apps/api`.
+- **Notes:** 265 tests passing (208 apps/api + 24 services/billing + 9 services/analytics + 9 services/audit + 15 services/search). Week 4 started. `services/search` complete — Algolia consumers + `apps/api` search proxy.
 
 ## Log
+
+### 2026-07-07 — T4.1 Search service
+
+- **`services/search/`** scaffolded as a full NestJS app (`@fcp/search`, port 3004 via `SEARCH_PORT`). No MikroORM — Algolia is the system of record (no Postgres schema).
+- **`IAlgoliaSearchProvider`** port + **`AlgoliaSearchAdapter`** (`algoliasearch@^5.55.1`): `saveObject`, `partialUpdateObject`, `deleteObject`, `search`; reads `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`, `ALGOLIA_POSTS_INDEX` via `getOrThrow`.
+- **Five idempotent consumers** (Redis `SET NX EX` dedup on `dedup:search:<eventId>`; DLX → `fcp.dlq`):
+  - `PostCreatedConsumer` → `saveObject` (queue `search.posts.created`)
+  - `PostUpdatedConsumer` → `partialUpdateObject` mutable fields (queue `search.posts.updated`)
+  - `PostPublishedConsumer` → `partialUpdateObject` status/facebookGraphPostId/publishedAt (queue `search.posts.published`)
+  - `PostFailedConsumer` → `partialUpdateObject` status:'failed'/failedAt (queue `search.posts.failed`)
+  - `PostDeletedConsumer` → `deleteObject` (queue `search.posts.deleted`)
+- **`SearchService`** — read-side `search(workspaceId, query)` facade returning `Result<SearchResultDto[], never>`.
+- **`SearchController`** — `GET /search?workspaceId=…&q=…`; internal endpoint (no auth on service side; auth enforced by `apps/api`).
+- **`apps/api SearchModule`** (thin proxy): `ISearchClient` port + `SearchHttpClientAdapter` (reuses existing `IHttpClient`/`FetchHttpClientAdapter`); `GET /workspaces/:workspaceId/search?q=` with Clerk JWT + any-role guard; `SEARCH_SERVICE_URL` via `getOrThrow`.
+- `.env.example` — added `SEARCH_PORT=3004`, `SEARCH_SERVICE_URL`, `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`, `ALGOLIA_POSTS_INDEX`. Renamed pre-existing `ALGOLIA_ADMIN_KEY` → `ALGOLIA_API_KEY`.
+- Tests: 15 new (3 per consumer). 265/265 total. Lint: clean. ADR-066 added.
+- **Setup:** No migration needed. Add `SEARCH_PORT`, `SEARCH_SERVICE_URL`, `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`, `ALGOLIA_POSTS_INDEX` to `.env`.
+
+### 2026-07-06 — Week 3 close: shared contract libs
+
+- **`libs/analytics-contracts/`** (new `@fcp/analytics-contracts`) — `MetricsSummaryResponse` (wire type for `GET /workspaces/:id/metrics`); `PostPublishedPayload` (RabbitMQ event shape consumed by analytics).
+- **`libs/audit-contracts/`** (new `@fcp/audit-contracts`) — `AuditEventResponse` (wire type for audit HTTP endpoints).
+- **`services/analytics`** — `analytics.consumer.ts` imports `PostPublishedPayload` from contracts; `post-metrics.repository.port.ts` re-exports `MetricsSummaryResponse as MetricsSummary` (type alias, backwards-compatible for internal callers).
+- **`apps/api`** — `analytics-http-client.adapter.ts` replaces inline `RawMetricsSummary` with `MetricsSummaryResponse`; `audit-http-client.adapter.ts` replaces inline `RawAuditEvent` with `AuditEventResponse`.
+- tsc: 0 new errors introduced (26 pre-existing spec-file errors in apps/api unchanged). 250/250 tests. Lint: clean.
 
 ### 2026-07-06 — T3.6 Billing lifecycle event completeness
 

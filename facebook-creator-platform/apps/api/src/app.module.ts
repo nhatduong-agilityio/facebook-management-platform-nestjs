@@ -13,6 +13,7 @@ import { PostsModule } from './modules/posts/posts.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { SearchModule } from './modules/search/search.module';
 import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
 
 /**
@@ -32,6 +33,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  * - **BillingModule** — Thin proxy to `services/billing` (T3.1); exposes `POST /workspaces/:id/billing/checkout` and exports `IPostQuotaProvider` (HTTP-backed) for PostsModule.
  * - **AuditModule** — Thin proxy to `services/audit` (T3.5); Owner-only `GET /workspaces/:id/audit-logs` and `GET /workspaces/:id/audit-logs/:id`.
  * - **AnalyticsModule** — Thin proxy to `services/analytics` (T3.5); Owner-only `GET /workspaces/:id/analytics`.
+ * - **SearchModule** — Thin proxy to `services/search` (T4.1); any-role `GET /workspaces/:id/search?q=` passthrough.
  * - **DevAuthModule** — `POST /dev-auth/token` token generator; loaded only when `NODE_ENV !== 'production'`.
  */
 @Module({
@@ -67,6 +69,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     BillingModule,
     AuditModule,
     AnalyticsModule,
+    SearchModule,
     ...(process.env.NODE_ENV !== 'production' ? [DevAuthModule] : []),
   ],
 })
