@@ -502,9 +502,30 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > A downstream 4xx (e.g. 404 from a missing prefix) now surfaces as `"<Service> responded with unexpected 404"`
 > rather than a generic 500, making URL mismatches immediately diagnosable from the response body.
 
+## Search service (added T4.1, 2026-07-07)
+
+> **ADR-066 `services/search` — no Postgres schema; Algolia is the system of record.**
+> `services/search` is a full NestJS app (`@fcp/search`, port 3004 via `SEARCH_PORT`).
+> Unlike all other services it has NO MikroORM / Postgres dependency — Algolia is the
+> sole persistence layer. Five idempotent RabbitMQ consumers maintain the index:
+> - `posts.created` → `saveObject` (all indexable fields from the event — ADR-051)
+> - `posts.updated` → `partialUpdateObject` (mutable fields only)
+> - `posts.published` → `partialUpdateObject` (status, facebookGraphPostId, publishedAt)
+> - `posts.failed` → `partialUpdateObject` (status: 'failed', failedAt)
+> - `posts.deleted` → `deleteObject`
+>
+> No HTTP callback to `apps/api` — events carry sufficient content (ADR-051 CQRS).
+> Consumer dedup via Redis `SET NX EX 86400` on `dedup:search:<eventId>` (§11).
+> `IAlgoliaSearchProvider` port + `AlgoliaSearchAdapter` (uses `algoliasearch@^5.55.1`).
+> `apps/api` adds a thin `SearchModule` proxy: `GET /workspaces/:workspaceId/search?q=`
+> (any workspace role) → `ISearchClient → SearchHttpClientAdapter` → `services/search`.
+> Env vars: `SEARCH_PORT=3004`, `SEARCH_SERVICE_URL`, `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`,
+> `ALGOLIA_POSTS_INDEX`. No migration step — no schema to create.
+
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-07 | **T4.1 complete.** `services/search/` scaffolded (no Postgres schema — Algolia only). Five idempotent consumers (`posts.created/updated/published/failed/deleted`). `apps/api` thin proxy `GET /workspaces/:id/search?q=`. `algoliasearch@^5.55.1` (ADR-066). 265/265 tests, lint clean. |
 | 2026-07-06 | **`libs/analytics-contracts` + `libs/audit-contracts` created.** One contract lib per service, mirroring `libs/billing-contracts`. `MetricsSummaryResponse` (replaces inline `RawMetricsSummary` in api adapter + `MetricsSummary` in port), `PostPublishedPayload` (replaces inline interface in `analytics.consumer.ts`) → `@fcp/analytics-contracts`. `AuditEventResponse` (replaces inline `RawAuditEvent` in api adapter) → `@fcp/audit-contracts`. Both consumed by `apps/api` adapters and the respective services. 250/250 tests, lint clean. |
 | 2026-07-06 | **T3.6 complete.** `past_due` added to `SubscriptionStatus`; `ALLOWED_TRANSITIONS` updated; BR-F10 free-plan guard extended to block `past_due`; `handleSubscriptionUpdated` handles `customer.subscription.updated → past_due`; `handleInvoicePaymentSucceeded` split into three explicit branches (renewal / activation / no-op); `billing.subscription_past_due` + `billing.subscription_renewed` added to contracts. `BillingRedirectController` added to `apps/api` for Stripe browser redirects (`GET /api/v1/billing/success|cancel`). `BILLING_SUCCESS_URL`/`BILLING_CANCEL_URL` documented in `.env.example` with `api/v1`-prefixed defaults. |
 | 2026-07-06 | **Architectural review improvements applied to TASKS.md.** (1) T5.8 messaging schema migration moved to T2.6.5 — tables must exist from the point RabbitMQ is in use, not as a Week 5 cleanup. (2) T3.6 added: billing lifecycle event completeness (`billing.subscription_past_due`, `billing.subscription_renewed`). (3) T4.1 gains `posts.failed → Algolia` consumer (five consumers, not four). (4) T4.2 gains `billing.subscription_past_due` notification consumer + projection cold-start reconciliation (ADR-059). (5) ADR-050 internal endpoints consolidated to resource-based design: `/internal/facebook-accounts/:id`, `/internal/users/:id`, `/internal/workspaces/:id`, `/internal/workspaces/:id/members` — no more action-scoped sub-paths. (6) ADR-058 documents services/jobs extraction trigger conditions (deferred). |

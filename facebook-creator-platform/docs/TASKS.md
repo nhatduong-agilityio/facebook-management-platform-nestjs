@@ -71,7 +71,7 @@ For blocked tasks always append an inline note on the same line:
 
 ## Week 4 — Search, Notifications, Email
 
-- [ ] **T4.1 Search service** (~4h) — scaffold `services/search/` (full NestJS app, no Postgres schema — Algolia is the system of record, ADR-004); five idempotent consumers:
+- [x] **T4.1 Search service** (~4h) — scaffold `services/search/` (full NestJS app, no Postgres schema — Algolia is the system of record, ADR-004); five idempotent consumers:
   - `posts.created` → `algolia.saveObject({ objectID: postId, workspaceId, title, content, status, scheduledAt, createdAt })`
   - `posts.updated` → `algolia.partialUpdateObject({ objectID: postId, title, content, scheduledAt, updatedAt })`
   - `posts.published` → `algolia.partialUpdateObject({ objectID: postId, status: 'published', facebookGraphPostId, publishedAt })`
