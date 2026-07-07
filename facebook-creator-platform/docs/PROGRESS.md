@@ -4,11 +4,38 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T4.2` — Notification service scaffold in `services/notification/`.
+- **Next task:** `T4.3` — Email service scaffold in `services/email/`.
 - **Branch:** `nestjs-practice`
-- **Notes:** 265 tests passing (208 apps/api + 24 services/billing + 9 services/analytics + 9 services/audit + 15 services/search). Week 4 started. `services/search` complete — Algolia consumers + `apps/api` search proxy.
+- **Notes:** 295 tests passing (208 apps/api + 24 services/billing + 9 services/analytics + 9 services/audit + 15 services/search + 30 services/notification). Week 4 in progress. `services/notification` runtime-verified end-to-end (Slack notification delivered). Two post-initial bugs fixed: `RequestContext.create` wrapping for RabbitMQ consumers (ADR-068) and lazy projection seeding in `NotificationOrchestrator` (ADR-069).
 
 ## Log
+
+### 2026-07-07 — T4.2 post-task runtime fixes
+
+- **`RequestContext.create` for RabbitMQ consumers (ADR-068):** All 7 notification consumers now wrap their orchestrator call in `RequestContext.create(this.orm.em, async () => { ... })`. `UseRequestContext` from `@mikro-orm/nestjs` v7.0.2 does not exist; `RequestContext.create` from `@mikro-orm/core` is the correct API. Without this, `em.find()` / `em.flush()` threw `cannotUseGlobalContext` because RabbitMQ handlers are not HTTP requests and `MikroOrmMiddleware` never runs for them.
+- **Lazy projection seeding in `NotificationOrchestrator` (ADR-069):** When `getMembersForWorkspace` returns 0 rows, `notifyWorkspace` now fetches from `GET /internal/workspaces/:id/members`, upserts the projection, then retries. Eliminates the need for a manual seed step after first deployment. `IInternalApiClient` injected into orchestrator.
+- **`reconcileWorkspace(workspaceId)` public method + `POST /internal/workspaces/:workspaceId/seed-projection`** endpoint added (idempotent ops-utility; lazy seeding makes it optional day-to-day).
+- **`WorkspaceMemberReconciler.onModuleInit` try/catch** — service no longer crashes when the migration hasn't been run yet.
+- Tests: still 295/295. Lint: clean.
+
+### 2026-07-07 — T4.2 Notification service
+
+- **`libs/billing-contracts/src/events.ts`** — added `PaymentFailedPayload`; exported from `index.ts`.
+- **`services/billing/src/billing.service.ts`** — `handleInvoicePaymentFailed` now publishes `billing.payment_failed` after `em.flush()` (ADR-054 compliance).
+- **`apps/api InternalWorkspaceController`** (new) — `GET /internal/workspaces/:id/members`; guarded by `InternalSecretGuard`; returns `[{ userId, role }]`; registered in `WorkspaceModule`.
+- **`apps/api NotificationModule`** (new thin proxy) — `INotificationClient` port + `NotificationHttpClientAdapter`; `GET /workspaces/:id/notifications` + `PATCH /notifications/:id/read`; Clerk JWT + any-role guard. `IHttpClient` extended with `patch()` method (`FetchHttpClientAdapter` refactored to shared `request()` helper).
+- **`services/notification/`** scaffolded:
+  - 3 entities: `Notification`, `NotificationRecipient`, `WorkspaceMemberProjection` (none extend `BaseEntity` — no `updatedAt`/`deletedAt` per DDL).
+  - Migration `Migration20260707000001_NotificationSchema` — `notification` schema, 3 tables, BR-F08 trigger, 4 btree indexes.
+  - 3 ports: `INotificationRepository`, `ISlackProvider`, `IInternalApiClient`.
+  - 3 adapters: `MikroOrmNotificationRepository`, `SlackWebhookProvider`, `InternalApiAdapter`.
+  - `NotificationOrchestrator` — `notifyWorkspace` + `notifyUser` (fan-out + optional Slack).
+  - `WorkspaceMemberReconciler` — `OnModuleInit` cold-start reconciliation from `GET /internal/workspaces/:id/members` (ADR-059); skips if projection empty (first boot).
+  - 4 projection consumers (member-invited/joined/removed/role-changed) — idempotent Redis dedup; `member-invited` dedup-only (invitee userId unknown at invite time).
+  - 7 notification consumers (posts.published/failed, billing.subscription_activated/cancelled/past_due/payment_failed, facebook.token_expiring).
+  - `NotificationService` + `NotificationController` for HTTP read API.
+- **Setup:** `cd services/notification && pnpm mikro-orm migration:up`. Add `NOTIFICATION_PORT=3005`, `NOTIFICATION_SERVICE_URL=http://localhost:3005/api/v1`, `APPS_API_INTERNAL_URL=http://localhost:3000/api/v1`, `INTERNAL_API_SECRET=<secret>`, `SLACK_WEBHOOK_URL=<optional>` to `.env`.
+- Tests: 30 new (4 projection consumers × 3 + 7 notification consumers × 2 + service × 4 + reconciler × 3). 295/295 total. Lint: clean. ADR-067 added.
 
 ### 2026-07-07 — T4.1 Search service
 

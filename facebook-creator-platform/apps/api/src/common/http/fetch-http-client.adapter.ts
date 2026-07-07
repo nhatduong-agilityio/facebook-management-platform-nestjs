@@ -21,14 +21,27 @@ export class FetchHttpClientAdapter extends IHttpClient {
    * @throws {DownstreamServiceError} on non-2xx status or connection/timeout failure.
    */
   async get<T>(url: string): Promise<T> {
+    return this.request<T>('GET', url);
+  }
+
+  async patch<T>(url: string, body?: unknown): Promise<T> {
+    return this.request<T>('PATCH', url, body);
+  }
+
+  private async request<T>(method: string, url: string, body?: unknown): Promise<T> {
     let res: Response;
     try {
-      res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+      res = await fetch(url, {
+        method,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
     } catch {
-      // Network error, DNS failure, AbortError (timeout) — all surface as 503
       throw new DownstreamServiceError(503, url);
     }
     if (!res.ok) throw new DownstreamServiceError(res.status, url);
-    return res.json() as Promise<T>;
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 }

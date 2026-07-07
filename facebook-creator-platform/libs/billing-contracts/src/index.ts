@@ -6,4 +6,5 @@ export type {
   SubscriptionCancelledPayload,
   SubscriptionPastDuePayload,
   SubscriptionRenewedPayload,
+  PaymentFailedPayload,
 } from './events';

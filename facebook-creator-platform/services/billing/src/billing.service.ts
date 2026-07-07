@@ -9,6 +9,7 @@ import type {
   SubscriptionCancelledPayload,
   SubscriptionPastDuePayload,
   SubscriptionRenewedPayload,
+  PaymentFailedPayload,
 } from '@fcp/billing-contracts';
 import { AppError } from './common/app-error';
 import { IPlanRepository } from './ports/plan.repository.port';
@@ -386,6 +387,15 @@ export class BillingService {
     if (transResult.isErr()) return err(transResult.error);
 
     await this.em.flush();
+
+    const payload: PaymentFailedPayload = {
+      eventId: uuidv7(),
+      workspaceId: sub.workspaceId,
+      planCode: unref(sub.plan).code,
+      occurredAt: new Date().toISOString(),
+    };
+    await this.eventBus.publish('billing.payment_failed', payload as unknown as Record<string, unknown>);
+
     return ok(undefined);
   }
 
