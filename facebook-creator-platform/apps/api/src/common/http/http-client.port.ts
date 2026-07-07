@@ -38,4 +38,14 @@ export abstract class IHttpClient {
    * @throws {DownstreamServiceError} on non-2xx response or network/timeout failure.
    */
   abstract get<T>(url: string): Promise<T>;
+
+  /**
+   * Performs a PATCH request with an optional JSON body and returns the parsed JSON body.
+   *
+   * @param url  - Fully-qualified URL to request.
+   * @param body - Optional request body (serialised as JSON).
+   * @returns Parsed response body typed as `T`.
+   * @throws {DownstreamServiceError} on non-2xx response or network/timeout failure.
+   */
+  abstract patch<T>(url: string, body?: unknown): Promise<T>;
 }

@@ -50,6 +50,23 @@ export interface SubscriptionPastDuePayload {
 }
 
 /**
+ * Payload for the `billing.payment_failed` RabbitMQ event.
+ *
+ * Published by `services/billing` on `invoice.payment_failed` when the subscription
+ * transitions from `active` to `grace_period` (ADR-054). No PII — no Stripe IDs.
+ */
+export interface PaymentFailedPayload {
+  /** Dedup key — uuid v7, unique per event emission. */
+  eventId: string;
+  /** UUID of the workspace whose payment failed. */
+  workspaceId: string;
+  /** Plan code the workspace is on. */
+  planCode: string;
+  /** ISO-8601 timestamp of when the transition occurred. */
+  occurredAt: string;
+}
+
+/**
  * Payload for the `billing.subscription_renewed` RabbitMQ event.
  *
  * Published by `services/billing` on `invoice.payment_succeeded` when the

@@ -79,7 +79,7 @@ For blocked tasks always append an inline note on the same line:
   - `posts.deleted` → `algolia.deleteObject(postId)`
 
   No HTTP call back to `apps/api` — event payloads carry all indexable data (ADR-051/CQRS). HTTP `GET /workspaces/:id/search?q=` passthrough in `apps/api` calls `services/search` which proxies to Algolia. DoD: all five events trigger correct Algolia op; search returns hits; duplicate event is deduped by `eventId` (Redis NX); tests for all five consumers.
-- [ ] **T4.2 Notification service** (~5h) — scaffold `services/notification/` (full NestJS app, `notification` schema); two internal tables: `notifications` + `notification_recipients` (from DDL) + `workspace_members_projection` (CQRS projection — ADR-052); entities do NOT extend `BaseEntity` (DDL has no `updatedAt`/`deletedAt` on these tables).
+- [x] **T4.2 Notification service** (~5h) — scaffold `services/notification/` (full NestJS app, `notification` schema); two internal tables: `notifications` + `notification_recipients` (from DDL) + `workspace_members_projection` (CQRS projection — ADR-052); entities do NOT extend `BaseEntity` (DDL has no `updatedAt`/`deletedAt` on these tables).
 
   **Projection consumers** (maintain `workspace_members_projection` via upsert):
   - `workspace.member-invited` → upsert `(workspaceId, userId, role)`
