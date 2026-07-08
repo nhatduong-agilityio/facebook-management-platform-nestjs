@@ -4,11 +4,63 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T4.3` — Email service scaffold in `services/email/`.
+- **Next task:** `T4.4` — Cross-cutting tests + docs gap-fill.
 - **Branch:** `nestjs-practice`
-- **Notes:** 295 tests passing (208 apps/api + 24 services/billing + 9 services/analytics + 9 services/audit + 15 services/search + 30 services/notification). Week 4 in progress. `services/notification` runtime-verified end-to-end (Slack notification delivered). Two post-initial bugs fixed: `RequestContext.create` wrapping for RabbitMQ consumers (ADR-068) and lazy projection seeding in `NotificationOrchestrator` (ADR-069).
+- **Notes:** 25 tests passing in `services/email` (lint clean). RabbitMQ native retry implemented (x-death, `fcp.retry` exchange, 30 s TTL queue, max 3 retries → DLQ). `@types/amqplib@0.10.8` added to workspace root devDependencies.
 
 ## Log
+
+### 2026-07-08 — T4.3 RabbitMQ native retry (x-death, fcp.retry)
+
+- **Retry strategy:** `fcp.retry` exchange (topic) declared in `EmailMessagingModule`. `RetryQueueSetup` (`OnApplicationBootstrap`) asserts `fcp.retry.30s` queue (30 s TTL, dead-letters back to `fcp.events`) via `managedChannel.addSetup`. `@types/amqplib@0.10.8` added to workspace root devDeps (no bundled types in `amqplib@0.10.9`).
+- **`email-retry.util.ts`** (NEW) — `MAX_EMAIL_RETRIES = 3`; `getDeathCount(amqpMsg, queueName)` reads `x-death[].count` for the specific queue.
+- **`updateFailed(id, attempts)`** signature updated — records actual attempt count in `retry_count`.
+- **All 5 consumers updated:** `queueOptions.deadLetterExchange: 'fcp.retry'` (was `'fcp.dlq'`); `AmqpConnection` injected; handler receives `(msg, amqpMsg: ConsumeMessage)`; on catch: permanent or `deathCount >= 3` → `updateFailed` + manual `amqpConnection.publish('fcp.dlq', ...)` + `return` (Ack); transient + retries remaining → `redis.del(dedupKey)` + `return new Nack(false)` (→ retry queue → 30 s → redeliver).
+- **All 5 spec files updated:** `makeMockAmqpMsg(deathCount)` helper; `amqpConnection.publish` mock; 5 tests each (happy-path, duplicate-skip, transient-nack, permanent-DLQ, exhausted-DLQ). 25/25 tests, lint clean.
+
+### 2026-07-08 — T4.3 post-task security & runtime fixes (continuation)
+
+- **Security fix — invitation token off the event bus (ADR-072):** `MemberInvitedEvent` only carries `invitationId`; the Email Service now calls `GET /api/v1/internal/invitations/:id` (`InternalInvitationController`, `InternalSecretGuard`) to obtain `{ token, workspaceId, role, expiresAt }` before sending. `acceptUrl` constructed locally in `MemberInvitedEmailConsumer` using `API_URL` + token. Token never transits RabbitMQ.
+- **`PermanentEmailError` DLQ pattern (ADR-073):** `ResendEmailProvider` throws `PermanentEmailError` for Resend 4xx (not 429). All 5 email consumers catch it, log, and `return new Nack(false)` without clearing the Redis dedup key — prevents infinite retry on permanently-failing addresses.
+- **`GET /workspaces/:workspaceId/members/:memberId`** endpoint added (`WorkspaceController` + `WorkspaceService.getMember`); any workspace role allowed.
+- **`acceptInvitation` 409 guard:** pre-checks `findByWorkspaceAndUserId` before inserting `WorkspaceMember`; returns `CONFLICT` instead of surfacing a DB unique-constraint 500.
+- **Tests:** `InternalInvitationController.spec.ts` (2 tests); `member-invited.consumer.spec.ts` updated with `getInvitationEmailContext` mock + permanent-error DLQ test. 261/261 total. Lint: 0 errors.
+- **Setup:** No new migration. `API_URL` in `services/email/.env` must point to the running `apps/api` (e.g. `http://localhost:3000`). Resend `member-invitation` template must use `{{acceptUrl}}` as button link.
+
+### 2026-07-08 — T4.3 Resend dashboard templates
+
+- **`ResendEmailProvider` updated** to use Resend's `template.id + template.variables` API when a `RESEND_TEMPLATE_*` env var is set; falls back to inline HTML if absent (for local dev).
+- **5 HTML templates** authored for copy-paste into the Resend dashboard: `member-invitation`, `post-published`, `post-failed`, `payment-failed`, `token-expiring`. Variable syntax: `{{variableName}}` per Resend spec.
+- **`.env.example`** extended with `RESEND_TEMPLATE_MEMBER_INVITATION`, `RESEND_TEMPLATE_POST_PUBLISHED`, `RESEND_TEMPLATE_POST_FAILED`, `RESEND_TEMPLATE_PAYMENT_FAILED`, `RESEND_TEMPLATE_TOKEN_EXPIRING`.
+- `TEMPLATE_ENV_KEYS` map in provider coerces `data: Record<string,unknown>` → `Record<string,string>` for Resend's `variables` field.
+- No new dependencies; no new tests (provider logic is a thin SDK call, template content is in Resend's dashboard not in source).
+
+### 2026-07-08 — T4.3 post-task BullMQ removal
+
+- **Removed BullMQ entirely** (ADR-070 supersedes ADR-055): `@nestjs/bullmq`, `bullmq` removed from `services/email/package.json`. `SendEmailProcessor` + spec deleted. `BullModule` removed from `app.module.ts` and `email.module.ts`.
+- **Each consumer now calls `IEmailProvider.send()` directly.** On failure: dedup key cleared + error rethrown → RabbitMQ redelivers to DLX. Matches pattern used by notification/search/analytics/audit consumers.
+- `IEmailDeliveryLogRepository.updateFailed()` removed (nothing calls it; RabbitMQ handles retry exhaustion via DLX).
+- All 5 consumer specs rewritten to assert `emailProvider.send` + `emailLogRepo.updateSent` instead of `emailQueue.add`.
+- Tests: 315/315. Lint: 0 errors.
+
+### 2026-07-08 — T4.3 Email service
+
+- **`apps/api` internal endpoints added (ADR-050):**
+  - `IUserRepository.findById(id)` + `MikroOrmUserRepository` adapter.
+  - `InternalUserController` → `GET /internal/users/:id` → `{ id, email }` (guarded by `InternalSecretGuard`).
+  - `InternalWorkspaceController` extended with `GET /internal/workspaces/:id` → `{ id, ownerId, ownerEmail }` (uses `EntityManager` cross-entity for `User` email lookup — §13).
+  - 5 new tests in `apps/api` (identity controller ×2, workspace controller ×3).
+- **`services/email/` scaffolded:**
+  - `EmailDeliveryLog` entity — no `BaseEntity`; app-gen UUID v7 id (diverges from DDL `DEFAULT gen_random_uuid()`, ADR-070); `@Unique({ properties: ['dedupeKey'] })`.
+  - Migration `Migration20260708000001_EmailSchema` — `email` schema, `email_delivery_logs` table, CHECK constraints, 3 btree indexes.
+  - Ports: `IEmailProvider`, `IInternalApiClient`, `IEmailDeliveryLogRepository`.
+  - Adapters: `ResendEmailProvider` (`resend@6.17.1`), `InternalApiAdapter` (calls `/internal/users/:id` + `/internal/workspaces/:id`).
+  - `MikroOrmEmailDeliveryLogRepository` — silently no-ops on `dedupeKey` duplicate.
+  - `SendEmailProcessor` (BullMQ `@Processor('email')`) — `process()` calls Resend → updates log `sent`; `@OnWorkerEvent('failed')` → updates log `failed` on final attempt.
+  - 5 consumers (`workspace.member-invited`, `posts.published`, `posts.failed`, `billing.payment_failed`, `facebook.token_expiring`) — all idempotent (Redis `SET NX EX` + DB `dedupeKey` UNIQUE); enqueue BullMQ job (`attempts: 3, backoff: exponential`).
+- **Root:** `start:email`, `migration:email`, `test:email` scripts added; `.env.example` extended with `EMAIL_PORT`, `RESEND_API_KEY`, `EMAIL_FROM`.
+- Tests: 19 new (5 consumers × 3 + processor × 4). 319/319 total. Lint: clean. ADR-070.
+- **Setup:** `cd services/email && pnpm mikro-orm migration:up`. Add `EMAIL_PORT=3006`, `RESEND_API_KEY=re_...`, `EMAIL_FROM=noreply@...` to `.env`.
 
 ### 2026-07-07 — T4.2 post-task runtime fixes
 

@@ -114,6 +114,19 @@ export class WorkspaceService {
   }
 
   /**
+   * Returns a single workspace member by their membership record id.
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @param memberId    - UUID of the `WorkspaceMember` record.
+   * @returns `ok(member)` or `err(NOT_FOUND)`.
+   */
+  async getMember(workspaceId: string, memberId: string): Promise<Result<WorkspaceMember, AppError>> {
+    const member = await this.members.findByWorkspaceAndId(workspaceId, memberId);
+    if (!member) return err(AppError.notFound('WorkspaceMember'));
+    return ok(member);
+  }
+
+  /**
    * Issues a workspace invitation for the given email address.
    *
    * Returns `CONFLICT` when a pending invitation for the same email already exists
@@ -221,6 +234,9 @@ export class WorkspaceService {
 
     const workspace = await this.workspaces.findById(workspaceId);
     if (!workspace) return err(AppError.notFound('Workspace'));
+
+    const existing = await this.members.findByWorkspaceAndUserId(workspaceId, userId);
+    if (existing) return err(AppError.conflict('User is already a member of this workspace'));
 
     // Mutate invitation status — entity is tracked by EM; flush below commits this too.
     invitation.status = 'accepted';

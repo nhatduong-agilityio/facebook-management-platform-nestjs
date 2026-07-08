@@ -4,8 +4,8 @@ import type { Logger } from 'nestjs-pino';
 import { PostCreatedConsumer, type PostCreatedPayload } from './post-created.consumer';
 
 const mockRedis = {
-  set: vi.fn<Parameters<Redis['set']>>(),
-  del: vi.fn<Parameters<Redis['del']>>().mockResolvedValue(1),
+  set: vi.fn(),
+  del: vi.fn().mockResolvedValue(1),
 } as unknown as Redis;
 
 const mockLogger = {

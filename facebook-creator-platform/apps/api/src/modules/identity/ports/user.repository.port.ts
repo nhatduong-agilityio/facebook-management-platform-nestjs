@@ -25,4 +25,15 @@ export abstract class IUserRepository {
    * @param user - The `User` instance to save.
    */
   abstract save(user: User): Promise<void>;
+
+  /**
+   * Finds a user by their internal platform id.
+   *
+   * Used by internal endpoints that need to resolve an email from a UUID
+   * carried in domain events (e.g. `createdByUserId` in `PostPublishedEvent`).
+   *
+   * @param id - UUID v7 of the `User` record.
+   * @returns The matching `User`, or `null` when no record exists.
+   */
+  abstract findById(id: string): Promise<User | null>;
 }

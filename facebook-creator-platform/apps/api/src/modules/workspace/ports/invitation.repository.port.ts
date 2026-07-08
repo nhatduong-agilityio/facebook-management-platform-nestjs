@@ -22,6 +22,17 @@ export abstract class IInvitationRepository {
   abstract findPendingByWorkspaceAndEmail(workspaceId: string, email: string): Promise<Invitation | null>;
 
   /**
+   * Looks up an invitation by its primary key.
+   *
+   * Used by `GET /internal/invitations/:id` to expose the token to the Email
+   * Service without including it in the event payload (ADR-050 / security).
+   *
+   * @param id - UUID v7 of the invitation record.
+   * @returns The invitation, or `null` if no record matches.
+   */
+  abstract findById(id: string): Promise<Invitation | null>;
+
+  /**
    * Looks up an invitation by its single-use token.
    *
    * Returns the invitation regardless of status — the caller is responsible for

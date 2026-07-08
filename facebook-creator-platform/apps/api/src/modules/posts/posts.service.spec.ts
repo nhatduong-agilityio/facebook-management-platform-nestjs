@@ -274,7 +274,7 @@ describe('PostsService', () => {
     const PAST_DATE = new Date(Date.now() - 86_400_000).toISOString();  // -1 day
     const GRAPH_POST_ID = 'fb-graph-post-id-001';
 
-    function setupPost(status: Parameters<typeof makePost>[0]['status']) {
+    function setupPost(status: Post['status']) {
       const post = makePost({ status });
       vi.mocked(mockPostRepo.findById).mockResolvedValue(post);
       vi.mocked(mockPostRepo.save).mockResolvedValue(undefined);

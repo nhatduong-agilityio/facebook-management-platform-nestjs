@@ -8,8 +8,8 @@ import { PostPublishedEvent } from '../events/post-published.event';
 import type { Post } from '../entities/post.entity';
 
 const mockRedis = {
-  set: vi.fn<Parameters<Redis['set']>>(),
-  del: vi.fn<Parameters<Redis['del']>>().mockResolvedValue(1),
+  set: vi.fn(),
+  del: vi.fn().mockResolvedValue(1),
 } as unknown as Redis;
 
 const mockEm = {
@@ -22,7 +22,7 @@ const mockOrm = {
 } as unknown as MikroORM;
 
 const mockEventBus = {
-  publish: vi.fn<Parameters<IEventBus['publish']>>().mockResolvedValue(undefined),
+  publish: vi.fn().mockResolvedValue(undefined),
 } as unknown as IEventBus;
 
 const mockLogger = { log: vi.fn() } as unknown as Logger;

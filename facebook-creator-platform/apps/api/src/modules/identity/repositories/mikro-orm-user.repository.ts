@@ -24,6 +24,11 @@ export class MikroOrmUserRepository extends IUserRepository {
     return this.repo.findOne({ clerkUserId });
   }
 
+  /** @inheritdoc */
+  findById(id: string): Promise<User | null> {
+    return this.repo.findOne({ id });
+  }
+
   /**
    * Persists the entity via MikroORM's Unit of Work.
    *

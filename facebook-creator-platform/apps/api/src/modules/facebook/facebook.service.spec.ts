@@ -29,7 +29,7 @@ const mockFacebookAccounts = {
 } as unknown as IFacebookAccountRepository;
 
 const mockEventBus = {
-  publish: vi.fn<Parameters<IEventBus['publish']>>().mockResolvedValue(undefined),
+  publish: vi.fn().mockResolvedValue(undefined),
 } as unknown as IEventBus;
 
 describe('FacebookService', () => {
