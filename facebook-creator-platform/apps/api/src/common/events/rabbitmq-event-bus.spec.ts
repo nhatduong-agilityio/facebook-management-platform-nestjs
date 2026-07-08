@@ -6,7 +6,7 @@ import { PostCreatedEvent } from '../../modules/posts/events/post-created.event'
 import { PostPublishedEvent } from '../../modules/posts/events/post-published.event';
 
 const mockAmqp = {
-  publish: vi.fn<Parameters<AmqpConnection['publish']>>().mockResolvedValue(undefined),
+  publish: vi.fn().mockResolvedValue(undefined),
 } as unknown as AmqpConnection;
 
 const mockMessagingLog: IMessagingLogRepository = {
@@ -26,7 +26,7 @@ describe('RabbitMqEventBus', () => {
   });
 
   it('publishes PostCreatedEvent to fcp.events with routing key posts.created', async () => {
-    const event = new PostCreatedEvent('post-1', 'ws-1', 'user-1');
+    const event = new PostCreatedEvent('post-1', 'ws-1', 'user-1', undefined, 'content', 'draft', undefined, new Date());
     await bus.publish(event);
 
     expect(mockAmqp.publish).toHaveBeenCalledOnce();
@@ -61,7 +61,7 @@ describe('RabbitMqEventBus', () => {
   });
 
   it('includes occurredAt as an ISO string in the payload', async () => {
-    const event = new PostCreatedEvent('post-3', 'ws-3', 'user-3');
+    const event = new PostCreatedEvent('post-3', 'ws-3', 'user-3', undefined, 'content', 'draft', undefined, new Date());
     await bus.publish(event);
 
     const [, , payload] = vi.mocked(mockAmqp.publish).mock.calls[0];
@@ -69,7 +69,7 @@ describe('RabbitMqEventBus', () => {
   });
 
   it('writes a pending log row before amqp.publish', async () => {
-    const event = new PostCreatedEvent('post-4', 'ws-4', 'user-4');
+    const event = new PostCreatedEvent('post-4', 'ws-4', 'user-4', undefined, 'content', 'draft', undefined, new Date());
 
     // track call order
     const callOrder: string[] = [];
@@ -78,6 +78,7 @@ describe('RabbitMqEventBus', () => {
     });
     vi.mocked(mockAmqp.publish).mockImplementation(async () => {
       callOrder.push('amqp.publish');
+      return true;
     });
 
     await bus.publish(event);
@@ -93,7 +94,7 @@ describe('RabbitMqEventBus', () => {
   });
 
   it('marks the log row as processed after successful publish', async () => {
-    const event = new PostCreatedEvent('post-5', 'ws-5', 'user-5');
+    const event = new PostCreatedEvent('post-5', 'ws-5', 'user-5', undefined, 'content', 'draft', undefined, new Date());
     await bus.publish(event);
 
     expect(mockMessagingLog.markProcessed).toHaveBeenCalledWith(event.eventId);
@@ -101,7 +102,7 @@ describe('RabbitMqEventBus', () => {
   });
 
   it('marks the log row as failed and rethrows when amqp.publish throws', async () => {
-    const event = new PostCreatedEvent('post-6', 'ws-6', 'user-6');
+    const event = new PostCreatedEvent('post-6', 'ws-6', 'user-6', undefined, 'content', 'draft', undefined, new Date());
     const publishError = new Error('broker unavailable');
     vi.mocked(mockAmqp.publish).mockRejectedValueOnce(publishError);
 

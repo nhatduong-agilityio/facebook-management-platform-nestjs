@@ -6,8 +6,8 @@ import { FacebookPageDeauthorizedConsumer, type FacebookDeauthorizedPayload } fr
 import type { FacebookAccount } from '../entities/facebook-account.entity';
 
 const mockRedis = {
-  set: vi.fn<Parameters<Redis['set']>>(),
-  del: vi.fn<Parameters<Redis['del']>>().mockResolvedValue(1),
+  set: vi.fn(),
+  del: vi.fn().mockResolvedValue(1),
 } as unknown as Redis;
 
 const mockTx = {
@@ -16,7 +16,7 @@ const mockTx = {
 
 const mockEm = {
   findOne: vi.fn(),
-  transactional: vi.fn<Parameters<ReturnType<MikroORM['em']['fork']>['transactional']>>(),
+  transactional: vi.fn(),
 };
 
 const mockOrm = {

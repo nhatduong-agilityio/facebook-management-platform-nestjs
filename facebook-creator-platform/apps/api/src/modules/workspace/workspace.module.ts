@@ -13,6 +13,7 @@ import { MikroOrmInvitationRepository } from './repositories/mikro-orm-invitatio
 import { WorkspaceService } from './workspace.service';
 import { WorkspaceController } from './workspace.controller';
 import { InternalWorkspaceController } from './controllers/internal-workspace.controller';
+import { InternalInvitationController } from './controllers/internal-invitation.controller';
 
 /**
  * Workspace module: workspace lifecycle, member management, and invitations.
@@ -27,7 +28,7 @@ import { InternalWorkspaceController } from './controllers/internal-workspace.co
     MikroOrmModule.forFeature([Workspace, WorkspaceMember, Invitation]),
     IdentityModule,
   ],
-  controllers: [WorkspaceController, InternalWorkspaceController],
+  controllers: [WorkspaceController, InternalWorkspaceController, InternalInvitationController],
   providers: [
     WorkspaceService,
     { provide: IWorkspaceRepository, useClass: MikroOrmWorkspaceRepository },

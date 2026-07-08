@@ -31,6 +31,11 @@ export class MikroOrmInvitationRepository extends IInvitationRepository {
   }
 
   /** @inheritdoc */
+  findById(id: string): Promise<Invitation | null> {
+    return this.repo.findOne({ id });
+  }
+
+  /** @inheritdoc */
   findByToken(token: string): Promise<Invitation | null> {
     return this.repo.findOne({ token });
   }

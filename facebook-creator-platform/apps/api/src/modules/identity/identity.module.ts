@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { IdentityController } from './identity.controller';
 import { IdentityService } from './identity.service';
+import { InternalUserController } from './internal-user.controller';
 import { ClerkAuthGuard } from './guards/clerk-auth.guard';
 import { WorkspaceRolesGuard } from './guards/roles.guard';
 import { User } from './entities/user.entity';
@@ -26,7 +27,7 @@ import { ClerkWebhookService } from './webhooks/clerk-webhook.service';
  */
 @Module({
   imports: [MikroOrmModule.forFeature([User])],
-  controllers: [IdentityController, ClerkWebhookController],
+  controllers: [IdentityController, ClerkWebhookController, InternalUserController],
   providers: [
     IdentityService,
     ClerkAuthGuard,

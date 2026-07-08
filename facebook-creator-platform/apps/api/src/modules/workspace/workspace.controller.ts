@@ -131,6 +131,33 @@ export class WorkspaceController {
   }
 
   /**
+   * Returns a single workspace member by membership record id.
+   *
+   * Accessible to all workspace members (owner, editor, viewer).
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @param memberId    - UUID of the `WorkspaceMember` record.
+   */
+  @Get(':workspaceId/members/:memberId')
+  @UseGuards(WorkspaceRolesGuard)
+  @Roles('owner', 'editor', 'viewer')
+  @ApiOperation({ summary: 'Get a single workspace member by id' })
+  @ApiOkResponse({ type: WorkspaceMemberResponseDto })
+  @ApiNotFoundResponse({ description: 'Member not found in workspace' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
+  @ApiForbiddenResponse({ description: 'Not a member of this workspace' })
+  async getMember(
+    @Param('workspaceId') workspaceId: string,
+    @Param('memberId') memberId: string,
+  ): Promise<WorkspaceMemberResponseDto> {
+    const result = await this.workspaceService.getMember(workspaceId, memberId);
+    return result.match(
+      (member) => this.toMemberResponse(member),
+      (e) => { throw toHttpException(e); },
+    );
+  }
+
+  /**
    * Invites a user to the workspace by email.
    *
    * Requires Owner or Editor role (`WorkspaceRolesGuard` reads `:workspaceId`).
