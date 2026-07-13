@@ -118,6 +118,72 @@ For blocked tasks always append an inline note on the same line:
   **Dedup** (BR-R08): `dedupe_key = '{eventId}:{recipientEmail}'`, UNIQUE on `email_delivery_logs`. DoD: all consumers create log rows; BullMQ retries 3× then marks failed; dedup prevents double-send on replay; `related_entity_type/id` populated; tests for all consumers + retry behavior.
 - [ ] **T4.4 Cross-cutting tests + docs** (~6h) — unit + API tests fill gaps; Swagger complete; ADRs current. DoD: coverage targets met; Swagger builds.
 
+## RabbitMQ Refactor — @golevelup → Transport.RMQ
+
+> **Why:** Mentor review (2026-07-13) identified that `@golevelup/nestjs-rabbitmq` bypasses
+> the NestJS microservices transport layer, breaking standard lifecycle, DI context,
+> and serialization contracts. All services must migrate to `@nestjs/microservices`
+> `Transport.RMQ` before T5 hardening. Reference architecture:
+> `docs/diagrams/rabbitmq-transport-rmq.drawio`.
+>
+> **Wire-format break:** `ClientProxy.emit()` wraps every payload as
+> `{ "pattern": "...", "data": {...} }`. `@EventPattern` unwraps `data` automatically.
+> Publisher and consumer of each routing key **must** be migrated together — run
+> TR.1–TR.9 in order, then TR.10 to verify end-to-end before proceeding to Week 5.
+>
+> **Design decision — `@MessagePattern` / `ClientProxy.send()` not used:** NestJS
+> Transport.RMQ also supports request-response (`.send()` + `@MessagePattern`).
+> This project intentionally uses **HTTP** for all sync inter-service calls (checkout,
+> quota, metrics); RMQ is event-only. Do not add `@MessagePattern` without an ADR.
+>
+> **Retry architecture:** every service queue declares `x-dead-letter-exchange: fcp.dlq`.
+> Transient failures → `channel.nack(msg, false, false)` → DLQ (operator-inspectable).
+> The `fcp.retry.30s` TTL-queue from `@golevelup`'s `RetryQueueSetup` must be declared
+> via Docker Compose init / `rabbitmqadmin definitions.json` / Terraform — **not** in
+> application code. Applications must not own broker topology; raw `amqplib` inside a
+> NestJS app is prohibited in this project.
+>
+> **Publisher Confirm (known limitation):** `ClientProxy.emit()` does not expose
+> `ConfirmChannel` — there is no broker-level ack that the message was durably stored.
+> `@golevelup` supported this via `AmqpConnection.publish()` on a `ConfirmChannel`.
+> Acceptable for this training project; record as a known limitation in the TR.10 ADR.
+
+- [ ] **TR.1 Add `@nestjs/microservices` + shared RMQ options factory** (~1h) — add `@nestjs/microservices` to `apps/api` and all `services/*` packages; create **two** helper factories:
+  - `getRmqOptions(queue, configService): MicroserviceOptions` — topic consumer (transport=Transport.RMQ, wildcards=true, exchange=fcp.events, exchangeType=topic, noAck=false, prefetchCount from **`RMQ_PREFETCH` env** (default 10), durable queue, `x-dead-letter-exchange: fcp.dlq`)
+  - `getDlqRmqOptions(queue, configService): MicroserviceOptions` — DLQ consumer (exchange=fcp.dlq, exchangeType=fanout, noAck=false, prefetchCount from **`RMQ_DLQ_PREFETCH` env** (default 5), durable queue, no wildcards, no x-dead-letter-exchange)
+
+  Add `RMQ_PREFETCH` and `RMQ_DLQ_PREFETCH` to `.env.example`.
+
+  No runtime behaviour changes yet. DoD: `@nestjs/microservices` resolves in all packages; both factories compile; `pnpm lint` clean.
+
+- [ ] **TR.2 apps/api — migrate publisher (ClientProxy)** (~2h) — replace `AmqpConnection.publish()` in `RabbitMqEventBus` with `this.client.emit(event.routingKey, event)` where `client: ClientProxy` is injected via `@Inject('FCP_EVENT_BUS')`; replace `RabbitMQModule.forRootAsync` in `rabbitmq.module.ts` with `ClientsModule.registerAsync([{ name: 'FCP_EVENT_BUS', transport: Transport.RMQ, ... }])`; update `RabbitMqEventBus` spec to mock `ClientProxy` instead of `AmqpConnection`. DoD: publisher unit tests green; `apps/api` builds; no `@golevelup` import in publisher path.
+
+- [ ] **TR.3 apps/api — migrate consumers to `@EventPattern`** (~3h) — add **two** `connectMicroservice()` calls in `main.ts`:
+  - `app.connectMicroservice(getRmqOptions('api_queue', ...))` — 6 domain event consumers
+  - `app.connectMicroservice(getDlqRmqOptions('dlq.logger', ...))` — `DlqConsumer` (fanout binding to `fcp.dlq`)
+
+  Then `await app.startAllMicroservices()`. Change every consumer class from `@Injectable()` to `@Controller()` and register in the owning module's `controllers` array; replace `@RabbitSubscribe` with `@EventPattern('routing.key')`, `@Payload() data`, `@Ctx() ctx: RmqContext`; replace `return new Nack(requeue)` with `channel.nack(msg, false, requeue)` / `channel.ack(msg)`; wrap each handler body in `await RequestContext.create(orm, async () => { ... })` (HTTP middleware does not run for microservice handlers). Update all consumer specs to mock `RmqContext`. DoD: all 6 domain consumers + `DlqConsumer` wired via Transport.RMQ on separate connections; `channel.ack/nack` called in every path; tests green.
+
+- [ ] **TR.4 services/billing — migrate publisher** (~1h) — replace `AmqpConnection.publish()` in `BillingRabbitMqAdapter` with `ClientProxy.emit(routingKey, payload)`; replace `RabbitMQModule.forRootAsync` in `app.module.ts` with `ClientsModule.registerAsync`; update adapter spec. DoD: billing events published via Transport.RMQ; tests green; no `@golevelup` in billing service.
+
+- [ ] **TR.5 services/email — migrate to pure microservice** (~3h) — change `main.ts` to `NestFactory.createMicroservice(AppModule, getRmqOptions('email_queue', ...))`; remove `EmailMessagingModule` and **delete `RetryQueueSetup` entirely** from `app.module.ts` (`managedChannel.addSetup` is unavailable under Transport.RMQ and broker topology must not live in application code — `fcp.retry.30s` TTL-queue is pre-declared via Docker Compose init / `definitions.json`); change all 5 consumers to `@Controller()` and move to `EmailModule.controllers`; replace `@RabbitSubscribe` with `@EventPattern` + `@Payload()` + `@Ctx() RmqContext`; replace `Nack` returns with `channel.ack/nack`; wrap handlers in `RequestContext.create()`. Update 5 consumer specs. DoD: email boots as pure microservice; all 5 event patterns bound to `email_queue`; tests green; no `@golevelup`; no raw `amqplib` in app code.
+
+- [ ] **TR.6 services/audit — migrate to hybrid + wildcard consumer** (~1h) — remove global `RabbitMQModule.forRootAsync` wrapper; add `app.connectMicroservice(getRmqOptions('audit_queue', ...))` + `startAllMicroservices()` in `main.ts`; change `AuditConsumer` to `@Controller()` with `@EventPattern('#')`; replace `Nack` with `channel.ack/nack`; add `RequestContext.create()` wrapper. Update spec. DoD: hybrid audit service receives all topic events via `#` wildcard; MongoDB write tested; no `@golevelup`.
+
+- [ ] **TR.7 services/analytics — migrate to hybrid + 1 consumer** (~1h) — same hybrid pattern as TR.6; queue `analytics_queue`; one `@EventPattern('posts.published')` handler. DoD: consumer receives `posts.published`; idempotent upsert test green; no `@golevelup`.
+
+- [ ] **TR.8 services/search — migrate to hybrid + 5 consumers** (~2h) — same hybrid pattern; queue `search_queue`; 5 `@EventPattern` handlers (`posts.created`, `posts.updated`, `posts.published`, `posts.failed`, `posts.deleted`). DoD: all 5 Algolia ops triggered correctly; Redis NX dedup path tested; no `@golevelup`.
+
+- [ ] **TR.9 services/notification — migrate to hybrid + 11 consumers** (~3h) — same hybrid pattern; queue `notification_queue`; 11 `@EventPattern` handlers (4 projection consumers: `workspace.member-invited`, `workspace.member-joined`, `workspace.member-removed`, `workspace.role-changed`; 7 notification consumers); ensure `RequestContext.create()` wraps every handler (HTTP middleware does not fire for hybrid microservice routes). DoD: projection keeps `workspace_members_projection` consistent; notification consumers create rows + recipients; tests green; no `@golevelup`.
+
+- [ ] **TR.10 ADR + full workspace smoke test** (~1h) — append ADR to `docs/DECISIONS.md`: migration from `@golevelup/nestjs-rabbitmq` to `@nestjs/microservices` Transport.RMQ (date: 2026-07-13, mentor review); record known limitation: `ClientProxy.emit()` has no `ConfirmChannel` broker-ack (unlike `@golevelup`); record decision: broker topology (`fcp.retry.30s`, exchanges) declared via IaC, not application code. Run `pnpm lint && pnpm test` across all workspaces. DoD: ADR in DECISIONS.md; `pnpm test` green in all packages; `pnpm lint` clean.
+
+- [ ] **TR.11 Complete @golevelup removal** (~1h) — run `pnpm remove @golevelup/nestjs-rabbitmq` in every workspace that declares it (`apps/api`, `services/billing`, `services/email`, `services/audit`, `services/analytics`, `services/search`, `services/notification`); delete all `@golevelup` wrapper modules (`RabbitmqModule` (old), `EmailMessagingModule`, and any equivalent `*MessagingModule` in other services); remove all remaining imports of `Nack`, `RabbitSubscribe`, `AmqpConnection` from `@golevelup/nestjs-rabbitmq`. **Do not delete `RabbitMqEventBus`** — the class stays; only its internals changed in TR.2 (`AmqpConnection` → `ClientProxy`). The `IEventBus` port and all domain-layer injections remain untouched:
+  ```
+  Service → IEventBus ← RabbitMqEventBus → ClientProxy
+  ```
+  DoD: `grep -r golevelup .` → zero results; `pnpm install` clean; `pnpm build` succeeds across all workspaces; no `ClientProxy` injected outside of adapter classes — domain services inject `IEventBus` only; `@nestjs/microservices` types do not leak into the domain layer.
+
 ## Week 5 — Hardening, Verification & Load Testing (verify, don't build)
 
 - [ ] **T5.1 MikroORM/UoW verification pass** (~2h) — confirm all entities use UoW; entity-level soft-delete `@Filter` (not global ORM filter — removed in T1.4 bugfix); no stray TypeORM; migrations match `fcp-ddl.sql` **modulo intentional divergences** (ADR-046: `workspace_id` on `post_metrics`; ADR-047: `core.audit_logs` not created; app-generated UUID v7 everywhere — no `DEFAULT gen_random_uuid()`). DoD: no unintended schema divergences; CI green.
