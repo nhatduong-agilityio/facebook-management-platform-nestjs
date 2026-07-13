@@ -1,0 +1,539 @@
+<mxfile host="app.diagrams.net" modified="2026-07-13T00:00:00.000Z" agent="Claude Code" version="24.7.2" type="device">
+
+<!-- PAGE 1 — SYSTEM ARCHITECTURE OVERVIEW -->
+<diagram id="d1" name="1. System Architecture">
+  <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+    <root>
+      <mxCell id="0" /><mxCell id="1" parent="0" />
+
+      <mxCell id="title" value="FCP — NestJS Transport.RMQ Architecture Overview" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="227" y="14" width="1200" height="40" as="geometry" />
+      </mxCell>
+
+      <!-- PUBLISHER ZONE -->
+      <mxCell id="pub_zone" value="PUBLISHERS — ClientProxy.emit(routingKey, payload)" style="swimlane;html=1;startSize=28;fillColor=#EFF7FF;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;fontColor=#6c8ebf;" vertex="1" parent="1">
+        <mxGeometry x="40" y="62" width="1574" height="112" as="geometry" />
+      </mxCell>
+      <mxCell id="api_pub" value="&lt;b&gt;apps/api&lt;/b&gt; — HTTP :3000&lt;br&gt;NestFactory.create() + connectMicroservice()&lt;br&gt;Publisher &amp; Consumer&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;&lt;i&gt;IEventBus → RabbitMqEventBus → ClientProxy&lt;/i&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=center;" vertex="1" parent="pub_zone">
+        <mxGeometry x="50" y="30" width="340" height="68" as="geometry" />
+      </mxCell>
+      <mxCell id="bil_pub" value="&lt;b&gt;services/billing&lt;/b&gt; — HTTP :3001&lt;br&gt;NestFactory.create() — Publisher only&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;&lt;i&gt;BillingRabbitMqAdapter → ClientProxy&lt;/i&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=center;" vertex="1" parent="pub_zone">
+        <mxGeometry x="1182" y="30" width="340" height="68" as="geometry" />
+      </mxCell>
+
+      <!-- EXCHANGE -->
+      <mxCell id="exch" value="fcp.events     type: topic | durable: true | wildcards: true | prefetchCount: $RMQ_PREFETCH" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;fontSize=14;fontStyle=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="377" y="226" width="900" height="50" as="geometry" />
+      </mxCell>
+      <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=2;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" edge="1" source="api_pub" target="exch" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;exitX=0.5;exitY=1;entryX=1;entryY=0.5;" edge="1" source="bil_pub" target="exch" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- QUEUES -->
+      <mxCell id="q1" value="&lt;b&gt;email_queue&lt;/b&gt;&lt;br&gt;5 bindings" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="62" y="338" width="155" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="q2" value="&lt;b&gt;audit_queue&lt;/b&gt;&lt;br&gt;binding: #" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="272" y="338" width="155" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="q3" value="&lt;b&gt;analytics_queue&lt;/b&gt;&lt;br&gt;1 binding" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="482" y="338" width="155" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="q4" value="&lt;b&gt;search_queue&lt;/b&gt;&lt;br&gt;5 bindings" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="692" y="338" width="155" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="q5" value="&lt;b&gt;notification_queue&lt;/b&gt;&lt;br&gt;11 bindings" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="902" y="338" width="165" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="q6" value="&lt;b&gt;api_queue&lt;/b&gt;&lt;br&gt;6 bindings" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="1122" y="338" width="155" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="eq1" value="5 keys" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;fontSize=8;" edge="1" source="exch" target="q1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="eq2" value="#" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;fontSize=8;" edge="1" source="exch" target="q2" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="eq3" value="posts.published" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;fontSize=8;" edge="1" source="exch" target="q3" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="eq4" value="5 keys" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;fontSize=8;" edge="1" source="exch" target="q4" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="eq5" value="11 keys" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;fontSize=8;" edge="1" source="exch" target="q5" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="eq6" value="6 keys" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;fontSize=8;" edge="1" source="exch" target="q6" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- CONSUMER SERVICES -->
+      <mxCell id="s1" value="&lt;b&gt;services/email&lt;/b&gt;&lt;br&gt;createMicroservice()&lt;br&gt;pure consumer (no HTTP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1">
+        <mxGeometry x="45" y="474" width="190" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="s2" value="&lt;b&gt;services/audit&lt;/b&gt;&lt;br&gt;connectMicroservice()&lt;br&gt;hybrid — HTTP :3003" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1">
+        <mxGeometry x="250" y="474" width="195" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="s3" value="&lt;b&gt;services/analytics&lt;/b&gt;&lt;br&gt;connectMicroservice()&lt;br&gt;hybrid — HTTP :3002" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1">
+        <mxGeometry x="455" y="474" width="205" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="s4" value="&lt;b&gt;services/search&lt;/b&gt;&lt;br&gt;connectMicroservice()&lt;br&gt;hybrid — HTTP :3004" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1">
+        <mxGeometry x="665" y="474" width="205" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="s5" value="&lt;b&gt;services/notification&lt;/b&gt;&lt;br&gt;connectMicroservice()&lt;br&gt;hybrid — HTTP :3005" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1">
+        <mxGeometry x="875" y="474" width="215" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="s6" value="&lt;b&gt;apps/api (consumer)&lt;/b&gt;&lt;br&gt;connectMicroservice() x2&lt;br&gt;api_queue + dlq_queue" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=center;" vertex="1" parent="1">
+        <mxGeometry x="1095" y="474" width="215" height="65" as="geometry" />
+      </mxCell>
+      <mxCell id="qs1" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="q1" target="s1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="qs2" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="q2" target="s2" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="qs3" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="q3" target="s3" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="qs4" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="q4" target="s4" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="qs5" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="q5" target="s5" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="qs6" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="q6" target="s6" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- DLQ ZONE -->
+      <mxCell id="dlq_zone" value="DEAD LETTER FLOW — channel.nack(msg, false, false)  →  x-dead-letter-exchange: fcp.dlq" style="swimlane;html=1;startSize=28;fillColor=#FFF0E8;strokeColor=#b85450;fontSize=12;fontStyle=1;fontColor=#b85450;" vertex="1" parent="1">
+        <mxGeometry x="40" y="616" width="1574" height="96" as="geometry" />
+      </mxCell>
+      <mxCell id="dlq_note" value="every consumer queue declares&lt;br&gt;x-dead-letter-exchange: fcp.dlq" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=center;" vertex="1" parent="dlq_zone">
+        <mxGeometry x="20" y="32" width="260" height="48" as="geometry" />
+      </mxCell>
+      <mxCell id="dlq_exch" value="fcp.dlq&lt;br&gt;type: fanout" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;fontSize=12;fontStyle=1;" vertex="1" parent="dlq_zone">
+        <mxGeometry x="380" y="22" width="180" height="54" as="geometry" />
+      </mxCell>
+      <mxCell id="dlq_q" value="dlq_queue&lt;br&gt;prefetch: $RMQ_DLQ_PREFETCH" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="dlq_zone">
+        <mxGeometry x="670" y="22" width="200" height="56" as="geometry" />
+      </mxCell>
+      <mxCell id="dlq_con" value="DlqConsumer (apps/api)&lt;br&gt;@EventPattern — logs to messaging.dead_letter_messages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=center;" vertex="1" parent="dlq_zone">
+        <mxGeometry x="980" y="26" width="420" height="48" as="geometry" />
+      </mxCell>
+      <mxCell id="de1" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=2;" edge="1" source="dlq_note" target="dlq_exch" parent="dlq_zone"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="de2" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=2;" edge="1" source="dlq_exch" target="dlq_q" parent="dlq_zone"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="de3" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=2;" edge="1" source="dlq_q" target="dlq_con" parent="dlq_zone"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- LEGEND -->
+      <mxCell id="leg" value="" style="swimlane;html=1;startSize=0;fillColor=#f5f5f5;strokeColor=#999999;" vertex="1" parent="1">
+        <mxGeometry x="40" y="728" width="1574" height="42" as="geometry" />
+      </mxCell>
+      <mxCell id="l1" value="apps/api" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="leg"><mxGeometry x="10" y="8" width="160" height="26" as="geometry" /></mxCell>
+      <mxCell id="l2" value="services/billing (publisher)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="leg"><mxGeometry x="185" y="8" width="200" height="26" as="geometry" /></mxCell>
+      <mxCell id="l3" value="Consumer services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="leg"><mxGeometry x="400" y="8" width="180" height="26" as="geometry" /></mxCell>
+      <mxCell id="l4" value="Exchange" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;fontSize=10;" vertex="1" parent="leg"><mxGeometry x="595" y="8" width="140" height="26" as="geometry" /></mxCell>
+      <mxCell id="l5" value="Queue" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;" vertex="1" parent="leg"><mxGeometry x="750" y="8" width="120" height="26" as="geometry" /></mxCell>
+      <mxCell id="l6" value="Dead Letter" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="leg"><mxGeometry x="885" y="8" width="140" height="26" as="geometry" /></mxCell>
+    </root>
+  </mxGraphModel>
+</diagram>
+
+<!-- PAGE 2 — TRANSPORT.RMQ CORE MECHANICS -->
+<diagram id="d2" name="2. Transport.RMQ Mechanics">
+  <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+    <root>
+      <mxCell id="0" /><mxCell id="1" parent="0" />
+
+      <mxCell id="t" value="Transport.RMQ Core Mechanics — How NestJS wraps RabbitMQ" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="227" y="14" width="1200" height="36" as="geometry" />
+      </mxCell>
+
+      <!-- LEFT: PUBLISHER / HEXAGONAL -->
+      <mxCell id="pub_bg" value="PUBLISHER — Hexagonal Architecture" style="swimlane;html=1;startSize=28;fillColor=#EFF7FF;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;fontColor=#6c8ebf;" vertex="1" parent="1">
+        <mxGeometry x="20" y="60" width="460" height="640" as="geometry" />
+      </mxCell>
+      <mxCell id="domain" value="Domain Service&lt;br&gt;&lt;font color=&quot;#666666&quot;&gt;PostService, WorkspaceService…&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;align=center;" vertex="1" parent="pub_bg">
+        <mxGeometry x="30" y="46" width="400" height="52" as="geometry" />
+      </mxCell>
+      <mxCell id="port" value="&lt;&lt;port&gt;&gt;  IEventBus&lt;br&gt;&lt;font size=&quot;10&quot; color=&quot;#666666&quot;&gt;publish(event: DomainEvent): Promise&lt;void&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;dashed=1;" vertex="1" parent="pub_bg">
+        <mxGeometry x="30" y="148" width="400" height="52" as="geometry" />
+      </mxCell>
+      <mxCell id="adapter" value="&lt;&lt;adapter&gt;&gt;  RabbitMqEventBus&lt;br&gt;&lt;font size=&quot;10&quot; color=&quot;#666666&quot;&gt;implements IEventBus&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;" vertex="1" parent="pub_bg">
+        <mxGeometry x="30" y="250" width="400" height="52" as="geometry" />
+      </mxCell>
+      <mxCell id="cp" value="ClientProxy&lt;br&gt;&lt;font size=&quot;10&quot; color=&quot;#666666&quot;&gt;@Inject('FCP_EVENT_BUS') from ClientsModule&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;align=center;" vertex="1" parent="pub_bg">
+        <mxGeometry x="30" y="352" width="400" height="52" as="geometry" />
+      </mxCell>
+      <mxCell id="envelope" value='Wire envelope (auto-wrapped by NestJS)&lt;br&gt;&lt;font face="Courier New" size="10" color="#333333"&gt;{ "pattern": "posts.created", "data": { ...payload } }&lt;/font&gt;' style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=center;" vertex="1" parent="pub_bg">
+        <mxGeometry x="30" y="454" width="400" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="hex_warn" value="ClientProxy must NOT be injected into the domain layer.&lt;br&gt;Only adapters (RabbitMqEventBus, BillingRabbitMqAdapter) may use it." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=center;" vertex="1" parent="pub_bg">
+        <mxGeometry x="30" y="548" width="400" height="50" as="geometry" />
+      </mxCell>
+      <mxCell id="pe1" value="injects" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;" edge="1" source="domain" target="port" parent="pub_bg"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="pe2" value="implements" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;" edge="1" source="port" target="adapter" parent="pub_bg"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="pe3" value="uses" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;" edge="1" source="adapter" target="cp" parent="pub_bg"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="pe4" value="emit()" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;" edge="1" source="cp" target="envelope" parent="pub_bg"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- CENTER: BROKER -->
+      <mxCell id="broker" value="RABBITMQ BROKER" style="swimlane;html=1;startSize=28;fillColor=#FFF5E8;strokeColor=#d6b656;fontSize=12;fontStyle=1;fontColor=#d6b656;" vertex="1" parent="1">
+        <mxGeometry x="500" y="60" width="450" height="640" as="geometry" />
+      </mxCell>
+      <mxCell id="b_exch" value="fcp.events&lt;br&gt;type: topic | durable: true" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;fontSize=13;fontStyle=1;align=center;" vertex="1" parent="broker">
+        <mxGeometry x="50" y="80" width="350" height="60" as="geometry" />
+      </mxCell>
+      <mxCell id="b_bind" value="Binding (auto-created by NestJS on startup)&lt;br&gt;queue  exchange  routing key (@EventPattern value)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="broker">
+        <mxGeometry x="50" y="200" width="350" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="b_q" value="service_queue&lt;br&gt;durable: true&lt;br&gt;x-dead-letter-exchange: fcp.dlq" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;backgroundOutline=1;align=center;" vertex="1" parent="broker">
+        <mxGeometry x="100" y="315" width="250" height="80" as="geometry" />
+      </mxCell>
+      <mxCell id="b_dlq" value="fcp.dlq (fanout)&lt;br&gt;receives permanently nacked messages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;align=center;" vertex="1" parent="broker">
+        <mxGeometry x="50" y="460" width="350" height="52" as="geometry" />
+      </mxCell>
+      <mxCell id="b_iac" value="Broker topology declared via IaC / definitions.json&lt;br&gt;NOT in application code" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=center;" vertex="1" parent="broker">
+        <mxGeometry x="50" y="554" width="350" height="46" as="geometry" />
+      </mxCell>
+      <mxCell id="be1" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="b_exch" target="b_bind" parent="broker"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="be2" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="b_bind" target="b_q" parent="broker"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="be3" value="nack(false)" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=2;dashed=1;" edge="1" source="b_q" target="b_dlq" parent="broker"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- Publisher → Broker -->
+      <mxCell id="pb_arr" value="publish to exchange" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;" edge="1" source="envelope" target="b_exch" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- RIGHT: CONSUMER -->
+      <mxCell id="con_bg" value="CONSUMER — @Controller class" style="swimlane;html=1;startSize=28;fillColor=#F0EBF4;strokeColor=#9673a6;fontSize=12;fontStyle=1;fontColor=#9673a6;" vertex="1" parent="1">
+        <mxGeometry x="970" y="60" width="664" height="640" as="geometry" />
+      </mxCell>
+      <mxCell id="c_boot_lbl" value="Bootstrap" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=1;" vertex="1" parent="con_bg">
+        <mxGeometry x="20" y="36" width="200" height="20" as="geometry" />
+      </mxCell>
+      <mxCell id="c_boot" value="// pure consumer (services/email):&lt;br&gt;NestFactory.createMicroservice(AppModule, options);&lt;br&gt;&lt;br&gt;// hybrid (all other services):&lt;br&gt;const app = NestFactory.create(AppModule);&lt;br&gt;app.connectMicroservice(getRmqOptions(queue, config));&lt;br&gt;await app.startAllMicroservices();&lt;br&gt;await app.listen(port);" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#9673a6;fontSize=10;align=left;fontFamily=Courier New;" vertex="1" parent="con_bg">
+        <mxGeometry x="20" y="58" width="624" height="140" as="geometry" />
+      </mxCell>
+      <mxCell id="c_hdl_lbl" value="Handler — @Controller class (NOT @Injectable)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=1;" vertex="1" parent="con_bg">
+        <mxGeometry x="20" y="215" width="450" height="20" as="geometry" />
+      </mxCell>
+      <mxCell id="c_hdl" value="@Controller()&lt;br&gt;export class PostCreatedConsumer {&lt;br&gt;&lt;br&gt;  @EventPattern('posts.created')&lt;br&gt;  async handle(&lt;br&gt;    @Payload() data: PostCreatedPayload,&lt;br&gt;    @Ctx()    ctx:  RmqContext,&lt;br&gt;  ) {&lt;br&gt;    const channel = ctx.getChannelRef();&lt;br&gt;    const msg     = ctx.getMessage();&lt;br&gt;    await RequestContext.create(orm, async () =&gt; {&lt;br&gt;      try {&lt;br&gt;        await this.svc.handle(data);&lt;br&gt;        channel.ack(msg);             // success&lt;br&gt;      } catch (err) {&lt;br&gt;        const requeue = isTransient(err);&lt;br&gt;        channel.nack(msg, false, requeue);&lt;br&gt;        // true  → requeue (transient)&lt;br&gt;        // false → dead-letter to fcp.dlq&lt;br&gt;      }&lt;br&gt;    });&lt;br&gt;  }&lt;br&gt;}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#9673a6;fontSize=10;align=left;fontFamily=Courier New;" vertex="1" parent="con_bg">
+        <mxGeometry x="20" y="238" width="624" height="308" as="geometry" />
+      </mxCell>
+      <mxCell id="c_note" value="RequestContext.create() is REQUIRED — HTTP middleware does not run for microservice handlers." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=center;" vertex="1" parent="con_bg">
+        <mxGeometry x="20" y="562" width="624" height="40" as="geometry" />
+      </mxCell>
+
+      <!-- Broker → Consumer -->
+      <mxCell id="bc_arr" value="deliver message" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#9673a6;strokeWidth=2;fontSize=10;" edge="1" source="b_q" target="c_hdl" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- OLD vs NEW -->
+      <mxCell id="cmp" value="MIGRATION — @golevelup  vs  Transport.RMQ" style="swimlane;html=1;startSize=28;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="20" y="720" width="1614" height="140" as="geometry" />
+      </mxCell>
+      <mxCell id="old_bg" value="@golevelup (OLD)" style="swimlane;html=1;startSize=22;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;" vertex="1" parent="cmp">
+        <mxGeometry x="10" y="32" width="790" height="98" as="geometry" />
+      </mxCell>
+      <mxCell id="o1" value="@Injectable() on consumer class" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;" vertex="1" parent="old_bg"><mxGeometry x="10" y="22" width="370" height="20" as="geometry" /></mxCell>
+      <mxCell id="o2" value="@RabbitSubscribe({ exchange, routingKey, queue })" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontFamily=Courier New;" vertex="1" parent="old_bg"><mxGeometry x="10" y="42" width="440" height="20" as="geometry" /></mxCell>
+      <mxCell id="o3" value="AmqpConnection.publish(exchange, routingKey, payload)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontFamily=Courier New;" vertex="1" parent="old_bg"><mxGeometry x="10" y="62" width="440" height="20" as="geometry" /></mxCell>
+      <mxCell id="o4" value="return new Nack(requeue)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontFamily=Courier New;" vertex="1" parent="old_bg"><mxGeometry x="440" y="22" width="340" height="20" as="geometry" /></mxCell>
+      <mxCell id="o5" value="NestFactory.create() only" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;" vertex="1" parent="old_bg"><mxGeometry x="440" y="42" width="340" height="20" as="geometry" /></mxCell>
+      <mxCell id="o6" value="enableControllerDiscovery: true" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontFamily=Courier New;" vertex="1" parent="old_bg"><mxGeometry x="440" y="62" width="340" height="20" as="geometry" /></mxCell>
+
+      <mxCell id="new_bg" value="Transport.RMQ (NEW)" style="swimlane;html=1;startSize=22;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" vertex="1" parent="cmp">
+        <mxGeometry x="814" y="32" width="790" height="98" as="geometry" />
+      </mxCell>
+      <mxCell id="n1" value="@Controller() on consumer class" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;" vertex="1" parent="new_bg"><mxGeometry x="10" y="22" width="370" height="20" as="geometry" /></mxCell>
+      <mxCell id="n2" value="@EventPattern() + @Payload() + @Ctx() RmqContext" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontFamily=Courier New;" vertex="1" parent="new_bg"><mxGeometry x="10" y="42" width="460" height="20" as="geometry" /></mxCell>
+      <mxCell id="n3" value="ClientProxy.emit(routingKey, payload)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontFamily=Courier New;" vertex="1" parent="new_bg"><mxGeometry x="10" y="62" width="400" height="20" as="geometry" /></mxCell>
+      <mxCell id="n4" value="channel.nack(msg, false, requeue)" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontFamily=Courier New;" vertex="1" parent="new_bg"><mxGeometry x="440" y="22" width="340" height="20" as="geometry" /></mxCell>
+      <mxCell id="n5" value="createMicroservice()  or  connectMicroservice()" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;" vertex="1" parent="new_bg"><mxGeometry x="440" y="42" width="340" height="20" as="geometry" /></mxCell>
+      <mxCell id="n6" value="NestJS microservices core handles routing" style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;" vertex="1" parent="new_bg"><mxGeometry x="440" y="62" width="340" height="20" as="geometry" /></mxCell>
+    </root>
+  </mxGraphModel>
+</diagram>
+
+<!-- PAGE 3 — SERVICES/EMAIL -->
+<diagram id="d3" name="3. services/email">
+  <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+    <root>
+      <mxCell id="0" /><mxCell id="1" parent="0" />
+
+      <mxCell id="t" value="services/email — Pure Microservice (NestFactory.createMicroservice)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="127" y="14" width="1400" height="36" as="geometry" />
+      </mxCell>
+
+      <!-- Bootstrap -->
+      <mxCell id="boot_bg" value="main.ts — Bootstrap" style="swimlane;html=1;startSize=24;fillColor=#F0EBF4;strokeColor=#9673a6;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="20" y="58" width="460" height="320" as="geometry" />
+      </mxCell>
+      <mxCell id="boot" value="NestFactory.createMicroservice(AppModule, {&lt;br&gt;  transport: Transport.RMQ,&lt;br&gt;  options: {&lt;br&gt;    urls:          [RABBITMQ_URL],&lt;br&gt;    queue:         'email_queue',&lt;br&gt;    exchange:      'fcp.events',&lt;br&gt;    exchangeType:  'topic',&lt;br&gt;    wildcards:     true,&lt;br&gt;    noAck:         false,&lt;br&gt;    prefetchCount: +env('RMQ_PREFETCH', 10),&lt;br&gt;    queueOptions: {&lt;br&gt;      durable: true,&lt;br&gt;      arguments: {&lt;br&gt;        'x-dead-letter-exchange': 'fcp.dlq'&lt;br&gt;      }&lt;br&gt;    },&lt;br&gt;  },&lt;br&gt;});&lt;br&gt;await app.listen(); // no HTTP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#9673a6;fontSize=10;align=left;fontFamily=Courier New;" vertex="1" parent="boot_bg">
+        <mxGeometry x="10" y="30" width="440" height="278" as="geometry" />
+      </mxCell>
+
+      <!-- Exchange + Queue -->
+      <mxCell id="exch" value="fcp.events (topic)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;fontSize=13;fontStyle=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="550" y="80" width="260" height="52" as="geometry" />
+      </mxCell>
+      <mxCell id="q" value="email_queue&lt;br&gt;durable | DLX: fcp.dlq" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="565" y="196" width="230" height="76" as="geometry" />
+      </mxCell>
+      <mxCell id="eq" value="5 bindings (auto on startup)" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="exch" target="q" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- Handlers container -->
+      <mxCell id="handlers" value="@Controller consumers  (EmailModule.controllers)" style="swimlane;html=1;startSize=24;fillColor=#F0EBF4;strokeColor=#9673a6;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="880" y="58" width="754" height="660" as="geometry" />
+      </mxCell>
+      <mxCell id="h1" value="@EventPattern('workspace.member-invited')&lt;br&gt;&lt;b&gt;MemberInvitedEmailConsumer&lt;/b&gt;&lt;br&gt;Redis dedup  →  InternalApiAdapter.getUser()  →  IEmailProvider.sendInvitation()  →  EmailDeliveryLog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="handlers">
+        <mxGeometry x="15" y="34" width="724" height="68" as="geometry" />
+      </mxCell>
+      <mxCell id="h2" value="@EventPattern('posts.published')&lt;br&gt;&lt;b&gt;PostPublishedEmailConsumer&lt;/b&gt;&lt;br&gt;Redis dedup  →  InternalApiAdapter.getUser(createdByUserId)  →  IEmailProvider.sendPublishSuccess()  →  EmailDeliveryLog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="handlers">
+        <mxGeometry x="15" y="116" width="724" height="68" as="geometry" />
+      </mxCell>
+      <mxCell id="h3" value="@EventPattern('posts.failed')&lt;br&gt;&lt;b&gt;PostFailedEmailConsumer&lt;/b&gt;&lt;br&gt;Redis dedup  →  InternalApiAdapter.getUser(createdByUserId)  →  IEmailProvider.sendPublishFailed()  →  EmailDeliveryLog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="handlers">
+        <mxGeometry x="15" y="198" width="724" height="68" as="geometry" />
+      </mxCell>
+      <mxCell id="h4" value="@EventPattern('billing.payment_failed')&lt;br&gt;&lt;b&gt;BillingPaymentFailedEmailConsumer&lt;/b&gt;&lt;br&gt;Redis dedup  →  InternalApiAdapter.getWorkspace(workspaceId)  →  IEmailProvider.sendPaymentFailed()  →  EmailDeliveryLog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="handlers">
+        <mxGeometry x="15" y="280" width="724" height="68" as="geometry" />
+      </mxCell>
+      <mxCell id="h5" value="@EventPattern('facebook.token_expiring')&lt;br&gt;&lt;b&gt;FacebookTokenExpiringEmailConsumer&lt;/b&gt;&lt;br&gt;Redis dedup  →  InternalApiAdapter.getWorkspace(workspaceId)  →  IEmailProvider.sendTokenExpiring()  →  EmailDeliveryLog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="handlers">
+        <mxGeometry x="15" y="362" width="724" height="68" as="geometry" />
+      </mxCell>
+      <mxCell id="ack" value="ALL handlers — noAck: false&lt;br&gt;SUCCESS:   channel.ack(msg)&lt;br&gt;TRANSIENT: channel.nack(msg, false, true)   → requeue&lt;br&gt;PERMANENT: channel.nack(msg, false, false)  → fcp.dlq" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;" vertex="1" parent="handlers">
+        <mxGeometry x="15" y="448" width="724" height="80" as="geometry" />
+      </mxCell>
+      <mxCell id="dedup" value="Dedup key: dedup:email:{eventId}:{recipientEmail}  — Redis SET NX EX 86400&lt;br&gt;DB dedup: email_delivery_logs.dedupe_key  UNIQUE  (BR-R08)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="handlers">
+        <mxGeometry x="15" y="546" width="724" height="55" as="geometry" />
+      </mxCell>
+
+      <!-- Queue → Handlers -->
+      <mxCell id="qh" value="dispatches by routing key" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#9673a6;strokeWidth=2;fontSize=10;" edge="1" source="q" target="handlers" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+    </root>
+  </mxGraphModel>
+</diagram>
+
+<!-- PAGE 4 — APPS/API (HYBRID) -->
+<diagram id="d4" name="4. apps/api (Hybrid)">
+  <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+    <root>
+      <mxCell id="0" /><mxCell id="1" parent="0" />
+
+      <mxCell id="t" value="apps/api — Hybrid App (HTTP :3000 · Publisher · 2 Consumer connections)" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="127" y="14" width="1400" height="36" as="geometry" />
+      </mxCell>
+
+      <!-- Bootstrap -->
+      <mxCell id="boot_bg" value="main.ts — Hybrid Bootstrap" style="swimlane;html=1;startSize=24;fillColor=#EFF7FF;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="20" y="58" width="540" height="430" as="geometry" />
+      </mxCell>
+      <mxCell id="boot" value="const app = await NestFactory.create(AppModule);&lt;br&gt;&lt;br&gt;// ① domain event consumer&lt;br&gt;app.connectMicroservice(&lt;br&gt;  getRmqOptions('api_queue', config)&lt;br&gt;);&lt;br&gt;&lt;br&gt;// ② DLQ consumer — separate exchange + prefetch&lt;br&gt;app.connectMicroservice(&lt;br&gt;  getDlqRmqOptions('dlq_queue', config)&lt;br&gt;);&lt;br&gt;&lt;br&gt;await app.startAllMicroservices();&lt;br&gt;await app.listen(3000);" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;fontSize=11;align=left;fontFamily=Courier New;" vertex="1" parent="boot_bg">
+        <mxGeometry x="10" y="30" width="520" height="230" as="geometry" />
+      </mxCell>
+      <mxCell id="pub_mod" value="RabbitmqModule — Publisher&lt;br&gt;ClientsModule.registerAsync([{&lt;br&gt;  name: 'FCP_EVENT_BUS',&lt;br&gt;  transport: Transport.RMQ,&lt;br&gt;  options: { urls, exchange: 'fcp.events', exchangeType: 'topic', wildcards: true }&lt;br&gt;}])" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#6c8ebf;fontSize=10;align=left;fontFamily=Courier New;" vertex="1" parent="boot_bg">
+        <mxGeometry x="10" y="272" width="520" height="120" as="geometry" />
+      </mxCell>
+      <mxCell id="hex" value="IEventBus → RabbitMqEventBus → ClientProxy.emit()&lt;br&gt;Services inject IEventBus — never ClientProxy directly" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;align=center;" vertex="1" parent="boot_bg">
+        <mxGeometry x="10" y="402" width="520" height="22" as="geometry" />
+      </mxCell>
+
+      <!-- Exchanges -->
+      <mxCell id="exch_t" value="fcp.events (topic)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;fontSize=13;fontStyle=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="650" y="78" width="280" height="52" as="geometry" />
+      </mxCell>
+      <mxCell id="exch_f" value="fcp.dlq (fanout)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;fontSize=13;fontStyle=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="650" y="590" width="280" height="52" as="geometry" />
+      </mxCell>
+
+      <!-- Queues -->
+      <mxCell id="api_q" value="api_queue&lt;br&gt;durable | DLX: fcp.dlq" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="665" y="202" width="250" height="76" as="geometry" />
+      </mxCell>
+      <mxCell id="dlq_q" value="dlq_queue&lt;br&gt;prefetch: $RMQ_DLQ_PREFETCH" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="665" y="714" width="250" height="76" as="geometry" />
+      </mxCell>
+      <mxCell id="eq1" value="6 bindings" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="exch_t" target="api_q" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="eq2" value="fanout" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=2;" edge="1" source="exch_f" target="dlq_q" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- Domain consumers -->
+      <mxCell id="con_bg" value="api_queue consumers — @Controller classes" style="swimlane;html=1;startSize=24;fillColor=#EFF7FF;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="1010" y="58" width="624" height="502" as="geometry" />
+      </mxCell>
+      <mxCell id="c1" value="@EventPattern('posts.created')&lt;br&gt;&lt;b&gt;PostCreatedConsumer&lt;/b&gt; — dedup + log" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="con_bg">
+        <mxGeometry x="15" y="34" width="594" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="c2" value="@EventPattern('posts.published')&lt;br&gt;&lt;b&gt;PostPublishedConsumer&lt;/b&gt; — drive post status → PUBLISHED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="con_bg">
+        <mxGeometry x="15" y="99" width="594" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="c3" value="@EventPattern('facebook.feed')&lt;br&gt;&lt;b&gt;FacebookFeedConsumer&lt;/b&gt; — process Facebook feed callback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="con_bg">
+        <mxGeometry x="15" y="164" width="594" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="c4" value="@EventPattern('facebook.page.deauthorized')&lt;br&gt;&lt;b&gt;FacebookDeauthorizedConsumer&lt;/b&gt; — revoke page access + cancel posts" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="con_bg">
+        <mxGeometry x="15" y="229" width="594" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="c5" value="@EventPattern('billing.subscription_activated')&lt;br&gt;&lt;b&gt;BillingSubscriptionConsumer&lt;/b&gt; — log activation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="con_bg">
+        <mxGeometry x="15" y="294" width="594" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="c6" value="@EventPattern('billing.subscription_cancelled')&lt;br&gt;&lt;b&gt;BillingSubscriptionConsumer&lt;/b&gt; — log cancellation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="con_bg">
+        <mxGeometry x="15" y="359" width="594" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="ack_n" value="All handlers: RequestContext.create(orm, ...)  +  channel.ack / channel.nack" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;align=center;" vertex="1" parent="con_bg">
+        <mxGeometry x="15" y="430" width="594" height="34" as="geometry" />
+      </mxCell>
+
+      <!-- DLQ consumer -->
+      <mxCell id="dlq_con_bg" value="dlq_queue consumer" style="swimlane;html=1;startSize=24;fillColor=#FFF0E8;strokeColor=#b85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="1010" y="650" width="624" height="140" as="geometry" />
+      </mxCell>
+      <mxCell id="dlq_c" value="@EventPattern('#')  — receives all messages from fcp.dlq fanout&lt;br&gt;&lt;b&gt;DlqConsumer&lt;/b&gt;&lt;br&gt;→ messagingLog.markDlq(eventId)&lt;br&gt;→ messagingLog.insertDeadLetter(eventId, reason)&lt;br&gt;→ channel.ack(msg)  or  channel.nack(false,false) if no eventId" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;" vertex="1" parent="dlq_con_bg">
+        <mxGeometry x="15" y="28" width="594" height="100" as="geometry" />
+      </mxCell>
+
+      <!-- Connection arrows -->
+      <mxCell id="qa1" value="dispatches" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;" edge="1" source="api_q" target="con_bg" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="qa2" value="dispatches" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;strokeWidth=2;fontSize=10;" edge="1" source="dlq_q" target="dlq_con_bg" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="pub_arr" value="ClientProxy.emit()" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;" edge="1" source="boot_bg" target="exch_t" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+    </root>
+  </mxGraphModel>
+</diagram>
+
+<!-- PAGE 5 — SERVICES/NOTIFICATION -->
+<diagram id="d5" name="5. services/notification">
+  <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1500" math="0" shadow="0">
+    <root>
+      <mxCell id="0" /><mxCell id="1" parent="0" />
+
+      <mxCell id="t" value="services/notification — Hybrid | 11 @EventPattern handlers" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="127" y="14" width="1400" height="36" as="geometry" />
+      </mxCell>
+
+      <!-- Bootstrap -->
+      <mxCell id="boot" value="connectMicroservice({ queue: 'notification_queue', exchange: 'fcp.events', exchangeType: 'topic',&lt;br&gt;wildcards: true, noAck: false, prefetchCount: +env('RMQ_PREFETCH', 10),&lt;br&gt;queueOptions: { durable: true, arguments: { 'x-dead-letter-exchange': 'fcp.dlq' } } });&lt;br&gt;await app.startAllMicroservices();   await app.listen(3005);" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#9673a6;fontSize=10;align=left;fontFamily=Courier New;" vertex="1" parent="1">
+        <mxGeometry x="20" y="58" width="700" height="96" as="geometry" />
+      </mxCell>
+
+      <!-- Exchange + Queue -->
+      <mxCell id="exch" value="fcp.events (topic)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;fontSize=13;fontStyle=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="800" y="60" width="260" height="52" as="geometry" />
+      </mxCell>
+      <mxCell id="q" value="notification_queue&lt;br&gt;durable | DLX: fcp.dlq&lt;br&gt;11 bindings" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;backgroundOutline=1;align=center;" vertex="1" parent="1">
+        <mxGeometry x="808" y="178" width="244" height="80" as="geometry" />
+      </mxCell>
+      <mxCell id="eq" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="exch" target="q" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- GROUP 1: Projection consumers -->
+      <mxCell id="grp1" value="GROUP 1 — Projection consumers  (maintain workspace_members_projection)" style="swimlane;html=1;startSize=26;fillColor=#EFF7FF;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;fontColor=#6c8ebf;" vertex="1" parent="1">
+        <mxGeometry x="20" y="210" width="760" height="360" as="geometry" />
+      </mxCell>
+      <mxCell id="p1" value="@EventPattern('workspace.member-invited')&lt;br&gt;upsert projection (workspaceId, userId, role = invited)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="grp1">
+        <mxGeometry x="15" y="34" width="730" height="56" as="geometry" />
+      </mxCell>
+      <mxCell id="p2" value="@EventPattern('workspace.member-joined')&lt;br&gt;upsert projection (workspaceId, userId, role)   →   notify workspace" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="grp1">
+        <mxGeometry x="15" y="100" width="730" height="56" as="geometry" />
+      </mxCell>
+      <mxCell id="p3" value="@EventPattern('workspace.member-removed')&lt;br&gt;delete projection row   →   notify workspace" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="grp1">
+        <mxGeometry x="15" y="166" width="730" height="56" as="geometry" />
+      </mxCell>
+      <mxCell id="p4" value="@EventPattern('workspace.role-changed')&lt;br&gt;update projection.role   →   notify user (role changed)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="grp1">
+        <mxGeometry x="15" y="232" width="730" height="56" as="geometry" />
+      </mxCell>
+      <mxCell id="proj_note" value="Cold-start reconciliation (OnApplicationBootstrap): re-upsert all rows from GET /internal/workspaces/:id/members" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=center;" vertex="1" parent="grp1">
+        <mxGeometry x="15" y="300" width="730" height="36" as="geometry" />
+      </mxCell>
+
+      <!-- GROUP 2: Notification consumers -->
+      <mxCell id="grp2" value="GROUP 2 — Notification consumers  (create Notification + NotificationRecipient rows)" style="swimlane;html=1;startSize=26;fillColor=#F0EBF4;strokeColor=#9673a6;fontSize=11;fontStyle=1;fontColor=#9673a6;" vertex="1" parent="1">
+        <mxGeometry x="20" y="590" width="760" height="570" as="geometry" />
+      </mxCell>
+      <mxCell id="n1" value="@EventPattern('posts.published')   →   notify all workspace members  (in-app)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="34" width="730" height="44" as="geometry" />
+      </mxCell>
+      <mxCell id="n2" value="@EventPattern('posts.failed')   →   notify post author only  (in-app toast)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="88" width="730" height="44" as="geometry" />
+      </mxCell>
+      <mxCell id="n3" value="@EventPattern('billing.subscription_activated')   →   notify workspace  (in-app)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="142" width="730" height="44" as="geometry" />
+      </mxCell>
+      <mxCell id="n4" value="@EventPattern('billing.subscription_cancelled')   →   notify workspace  (in-app + Slack)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="196" width="730" height="44" as="geometry" />
+      </mxCell>
+      <mxCell id="n5" value="@EventPattern('billing.subscription_past_due')   →   notify workspace  (in-app + Slack)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="250" width="730" height="44" as="geometry" />
+      </mxCell>
+      <mxCell id="n6" value="@EventPattern('billing.payment_failed')   →   notify workspace  (in-app + Slack)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="304" width="730" height="44" as="geometry" />
+      </mxCell>
+      <mxCell id="n7" value="@EventPattern('facebook.token_expiring')   →   notify workspace  (in-app + Slack urgent)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="358" width="730" height="44" as="geometry" />
+      </mxCell>
+      <mxCell id="orch" value="NotificationOrchestrator (shared by all GROUP 2 handlers)&lt;br&gt;1. Query workspace_members_projection for recipients&lt;br&gt;2. INSERT notification rows + notification_recipient rows&lt;br&gt;3. Optionally POST to Slack Incoming Webhook (ISlackProvider)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="418" width="730" height="90" as="geometry" />
+      </mxCell>
+      <mxCell id="idem" value="Idempotency: Redis SET NX EX 86400 on dedup:notification:{eventId}  |  RequestContext.create(orm, ...) wraps every handler" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=center;" vertex="1" parent="grp2">
+        <mxGeometry x="15" y="524" width="730" height="36" as="geometry" />
+      </mxCell>
+
+      <!-- Queue → Groups -->
+      <mxCell id="qg1" value="workspace.*" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;fontSize=10;" edge="1" source="q" target="grp1" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="qg2" value="posts.* / billing.* / facebook.*" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#9673a6;strokeWidth=2;fontSize=10;" edge="1" source="q" target="grp2" parent="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+    </root>
+  </mxGraphModel>
+</diagram>
+
+<!-- PAGE 6 — SEARCH · AUDIT · ANALYTICS -->
+<diagram id="d6" name="6. search · audit · analytics">
+  <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+    <root>
+      <mxCell id="0" /><mxCell id="1" parent="0" />
+
+      <mxCell id="t" value="services/search · services/audit · services/analytics · services/billing" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+        <mxGeometry x="127" y="14" width="1400" height="36" as="geometry" />
+      </mxCell>
+
+      <!-- SEARCH -->
+      <mxCell id="srch" value="services/search — Hybrid | HTTP :3004" style="swimlane;html=1;startSize=26;fillColor=#F0EBF4;strokeColor=#9673a6;fontSize=12;fontStyle=1;fontColor=#9673a6;" vertex="1" parent="1">
+        <mxGeometry x="15" y="58" width="490" height="720" as="geometry" />
+      </mxCell>
+      <mxCell id="srch_q" value="search_queue  |  durable  |  DLX: fcp.dlq" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="srch">
+        <mxGeometry x="120" y="38" width="250" height="60" as="geometry" />
+      </mxCell>
+      <mxCell id="sp1" value="@EventPattern('posts.created')&lt;br&gt;algolia.saveObject({ objectID, workspaceId, title, content, status, scheduledAt })" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="srch">
+        <mxGeometry x="15" y="118" width="460" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="sp2" value="@EventPattern('posts.updated')&lt;br&gt;algolia.partialUpdateObject({ objectID, title, content, scheduledAt, updatedAt })" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="srch">
+        <mxGeometry x="15" y="183" width="460" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="sp3" value="@EventPattern('posts.published')&lt;br&gt;algolia.partialUpdateObject({ objectID, status: 'published', facebookGraphPostId })" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="srch">
+        <mxGeometry x="15" y="248" width="460" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="sp4" value="@EventPattern('posts.failed')&lt;br&gt;algolia.partialUpdateObject({ objectID, status: 'failed', failedAt })" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="srch">
+        <mxGeometry x="15" y="313" width="460" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="sp5" value="@EventPattern('posts.deleted')&lt;br&gt;algolia.deleteObject(postId)  — idempotent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;align=left;" vertex="1" parent="srch">
+        <mxGeometry x="15" y="378" width="460" height="55" as="geometry" />
+      </mxCell>
+      <mxCell id="srch_id" value="Redis dedup: dedup:search:{eventId}  SET NX EX 86400" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=center;" vertex="1" parent="srch">
+        <mxGeometry x="15" y="446" width="460" height="36" as="geometry" />
+      </mxCell>
+
+      <!-- AUDIT -->
+      <mxCell id="audit" value="services/audit — Hybrid | HTTP :3003" style="swimlane;html=1;startSize=26;fillColor=#FFF5E8;strokeColor=#d6b656;fontSize=12;fontStyle=1;fontColor=#d6b656;" vertex="1" parent="1">
+        <mxGeometry x="525" y="58" width="570" height="720" as="geometry" />
+      </mxCell>
+      <mxCell id="audit_q" value="audit_queue  |  durable  |  DLX: fcp.dlq" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="audit">
+        <mxGeometry x="160" y="38" width="250" height="60" as="geometry" />
+      </mxCell>
+      <mxCell id="ap1" value="@EventPattern('#')  — wildcard, receives ALL events&lt;br&gt;&lt;br&gt;&lt;b&gt;AuditConsumer.onEvent()&lt;/b&gt;&lt;br&gt;&lt;br&gt;1. Strip PII (email, fullName, accessToken)&lt;br&gt;2. MongoDB unique index on eventId deduplicates&lt;br&gt;3. Insert audit_events document:&lt;br&gt;   { _id: uuidv7, eventId, routingKey,&lt;br&gt;     workspaceId, payload, createdAt }" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="audit">
+        <mxGeometry x="20" y="118" width="530" height="200" as="geometry" />
+      </mxCell>
+      <mxCell id="audit_m" value="MongoDB — audit_events collection&lt;br&gt;Unique index on eventId (idempotent — duplicate silently ignored)&lt;br&gt;Index on workspaceId (for read queries)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;align=left;" vertex="1" parent="audit">
+        <mxGeometry x="20" y="340" width="530" height="78" as="geometry" />
+      </mxCell>
+      <mxCell id="audit_n" value="No Redis dedup needed — MongoDB unique index provides idempotency" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;align=center;" vertex="1" parent="audit">
+        <mxGeometry x="20" y="436" width="530" height="36" as="geometry" />
+      </mxCell>
+      <mxCell id="ae1" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d6b656;strokeWidth=2;" edge="1" source="audit_q" target="ap1" parent="audit"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="ae2" value="insert" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#666666;" edge="1" source="ap1" target="audit_m" parent="audit"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- ANALYTICS -->
+      <mxCell id="anly" value="services/analytics — Hybrid | HTTP :3002" style="swimlane;html=1;startSize=26;fillColor=#EFF7FF;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;fontColor=#6c8ebf;" vertex="1" parent="1">
+        <mxGeometry x="1115" y="58" width="524" height="720" as="geometry" />
+      </mxCell>
+      <mxCell id="anly_q" value="analytics_queue  |  durable  |  DLX: fcp.dlq" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;backgroundOutline=1;align=center;" vertex="1" parent="anly">
+        <mxGeometry x="137" y="38" width="250" height="60" as="geometry" />
+      </mxCell>
+      <mxCell id="anly_h" value="@EventPattern('posts.published')&lt;br&gt;&lt;b&gt;PostPublishedConsumer.onPostPublished()&lt;/b&gt;&lt;br&gt;&lt;br&gt;1. Redis dedup: dedup:analytics:{eventId}&lt;br&gt;2. InternalApiClient.getFacebookAccount(facebookAccountId)&lt;br&gt;   — get decrypted page access token&lt;br&gt;3. FacebookInsightsProvider.getPostInsights(graphPostId, token)&lt;br&gt;4. PostMetricsRepository.upsert({ postId, metricDate, ... })&lt;br&gt;   UNIQUE(post_id, metric_date) — idempotent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="anly">
+        <mxGeometry x="20" y="118" width="484" height="218" as="geometry" />
+      </mxCell>
+      <mxCell id="anly_fb" value="Facebook Graph API&lt;br&gt;/{graphPostId}/insights" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="anly">
+        <mxGeometry x="20" y="360" width="210" height="60" as="geometry" />
+      </mxCell>
+      <mxCell id="anly_pg" value="PostgreSQL&lt;br&gt;analytics.post_metrics" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;align=center;" vertex="1" parent="anly">
+        <mxGeometry x="274" y="360" width="230" height="60" as="geometry" />
+      </mxCell>
+      <mxCell id="ae1a" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#6c8ebf;strokeWidth=2;" edge="1" source="anly_q" target="anly_h" parent="anly"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="ae2a" value="fetch" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#666666;dashed=1;" edge="1" source="anly_h" target="anly_fb" parent="anly"><mxGeometry relative="1" as="geometry" /></mxCell>
+      <mxCell id="ae3a" value="upsert" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#666666;dashed=1;" edge="1" source="anly_h" target="anly_pg" parent="anly"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      <!-- BILLING note -->
+      <mxCell id="bil" value="services/billing — Publisher ONLY (no connectMicroservice)&lt;br&gt;&lt;br&gt;BillingRabbitMqAdapter  →  ClientProxy.emit(routingKey, payload)&lt;br&gt;Events: billing.subscription_activated  |  billing.subscription_cancelled&lt;br&gt;         billing.subscription_past_due   |  billing.payment_failed&lt;br&gt;&lt;br&gt;Known limitation: ClientProxy.emit() has no ConfirmChannel broker-ack (recorded in DECISIONS.md / TR.10 ADR)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=left;" vertex="1" parent="1">
+        <mxGeometry x="15" y="800" width="1624" height="110" as="geometry" />
+      </mxCell>
+    </root>
+  </mxGraphModel>
+</diagram>
+
+</mxfile>
