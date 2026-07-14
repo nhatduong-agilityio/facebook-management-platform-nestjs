@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { IAlgoliaSearchProvider } from '../ports/algolia-search.provider.port';
 
 /** Shape of the `posts.failed` event payload (mirrors `PostFailedEvent` in apps/api). */
@@ -21,7 +22,7 @@ export interface PostFailedPayload {
  * records `failedAt` so that dashboards and search UIs can surface failed posts.
  * Keeping Algolia consistent with the actual post state (per DoD in T4.1).
  */
-@Injectable()
+@Controller()
 export class PostFailedConsumer {
   constructor(
     private readonly algolia: IAlgoliaSearchProvider,
@@ -32,36 +33,40 @@ export class PostFailedConsumer {
   /**
    * Handles a `posts.failed` event exactly once per `eventId`.
    *
-   * @param msg - Deserialized `PostFailedPayload` from the broker.
+   * @param data - Deserialized `PostFailedPayload` from the broker.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'posts.failed',
-    queue: 'search.posts.failed',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onPostFailed(msg: PostFailedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:search:${msg.eventId}`;
+  @EventPattern('posts.failed')
+  async onPostFailed(
+    @Payload() data: PostFailedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:search:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'PostFailedConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'PostFailedConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
-      await this.algolia.partialUpdateObject(msg.postId, {
+      await this.algolia.partialUpdateObject(data.postId, {
         status: 'failed',
-        failedAt: msg.occurredAt,
+        failedAt: data.occurredAt,
       });
 
       this.logger.log(
-        { postId: msg.postId, eventId: msg.eventId },
+        { postId: data.postId, eventId: data.eventId },
         'PostFailedConsumer: index updated to failed',
       );
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'PostFailedConsumer: update failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'PostFailedConsumer: update failed');
+      channel.nack(msg, false, true);
     }
   }
 }

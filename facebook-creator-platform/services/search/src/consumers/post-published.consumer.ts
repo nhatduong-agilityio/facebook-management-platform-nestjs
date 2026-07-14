@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { IAlgoliaSearchProvider } from '../ports/algolia-search.provider.port';
 
 /** Shape of the `posts.published` event payload (mirrors `PostPublishedEvent` in apps/api). */
@@ -22,7 +23,7 @@ export interface PostPublishedPayload {
  * storing `facebookGraphPostId` and `publishedAt` from the event timestamp.
  * No HTTP callback to `apps/api` — event carries sufficient data (ADR-051).
  */
-@Injectable()
+@Controller()
 export class PostPublishedConsumer {
   constructor(
     private readonly algolia: IAlgoliaSearchProvider,
@@ -33,37 +34,41 @@ export class PostPublishedConsumer {
   /**
    * Handles a `posts.published` event exactly once per `eventId`.
    *
-   * @param msg - Deserialized `PostPublishedPayload` from the broker.
+   * @param data - Deserialized `PostPublishedPayload` from the broker.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'posts.published',
-    queue: 'search.posts.published',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onPostPublished(msg: PostPublishedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:search:${msg.eventId}`;
+  @EventPattern('posts.published')
+  async onPostPublished(
+    @Payload() data: PostPublishedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:search:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'PostPublishedConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'PostPublishedConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
-      await this.algolia.partialUpdateObject(msg.postId, {
+      await this.algolia.partialUpdateObject(data.postId, {
         status: 'published',
-        facebookGraphPostId: msg.facebookGraphPostId,
-        publishedAt: msg.occurredAt,
+        facebookGraphPostId: data.facebookGraphPostId,
+        publishedAt: data.occurredAt,
       });
 
       this.logger.log(
-        { postId: msg.postId, eventId: msg.eventId },
+        { postId: data.postId, eventId: data.eventId },
         'PostPublishedConsumer: index updated to published',
       );
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'PostPublishedConsumer: update failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'PostPublishedConsumer: update failed');
+      channel.nack(msg, false, true);
     }
   }
 }

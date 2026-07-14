@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { IAlgoliaSearchProvider } from '../ports/algolia-search.provider.port';
 
 /** Shape of the `posts.updated` event payload (mirrors `PostUpdatedEvent` in apps/api). */
@@ -23,7 +24,7 @@ export interface PostUpdatedPayload {
  * if it does not yet exist (Algolia `partialUpdateObject` with `createIfNotExists: true`
  * is the default behaviour in v5).
  */
-@Injectable()
+@Controller()
 export class PostUpdatedConsumer {
   constructor(
     private readonly algolia: IAlgoliaSearchProvider,
@@ -34,38 +35,42 @@ export class PostUpdatedConsumer {
   /**
    * Handles a `posts.updated` event exactly once per `eventId`.
    *
-   * @param msg - Deserialized `PostUpdatedPayload` from the broker.
+   * @param data - Deserialized `PostUpdatedPayload` from the broker.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'posts.updated',
-    queue: 'search.posts.updated',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onPostUpdated(msg: PostUpdatedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:search:${msg.eventId}`;
+  @EventPattern('posts.updated')
+  async onPostUpdated(
+    @Payload() data: PostUpdatedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:search:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'PostUpdatedConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'PostUpdatedConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
-      const fields: Record<string, unknown> = { updatedAt: msg.updatedAt };
-      if (msg.title !== undefined) fields['title'] = msg.title;
-      if (msg.content !== undefined) fields['content'] = msg.content;
-      if (msg.scheduledAt !== undefined) fields['scheduledAt'] = msg.scheduledAt;
+      const fields: Record<string, unknown> = { updatedAt: data.updatedAt };
+      if (data.title !== undefined) fields['title'] = data.title;
+      if (data.content !== undefined) fields['content'] = data.content;
+      if (data.scheduledAt !== undefined) fields['scheduledAt'] = data.scheduledAt;
 
-      await this.algolia.partialUpdateObject(msg.postId, fields);
+      await this.algolia.partialUpdateObject(data.postId, fields);
 
       this.logger.log(
-        { postId: msg.postId, eventId: msg.eventId },
+        { postId: data.postId, eventId: data.eventId },
         'PostUpdatedConsumer: index updated',
       );
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'PostUpdatedConsumer: update failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'PostUpdatedConsumer: update failed');
+      channel.nack(msg, false, true);
     }
   }
 }
