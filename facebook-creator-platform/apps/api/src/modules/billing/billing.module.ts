@@ -30,11 +30,10 @@ import { BillingSubscriptionConsumer } from './consumers/billing-subscription.co
  */
 @Module({
   imports: [IdentityModule],
-  controllers: [BillingController, BillingRedirectController],
+  controllers: [BillingController, BillingRedirectController, BillingSubscriptionConsumer],
   providers: [
     { provide: IBillingHttpClient, useClass: BillingHttpClientAdapter },
     { provide: IPostQuotaProvider, useClass: BillingQuotaAdapter },
-    BillingSubscriptionConsumer,
   ],
   exports: [IPostQuotaProvider],
 })

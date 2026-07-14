@@ -1,7 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller, Inject } from '@nestjs/common';
+import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { IOREDIS_CLIENT } from '../../../infrastructure/rabbitmq/rabbitmq.module';
 import { IdempotentConsumer } from '../../../common/consumers/idempotent-consumer.base';
 
@@ -22,9 +23,9 @@ export interface PostCreatedPayload {
  * infrastructure works. Business logic (Algolia indexing T4.1, Audit T3.4)
  * will be added in their respective tasks.
  *
- * Queue: `api.posts.created` (durable, DLX → `fcp.dlq`)
+ * Bound to `api_queue` via `connectMicroservice(getRmqOptions(...))` in `main.ts`.
  */
-@Injectable()
+@Controller()
 export class PostCreatedConsumer extends IdempotentConsumer {
   constructor(
     @Inject(IOREDIS_CLIENT) redis: Redis,
@@ -36,22 +37,19 @@ export class PostCreatedConsumer extends IdempotentConsumer {
   /**
    * Handles a `posts.created` event exactly once per `eventId`.
    *
-   * @param msg - Deserialized `PostCreatedPayload` from the broker.
-   * @returns `undefined` on success/duplicate, or `Nack(false)` for a permanent failure.
+   * @param data - Deserialized `PostCreatedPayload` from the broker.
+   * @param ctx  - RMQ execution context used to ack or nack the message.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'posts.created',
-    queue: 'api.posts.created',
-    queueOptions: {
-      durable: true,
-      deadLetterExchange: 'fcp.dlq',
-    },
-  })
-  async onPostCreated(msg: PostCreatedPayload): Promise<void | Nack> {
-    return this.withDedup(msg.eventId, async () => {
+  @EventPattern('posts.created')
+  async onPostCreated(
+    @Payload() data: PostCreatedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+    await this.withDedup(data.eventId, channel, msg, async () => {
       this.logger.log(
-        { postId: msg.postId, workspaceId: msg.workspaceId },
+        { postId: data.postId, workspaceId: data.workspaceId },
         'PostCreatedConsumer: received posts.created',
       );
     });

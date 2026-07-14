@@ -1,7 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller, Inject } from '@nestjs/common';
+import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import type { SubscriptionActivatedPayload, SubscriptionCancelledPayload } from '@fcp/billing-contracts';
 import { IOREDIS_CLIENT } from '../../../infrastructure/rabbitmq/rabbitmq.module';
 import { IdempotentConsumer } from '../../../common/consumers/idempotent-consumer.base';
@@ -14,11 +15,9 @@ import { IdempotentConsumer } from '../../../common/consumers/idempotent-consume
  * infrastructure works. Business logic (notification T4.2, email T4.3) will be
  * added in their respective tasks.
  *
- * Queues:
- * - `api.billing.subscription_activated`  (durable, DLX → `fcp.dlq`)
- * - `api.billing.subscription_cancelled`  (durable, DLX → `fcp.dlq`)
+ * Bound to `api_queue` via `connectMicroservice(getRmqOptions(...))` in `main.ts`.
  */
-@Injectable()
+@Controller()
 export class BillingSubscriptionConsumer extends IdempotentConsumer {
   constructor(
     @Inject(IOREDIS_CLIENT) redis: Redis,
@@ -30,22 +29,19 @@ export class BillingSubscriptionConsumer extends IdempotentConsumer {
   /**
    * Handles `billing.subscription_activated` exactly once per `eventId`.
    *
-   * @param msg - Deserialized `SubscriptionActivatedPayload` from the broker.
-   * @returns `undefined` on success/duplicate, or `Nack(false)` for a permanent failure.
+   * @param data - Deserialized `SubscriptionActivatedPayload` from the broker.
+   * @param ctx  - RMQ execution context used to ack or nack the message.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'billing.subscription_activated',
-    queue: 'api.billing.subscription_activated',
-    queueOptions: {
-      durable: true,
-      deadLetterExchange: 'fcp.dlq',
-    },
-  })
-  async onSubscriptionActivated(msg: SubscriptionActivatedPayload): Promise<void | Nack> {
-    return this.withDedup(msg.eventId, async () => {
+  @EventPattern('billing.subscription_activated')
+  async onSubscriptionActivated(
+    @Payload() data: SubscriptionActivatedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+    await this.withDedup(data.eventId, channel, msg, async () => {
       this.logger.log(
-        { workspaceId: msg.workspaceId, planCode: msg.planCode },
+        { workspaceId: data.workspaceId, planCode: data.planCode },
         'BillingSubscriptionConsumer: subscription activated',
       );
     });
@@ -54,22 +50,19 @@ export class BillingSubscriptionConsumer extends IdempotentConsumer {
   /**
    * Handles `billing.subscription_cancelled` exactly once per `eventId`.
    *
-   * @param msg - Deserialized `SubscriptionCancelledPayload` from the broker.
-   * @returns `undefined` on success/duplicate, or `Nack(false)` for a permanent failure.
+   * @param data - Deserialized `SubscriptionCancelledPayload` from the broker.
+   * @param ctx  - RMQ execution context used to ack or nack the message.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'billing.subscription_cancelled',
-    queue: 'api.billing.subscription_cancelled',
-    queueOptions: {
-      durable: true,
-      deadLetterExchange: 'fcp.dlq',
-    },
-  })
-  async onSubscriptionCancelled(msg: SubscriptionCancelledPayload): Promise<void | Nack> {
-    return this.withDedup(msg.eventId, async () => {
+  @EventPattern('billing.subscription_cancelled')
+  async onSubscriptionCancelled(
+    @Payload() data: SubscriptionCancelledPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+    await this.withDedup(data.eventId, channel, msg, async () => {
       this.logger.log(
-        { workspaceId: msg.workspaceId, planCode: msg.planCode },
+        { workspaceId: data.workspaceId, planCode: data.planCode },
         'BillingSubscriptionConsumer: subscription cancelled',
       );
     });

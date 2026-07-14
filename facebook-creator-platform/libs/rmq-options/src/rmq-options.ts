@@ -41,7 +41,8 @@ export function getRmqOptions(
  * Returns `MicroserviceOptions` for a DLQ fanout-exchange consumer bound to `fcp.dlq`.
  *
  * Use this for the dead-letter logger queue only:
- * - `wildcards: false` — fanout exchange delivers to all bound queues regardless of key.
+ * - `wildcards: true` — required so `@EventPattern('#')` acts as a catch-all for any
+ *   dead-lettered message regardless of its original routing key.
  * - `noAck: false` requires explicit ack/nack.
  * - No `x-dead-letter-exchange` to avoid re-routing loops.
  * - `prefetchCount` is read from the `RMQ_DLQ_PREFETCH` env var (default 5).
@@ -60,7 +61,7 @@ export function getDlqRmqOptions(
       queue,
       noAck: false,
       prefetchCount: configService.get<number>('RMQ_DLQ_PREFETCH', 5),
-      wildcards: false,
+      wildcards: true,
       exchange: 'fcp.dlq',
       exchangeType: 'fanout',
       queueOptions: {

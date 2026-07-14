@@ -1,22 +1,30 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller, Logger } from '@nestjs/common';
+import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
+import type { Channel, Message } from 'amqplib';
 import { IMessagingLogRepository } from '../../../common/events/messaging-log.port';
 
 /**
  * Consumes messages from the `fcp.dlq` dead-letter exchange.
  *
  * Every queue in the platform declares `deadLetterExchange: 'fcp.dlq'`. When a consumer
- * permanently nacks a message (`Nack(false)`), RabbitMQ routes it to `fcp.dlq`, which
- * fans out to this consumer's `dlq.logger` queue.
+ * permanently nacks a message (`channel.nack(msg, false, false)`), RabbitMQ routes it to
+ * `fcp.dlq`, which fans out to this consumer's `dlq.logger` queue.
  *
  * On receipt the handler:
  * 1. Updates `messaging.event_message_logs.processing_status` to `'dlq'`.
  * 2. Inserts a `messaging.dead_letter_messages` row for operator inspection.
  *
  * If the message has no `eventId` (schema mismatch or non-domain message) the handler
- * returns `Nack(false)` to avoid an infinite loop — the message is dropped.
+ * nacks without requeue to avoid an infinite loop — the message is dropped.
+ *
+ * **Known limitation (hybrid-app handler registry):** Both the topic transport and this
+ * fanout transport share the same NestJS handler registry. Dead-lettered messages whose
+ * `pattern` field matches a registered domain consumer will be routed to that consumer
+ * instead of this handler. Only messages with unrecognised patterns reach this handler.
+ * This is acceptable for the training project; a production system would use a separate
+ * microservice app for the DLQ consumer.
  */
-@Injectable()
+@Controller()
 export class DlqConsumer {
   private readonly logger = new Logger(DlqConsumer.name);
 
@@ -25,24 +33,26 @@ export class DlqConsumer {
   /**
    * Handles a dead-lettered message from `fcp.dlq`.
    *
-   * @param msg - The original message payload, expected to contain `eventId`.
-   * @returns `undefined` on success, or `Nack(false)` if the message cannot be processed.
+   * @param data - The unwrapped message payload, expected to contain `eventId`.
+   * @param ctx  - RMQ execution context used to ack or nack the message.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.dlq',
-    routingKey: '#',
-    queue: 'dlq.logger',
-    queueOptions: { durable: true },
-  })
-  async onDeadLetter(msg: Record<string, unknown>): Promise<void | Nack> {
-    const eventId = msg['eventId'];
+  @EventPattern('#')
+  async onDeadLetter(
+    @Payload() data: Record<string, unknown>,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const eventId = data['eventId'];
 
     if (typeof eventId !== 'string' || !eventId) {
       this.logger.error(
-        { msg },
+        { msg: data },
         'DLQ message has no eventId — cannot link to event_message_logs; dropping',
       );
-      return new Nack(false);
+      channel.nack(msg, false, false); // permanent drop — no requeue to avoid infinite loop
+      return;
     }
 
     try {
@@ -53,9 +63,10 @@ export class DlqConsumer {
         0,
       );
       this.logger.warn({ eventId }, 'Dead-lettered message recorded');
+      channel.ack(msg);
     } catch (err) {
       this.logger.error({ eventId, err }, 'Failed to record dead-letter message; will retry');
-      throw err;
+      channel.nack(msg, false, true); // transient — requeue
     }
   }
 }

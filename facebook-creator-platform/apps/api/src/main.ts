@@ -3,7 +3,9 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
+import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import { getRmqOptions, getDlqRmqOptions } from '@fcp/rmq-options';
 import { AppModule } from './app.module';
 
 /**
@@ -41,6 +43,11 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
+
+  const configService = app.get(ConfigService);
+  app.connectMicroservice(getRmqOptions('api_queue', configService));
+  app.connectMicroservice(getDlqRmqOptions('dlq.logger', configService));
+  await app.startAllMicroservices();
 
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
