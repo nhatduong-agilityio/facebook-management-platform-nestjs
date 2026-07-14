@@ -5,11 +5,20 @@
 
 ## Resume point
 
-- **Next task:** `TR.8` — Migrate `services/search` to hybrid app + 5 `@EventPattern` consumers.
+- **Next task:** `TR.9` — Migrate `services/notification` to hybrid app + 11 `@EventPattern` consumers.
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.7 complete. `services/analytics` is now a hybrid NestJS app. `AnalyticsMessagingModule` (`@golevelup` wrapper) removed; `RedisModule` retained. `PostPublishedConsumer` migrated to `@Controller()` with `@EventPattern('posts.published')` + `RequestContext.create` + `channel.ack/nack`. Error path changed from `throw err` to `nack(true)`. 9/9 analytics tests green. `T4.4` is paused until TR.x complete.
+- **Notes:** TR.8 complete. `services/search` is now a hybrid NestJS app. `SearchMessagingModule` (`@golevelup` wrapper) removed; `SearchRedisModule` retained. All 5 consumers migrated to `@Controller()` + `@EventPattern`. No `RequestContext.create` needed (no ORM — Algolia only). Error paths changed from `throw err` to `channel.nack(msg, false, true)`. 15/15 search tests green.
 
 ## Log
+
+### 2026-07-14 — TR.8 Migrate services/search to hybrid app + 5 consumers
+
+- **`services/search/src/main.ts`** (EDITED): Hybrid bootstrap — `app.connectMicroservice(getRmqOptions('search_queue', configService))` + `await app.startAllMicroservices()` before `app.listen`. All existing HTTP setup (Swagger, ValidationPipe, global prefix) retained.
+- **`services/search/src/app.module.ts`** (REWRITTEN): Removed `SearchMessagingModule` (the `@Global()` `RabbitMQModule.forRootAsync` wrapper) and `@golevelup` import entirely. `SearchRedisModule` kept — all 5 consumers still inject `Redis` for dedup.
+- **`services/search/src/search.module.ts`** (EDITED): All 5 consumers moved from `providers[]` to `controllers[]`. `SearchService` stays in `providers[]`.
+- **All 5 consumer files** (REWRITTEN): `@Injectable()` → `@Controller()`; `@RabbitSubscribe(...)` → `@EventPattern('posts.<event>')` from `@nestjs/microservices`; handler gains `@Ctx() ctx: RmqContext` second param; duplicate → `channel.ack(msg)` + return; success → `channel.ack(msg)`; error → `redis.del(dedupKey)` + `channel.nack(msg, false, true)`. `Nack` import removed. No `RequestContext.create` — no ORM (Algolia-only service).
+- **All 5 spec files** (REWRITTEN): `mockChannel`/`mockMsg`/`mockCtx` added to `makeConsumer`; handler calls updated to pass `mockCtx`; success+dedup assert `ack(mockMsg)`; error tests assert `nack(mockMsg, false, true)` instead of `rejects.toThrow`.
+- Tests: 15/15 search, 337/337 total. Lint: 0 errors.
 
 ### 2026-07-14 — TR.7 Migrate services/analytics to hybrid app + posts.published consumer
 

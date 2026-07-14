@@ -174,7 +174,7 @@ For blocked tasks always append an inline note on the same line:
 
 - [x] **TR.7 services/analytics — migrate to hybrid + 1 consumer** (~1h) — same hybrid pattern as TR.6; queue `analytics_queue`; one `@EventPattern('posts.published')` handler. DoD: consumer receives `posts.published`; idempotent upsert test green; no `@golevelup`.
 
-- [ ] **TR.8 services/search — migrate to hybrid + 5 consumers** (~2h) — same hybrid pattern; queue `search_queue`; 5 `@EventPattern` handlers (`posts.created`, `posts.updated`, `posts.published`, `posts.failed`, `posts.deleted`). DoD: all 5 Algolia ops triggered correctly; Redis NX dedup path tested; no `@golevelup`.
+- [x] **TR.8 services/search — migrate to hybrid + 5 consumers** (~2h) — same hybrid pattern; queue `search_queue`; 5 `@EventPattern` handlers (`posts.created`, `posts.updated`, `posts.published`, `posts.failed`, `posts.deleted`). DoD: all 5 Algolia ops triggered correctly; Redis NX dedup path tested; no `@golevelup`.
 
 - [ ] **TR.9 services/notification — migrate to hybrid + 11 consumers** (~3h) — same hybrid pattern; queue `notification_queue`; 11 `@EventPattern` handlers (4 projection consumers: `workspace.member-invited`, `workspace.member-joined`, `workspace.member-removed`, `workspace.role-changed`; 7 notification consumers); ensure `RequestContext.create()` wraps every handler (HTTP middleware does not fire for hybrid microservice routes). DoD: projection keeps `workspace_members_projection` consistent; notification consumers create rows + recipients; tests green; no `@golevelup`.
 

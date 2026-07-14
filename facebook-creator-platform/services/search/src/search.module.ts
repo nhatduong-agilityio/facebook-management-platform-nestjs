@@ -14,17 +14,21 @@ import { PostDeletedConsumer } from './consumers/post-deleted.consumer';
  *
  * Wires the `IAlgoliaSearchProvider → AlgoliaSearchAdapter` binding and
  * registers all five post-event consumers plus the HTTP search endpoint.
+ * Consumers are in `controllers[]` (not `providers[]`) as required by
+ * `@nestjs/microservices` for `@EventPattern` handler discovery.
  */
 @Module({
-  controllers: [SearchController],
-  providers: [
-    { provide: IAlgoliaSearchProvider, useClass: AlgoliaSearchAdapter },
-    SearchService,
+  controllers: [
+    SearchController,
     PostCreatedConsumer,
     PostUpdatedConsumer,
     PostPublishedConsumer,
     PostFailedConsumer,
     PostDeletedConsumer,
+  ],
+  providers: [
+    { provide: IAlgoliaSearchProvider, useClass: AlgoliaSearchAdapter },
+    SearchService,
   ],
 })
 export class SearchModule {}

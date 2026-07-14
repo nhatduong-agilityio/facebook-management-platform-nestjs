@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { IAlgoliaSearchProvider } from '../ports/algolia-search.provider.port';
 
 /** Shape of the `posts.created` event payload (mirrors `PostCreatedEvent` in apps/api). */
@@ -24,7 +25,7 @@ export interface PostCreatedPayload {
  * (ADR-051 — no HTTP back-channel to `apps/api`).
  * Deduplication via Redis `SET NX EX` on `dedup:search:<eventId>` (§11).
  */
-@Injectable()
+@Controller()
 export class PostCreatedConsumer {
   constructor(
     private readonly algolia: IAlgoliaSearchProvider,
@@ -35,40 +36,44 @@ export class PostCreatedConsumer {
   /**
    * Handles a `posts.created` event exactly once per `eventId`.
    *
-   * @param msg - Deserialized `PostCreatedPayload` from the broker.
+   * @param data - Deserialized `PostCreatedPayload` from the broker.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'posts.created',
-    queue: 'search.posts.created',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onPostCreated(msg: PostCreatedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:search:${msg.eventId}`;
+  @EventPattern('posts.created')
+  async onPostCreated(
+    @Payload() data: PostCreatedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:search:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'PostCreatedConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'PostCreatedConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
-      await this.algolia.saveObject(msg.postId, {
-        workspaceId: msg.workspaceId,
-        title: msg.title,
-        content: msg.content,
-        status: msg.status,
-        scheduledAt: msg.scheduledAt,
-        createdAt: msg.createdAt,
+      await this.algolia.saveObject(data.postId, {
+        workspaceId: data.workspaceId,
+        title: data.title,
+        content: data.content,
+        status: data.status,
+        scheduledAt: data.scheduledAt,
+        createdAt: data.createdAt,
       });
 
       this.logger.log(
-        { postId: msg.postId, eventId: msg.eventId },
+        { postId: data.postId, eventId: data.eventId },
         'PostCreatedConsumer: indexed',
       );
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'PostCreatedConsumer: indexing failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'PostCreatedConsumer: indexing failed');
+      channel.nack(msg, false, true);
     }
   }
 }
