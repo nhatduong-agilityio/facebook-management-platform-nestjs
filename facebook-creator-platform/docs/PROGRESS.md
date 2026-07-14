@@ -5,11 +5,26 @@
 
 ## Resume point
 
-- **Next task:** `TR.10` — ADR + full workspace smoke test.
+- **Next task:** `T5.1` — MikroORM/UoW verification pass (Week 5 hardening).
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.9 complete. `services/notification` is now a hybrid NestJS app with 11 `@EventPattern` consumers. `NotificationMessagingModule` (`@golevelup` wrapper) removed. 3 projection consumers (`MemberJoined`, `MemberRemoved`, `MemberRoleChanged`) had `MikroORM` + `RequestContext.create` added (their repository injects `EntityManager` directly). `MemberInvitedConsumer` is dedup-only (no ORM). All 7 notification consumers retained existing `RequestContext.create`. 2 new spec files created (`billing-subscription-cancelled`, `billing-subscription-past-due`). 40/40 notification tests; 345/345 total.
+- **Notes:** TR.11 complete. RabbitMQ refactor track (TR.1–TR.11) finished. `@golevelup/nestjs-rabbitmq` removed from all 7 package.json files; `@types/amqplib` removed from root devDependencies. Lockfile updated (9 packages removed). JSDoc comments referencing `@golevelup` cleaned from 5 `app.module.ts` files. `grep -r golevelup .` → 0 hits in source. All 7 packages build; 345/345 tests; 0 lint errors.
 
 ## Log
+
+### 2026-07-14 — TR.11 Complete @golevelup removal
+
+- **7 × `package.json`** (`apps/api`, `services/billing`, `services/email`, `services/audit`, `services/analytics`, `services/search`, `services/notification`): Removed `"@golevelup/nestjs-rabbitmq": "^9.0.2"` from `dependencies`.
+- **Root `package.json`**: Removed `"@types/amqplib": "0.10.8"` from `devDependencies`. (`amqplib@^2.0.1` bundles its own types; `@types/amqplib` targeted the incompatible 0.10.x API.)
+- **`pnpm install`**: Lockfile updated — 9 packages removed from the install.
+- **5 × `app.module.ts`** (`services/notification`, `services/search`, `services/audit`, `services/email`, `services/analytics`): Stripped JSDoc comment lines that named `@golevelup` (historical removal notes). This was required to pass `grep -r golevelup . → 0 results`.
+- Verification: `grep -r golevelup . --include="*.ts" --include="*.json" --exclude-dir=node_modules` → 0 hits. `ClientProxy` only in `apps/api/src/common/events/rabbitmq-event-bus.ts` (adapter) and a JSDoc in `rabbitmq.module.ts`/`services/billing/src/app.module.ts`. All 7 packages build. 345/345 tests. 0 lint errors.
+- No new dependencies added. No code logic changed.
+
+### 2026-07-14 — TR.10 ADR-085 + full workspace smoke test
+
+- **`docs/DECISIONS.md`** (EDITED): Added `## ADR-085` section (before Change log) covering the complete `@golevelup/nestjs-rabbitmq → @nestjs/microservices` migration: context (library unmaintained since 2023, mentor-recommended 2026-07-13), decision summary (TR.1–TR.9 task breakdown), canonical consumer shape, pure microservice vs hybrid bootstrap patterns, two known limitations (no publisher-confirms, no `managedChannel.addSetup` topology assertion), and packages-affected table (30 consumers across 7 packages). Change log entry added.
+- Smoke test: `pnpm lint` — 0 errors. `pnpm -r test` — 345/345 tests across all packages (billing 27, audit 9, analytics 9, email 20, search 15, api 225, notification 40).
+- No code changes — documentation-only task.
 
 ### 2026-07-14 — TR.9 Migrate services/notification to hybrid app + 11 consumers
 

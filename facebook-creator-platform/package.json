@@ -29,7 +29,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "@types/amqplib": "0.10.8",
     "eslint": "^9.29.0",
     "globals": "^17.7.0",
     "husky": "^9.1.7",

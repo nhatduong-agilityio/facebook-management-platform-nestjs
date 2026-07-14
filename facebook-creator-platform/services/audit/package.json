@@ -15,7 +15,6 @@
   "dependencies": {
     "@fcp/audit-contracts": "workspace:*",
     "@fcp/rmq-options": "workspace:*",
-    "@golevelup/nestjs-rabbitmq": "^9.0.2",
     "@mikro-orm/core": "^7.1.5",
     "@mikro-orm/decorators": "^7.1.5",
     "@mikro-orm/mongodb": "^7.1.5",

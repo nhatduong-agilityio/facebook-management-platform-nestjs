@@ -14,7 +14,6 @@
   "dependencies": {
     "algoliasearch": "^5.55.1",
     "@fcp/rmq-options": "workspace:*",
-    "@golevelup/nestjs-rabbitmq": "^9.0.2",
     "@nestjs/common": "^11.1.27",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.27",

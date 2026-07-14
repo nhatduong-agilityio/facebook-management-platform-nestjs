@@ -40,7 +40,6 @@ class RedisModule {}
  * - **RedisModule** — global; makes `Redis` client available to all modules.
  * - **AnalyticsModule** — consumer + HTTP read endpoints.
  *
- * `AnalyticsMessagingModule` (`@golevelup` `RabbitMQModule` wrapper) removed in TR.7.
  * RMQ transport is connected in `main.ts` via `app.connectMicroservice(getRmqOptions(...))`.
  */
 @Module({
