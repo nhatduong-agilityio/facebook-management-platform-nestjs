@@ -1,9 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { MikroORM } from '@mikro-orm/core';
+import type { RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { PostPublishedConsumer } from './analytics.consumer';
 import { IPostMetricsRepository } from './ports/post-metrics.repository.port';
 import { IInternalApiClient } from './ports/internal-api.client.port';
 import { IFacebookInsightsProvider } from './ports/facebook-insights.provider.port';
+
+vi.mock('@mikro-orm/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@mikro-orm/core')>();
+  return { ...actual, RequestContext: { create: (_em: unknown, fn: () => Promise<unknown>) => fn() } };
+});
 
 const makeMsg = (overrides: Partial<{
   eventId: string;
@@ -29,6 +36,13 @@ function makeConsumer(overrides: {
   getPostInsights?: () => Promise<typeof fakeInsights>;
   upsert?: () => Promise<void>;
 }) {
+  const mockChannel = { ack: vi.fn(), nack: vi.fn() };
+  const mockMsg = {};
+  const mockCtx = {
+    getChannelRef: () => mockChannel,
+    getMessage: () => mockMsg,
+  } as unknown as RmqContext;
+
   const redis = {
     set: vi.fn(overrides.redisSet ?? (() => Promise.resolve('OK'))),
     del: vi.fn(overrides.redisDel ?? (() => Promise.resolve(1))),
@@ -55,17 +69,20 @@ function makeConsumer(overrides: {
     error: vi.fn(),
   } as unknown as Logger;
 
-  const consumer = new PostPublishedConsumer(metricsRepo, internalApi, insightsProvider, redis, logger);
+  const orm = { em: {} } as unknown as MikroORM;
 
-  return { consumer, redis, metricsRepo, internalApi, insightsProvider, logger };
+  const consumer = new PostPublishedConsumer(
+    orm, metricsRepo, internalApi, insightsProvider, redis, logger,
+  );
+
+  return { consumer, redis, metricsRepo, internalApi, insightsProvider, logger, mockChannel, mockMsg, mockCtx };
 }
 
 describe('PostPublishedConsumer', () => {
-  it('upserts metrics on happy path', async () => {
-    const { consumer, metricsRepo, internalApi, insightsProvider } = makeConsumer({});
-    const msg = makeMsg();
+  it('upserts metrics on happy path and acks', async () => {
+    const { consumer, metricsRepo, internalApi, insightsProvider, mockChannel, mockMsg, mockCtx } = makeConsumer({});
 
-    await consumer.onPostPublished(msg);
+    await consumer.onPostPublished(makeMsg(), mockCtx);
 
     expect(internalApi.getFacebookAccount).toHaveBeenCalledWith('acct-001');
     expect(insightsProvider.getPostInsights).toHaveBeenCalledWith('123_456', 'tok-xyz');
@@ -77,43 +94,56 @@ describe('PostPublishedConsumer', () => {
         impressions: 200,
       }),
     );
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
+    expect(mockChannel.nack).not.toHaveBeenCalled();
   });
 
-  it('skips duplicate events (dedup)', async () => {
-    const { consumer, metricsRepo, internalApi } = makeConsumer({
-      redisSet: () => Promise.resolve(null), // NX failed → already processed
+  it('acks and skips duplicate events (dedup)', async () => {
+    const { consumer, metricsRepo, internalApi, mockChannel, mockMsg, mockCtx } = makeConsumer({
+      redisSet: () => Promise.resolve(null),
     });
 
-    await consumer.onPostPublished(makeMsg());
+    await consumer.onPostPublished(makeMsg(), mockCtx);
 
     expect(internalApi.getFacebookAccount).not.toHaveBeenCalled();
     expect(metricsRepo.upsert).not.toHaveBeenCalled();
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
+    expect(mockChannel.nack).not.toHaveBeenCalled();
   });
 
-  it('clears dedup key and rethrows when internal API fails', async () => {
-    const { consumer, redis } = makeConsumer({
+  it('clears dedup key and nacks with requeue when internal API fails', async () => {
+    const { consumer, redis, mockChannel, mockMsg, mockCtx } = makeConsumer({
       getFacebookAccount: () => Promise.reject(new Error('network error')),
     });
 
-    await expect(consumer.onPostPublished(makeMsg())).rejects.toThrow('network error');
+    await consumer.onPostPublished(makeMsg(), mockCtx);
+
     expect(redis.del).toHaveBeenCalledWith('dedup:analytics:evt-001');
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
+    expect(mockChannel.ack).not.toHaveBeenCalled();
   });
 
-  it('clears dedup key and rethrows when Graph API insights fail', async () => {
-    const { consumer, redis } = makeConsumer({
+  it('clears dedup key and nacks with requeue when Graph API insights fail', async () => {
+    const { consumer, redis, mockChannel, mockMsg, mockCtx } = makeConsumer({
       getPostInsights: () => Promise.reject(new Error('graph error')),
     });
 
-    await expect(consumer.onPostPublished(makeMsg())).rejects.toThrow('graph error');
+    await consumer.onPostPublished(makeMsg(), mockCtx);
+
     expect(redis.del).toHaveBeenCalledWith('dedup:analytics:evt-001');
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
+    expect(mockChannel.ack).not.toHaveBeenCalled();
   });
 
-  it('clears dedup key and rethrows when upsert fails', async () => {
-    const { consumer, redis } = makeConsumer({
+  it('clears dedup key and nacks with requeue when upsert fails', async () => {
+    const { consumer, redis, mockChannel, mockMsg, mockCtx } = makeConsumer({
       upsert: () => Promise.reject(new Error('db error')),
     });
 
-    await expect(consumer.onPostPublished(makeMsg())).rejects.toThrow('db error');
+    await consumer.onPostPublished(makeMsg(), mockCtx);
+
     expect(redis.del).toHaveBeenCalledWith('dedup:analytics:evt-001');
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
+    expect(mockChannel.ack).not.toHaveBeenCalled();
   });
 });

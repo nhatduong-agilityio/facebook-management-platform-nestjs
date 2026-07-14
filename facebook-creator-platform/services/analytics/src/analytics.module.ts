@@ -15,22 +15,21 @@ import { PostPublishedConsumer } from './analytics.consumer';
  * Core analytics module.
  *
  * Owns the `analytics` Postgres schema. Exposes:
- * - `PostPublishedConsumer` — RabbitMQ consumer that drives the metrics upsert flow.
+ * - `PostPublishedConsumer` — RMQ consumer (`@EventPattern('posts.published')`)
+ *   that drives the metrics upsert flow. Listed in `controllers` as required by
+ *   `@nestjs/microservices` for `@EventPattern` handler discovery.
  * - `AnalyticsController` — HTTP read endpoints called by `apps/api` (T3.5).
  *
  * Port bindings:
- * - `IPostMetricsRepository` → `MikroOrmPostMetricsRepository`
- * - `IInternalApiClient`     → `InternalApiHttpAdapter`
+ * - `IPostMetricsRepository`    → `MikroOrmPostMetricsRepository`
+ * - `IInternalApiClient`        → `InternalApiHttpAdapter`
  * - `IFacebookInsightsProvider` → `FacebookInsightsAdapter`
- *
- * Redis is injected as a plain `ioredis` `Redis` instance (global token `'REDIS'`).
  */
 @Module({
   imports: [MikroOrmModule.forFeature([PostMetrics])],
-  controllers: [AnalyticsController],
+  controllers: [PostPublishedConsumer, AnalyticsController],
   providers: [
     AnalyticsService,
-    PostPublishedConsumer,
     { provide: IPostMetricsRepository, useClass: MikroOrmPostMetricsRepository },
     { provide: IInternalApiClient, useClass: InternalApiHttpAdapter },
     { provide: IFacebookInsightsProvider, useClass: FacebookInsightsAdapter },

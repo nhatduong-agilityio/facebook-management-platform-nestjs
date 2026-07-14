@@ -558,6 +558,7 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-14 | **TR.7 complete.** `services/analytics` hybrid bootstrap (ADR-084); `AnalyticsMessagingModule` deleted; `PostPublishedConsumer` uses `@EventPattern('posts.published')` + `RequestContext.create` + `channel.ack/nack`; error path changed from `throw err` to `nack(true)`. 9/9 analytics tests, lint clean. |
 | 2026-07-14 | **TR.6 complete. ADR-084:** `services/audit` is now a hybrid NestJS app; `AuditMessagingModule` deleted; `AuditConsumer` uses `@EventPattern('#')` + `RequestContext.create` + `channel.ack/nack`. 9/9 audit tests, lint clean. |
 | 2026-07-14 | **ADR-084 Hybrid bootstrap for services with both HTTP and RMQ consumers.** `NestFactory.create` keeps the HTTP server; `app.connectMicroservice(getRmqOptions(queue, configService))` adds the RMQ transport; `app.startAllMicroservices()` MUST be called before `app.listen()`. Unlike pure microservices, `ConfigService` is available from the initialized app and can be passed directly to `getRmqOptions` — no `process.env` fallback needed. Pattern applies to audit, analytics, search, and notification services (TR.6–TR.9). |
 | 2026-07-14 | **TR.5 complete. ADR-082:** `services/email` is now a pure `NestFactory.createMicroservice` app; `RetryQueueSetup` deleted; all 5 consumers use `@EventPattern` + `channel.ack/nack`; x-death retry logic removed. 20/20 email tests, lint clean. |
