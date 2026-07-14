@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload } from '@nestjs/microservices';
+import { RmqContext } from '@nestjs/microservices';
+import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
+import type { Channel, Message } from 'amqplib';
 import { IAuditEventRepository } from './ports/audit-event.repository.port';
 
 /**
@@ -31,49 +34,60 @@ const PII_FIELDS: ReadonlySet<string> = new Set([
 /**
  * Consumes every event published to the `fcp.events` topic exchange.
  *
- * A single wildcard subscription (`routingKey: '#'`) binds the durable queue
- * `audit.all` to all routing keys on the exchange (ADR-064). One document is
- * written per unique `eventId`; duplicates are silently discarded by the
+ * A single wildcard subscription (`@EventPattern('#')`) binds the durable queue
+ * `audit.all` to all routing keys on the exchange (ADR-064, TR.6). One document
+ * is written per unique `eventId`; duplicates are silently discarded by the
  * MongoDB unique index on `eventId` (not Redis).
+ *
+ * `RequestContext.create` wraps each message so MikroORM gets an isolated
+ * `EntityManager` per message (HTTP middleware does not run for microservice handlers).
  */
-@Injectable()
+@Controller()
 export class AuditConsumer {
+  /**
+   * @param orm    - MikroORM instance used to create a per-message request context.
+   * @param repo   - Persists `AuditEvent` documents to MongoDB.
+   * @param logger - Pino logger.
+   */
   constructor(
+    private readonly orm: MikroORM,
     private readonly repo: IAuditEventRepository,
     private readonly logger: Logger,
   ) {}
 
   /**
-   * Handles every event on `fcp.events`.
+   * Handles every event on `fcp.events` (wildcard `#`).
    *
-   * @param msg          - Raw event payload from RabbitMQ.
-   * @param amqpMsg      - Raw AMQP message (used to read the actual routing key).
+   * @param data - Deserialized event payload (unwrapped from the NestJS `{ pattern, data }` envelope).
+   * @param ctx  - RMQ context providing the channel and raw AMQP message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: '#',
-    queue: 'audit.all',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onEvent(msg: FcpEventPayload, amqpMsg: { fields: { routingKey: string } }): Promise<void | Nack> {
-    if (!msg.eventId) {
-      this.logger.warn({ msg }, 'AuditConsumer: missing eventId — discarding (Nack permanent)');
-      return new Nack(false);
+  @EventPattern('#')
+  async onEvent(
+    @Payload() data: FcpEventPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    if (!data.eventId) {
+      this.logger.warn({ msg: data }, 'AuditConsumer: missing eventId — permanent discard');
+      channel.nack(msg, false, false);
+      return;
     }
 
-    const routingKey = amqpMsg?.fields?.routingKey ?? msg.routingKey ?? 'unknown';
-    const workspaceId = typeof msg.workspaceId === 'string' ? msg.workspaceId : null;
-    const payload = stripPii(msg);
+    const routingKey = msg.fields.routingKey ?? data.routingKey ?? 'unknown';
+    const workspaceId = typeof data.workspaceId === 'string' ? data.workspaceId : null;
+    const payload = stripPii(data);
 
     try {
-      await this.repo.insert({ eventId: msg.eventId, routingKey, workspaceId, payload });
-      this.logger.log(
-        { eventId: msg.eventId, routingKey },
-        'AuditConsumer: event recorded',
-      );
+      await RequestContext.create(this.orm.em, async () => {
+        await this.repo.insert({ eventId: data.eventId, routingKey, workspaceId, payload });
+      });
+      this.logger.log({ eventId: data.eventId, routingKey }, 'AuditConsumer: event recorded');
+      channel.ack(msg);
     } catch (err) {
-      this.logger.error({ eventId: msg.eventId, routingKey, err }, 'AuditConsumer: insert failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, routingKey, err }, 'AuditConsumer: insert failed');
+      channel.nack(msg, false, true);
     }
   }
 }

@@ -11,15 +11,16 @@ import { AuditController } from './audit.controller';
  * Feature module for the audit service.
  *
  * Binds the `IAuditEventRepository` port to its MikroORM MongoDB adapter,
- * registers the wildcard RabbitMQ consumer, and exposes read endpoints.
+ * registers the wildcard RabbitMQ consumer (in `controllers` — required for
+ * `@EventPattern` discovery under `@nestjs/microservices`), and exposes HTTP
+ * read endpoints.
  */
 @Module({
   imports: [MikroOrmModule.forFeature([AuditEvent])],
+  controllers: [AuditConsumer, AuditController],
   providers: [
-    AuditConsumer,
     AuditService,
     { provide: IAuditEventRepository, useClass: MikroOrmAuditEventRepository },
   ],
-  controllers: [AuditController],
 })
 export class AuditModule {}

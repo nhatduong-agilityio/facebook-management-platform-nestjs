@@ -5,11 +5,20 @@
 
 ## Resume point
 
-- **Next task:** `TR.6` — Migrate `services/audit` to a hybrid app + wildcard `@EventPattern('#')` consumer.
+- **Next task:** `TR.7` — Migrate `services/analytics` to hybrid app + one `@EventPattern('posts.published')` consumer.
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.5 complete. `services/email` is now a pure `NestFactory.createMicroservice` app (no HTTP server). `EmailMessagingModule` + `RetryQueueSetup` removed from `app.module.ts`. All 5 consumers migrated to `@Controller()` in `EmailModule.controllers` with `@EventPattern`/`@Payload`/`@Ctx RmqContext`; ack/nack replace `Nack` returns; `x-death` retry logic removed (DLX handles dead-letter routing via `nack(false, false)`; transient errors use `nack(true)` for immediate requeue). 20/20 email tests green. `T4.4` is paused until TR.x complete.
+- **Notes:** TR.6 complete. `services/audit` is now a hybrid NestJS app. `AuditMessagingModule` (`@golevelup` wrapper) removed from `app.module.ts`. `AuditConsumer` migrated to `@Controller()` with `@EventPattern('#')` + `RequestContext.create` + `channel.ack/nack`. Routing key read from `ctx.getMessage().fields.routingKey`. 9/9 audit tests green. `T4.4` is paused until TR.x complete.
 
 ## Log
+
+### 2026-07-14 — TR.6 Migrate services/audit to hybrid app + wildcard consumer
+
+- **`services/audit/src/main.ts`** (EDITED): Changed to hybrid bootstrap — `NestFactory.create` keeps HTTP server; `app.connectMicroservice(getRmqOptions('audit.all', configService))` adds RMQ transport (queue `audit.all`, exchange `fcp.events` topic, `wildcards: true`, DLX → `fcp.dlq`); `await app.startAllMicroservices()` called before `await app.listen(port)`. `ConfigService` available post-`create`, no `process.env` workaround needed.
+- **`services/audit/src/app.module.ts`** (REWRITTEN): Removed `AuditMessagingModule` — the `@Global() @Module` wrapper class containing `RabbitMQModule.forRootAsync`. `RabbitMQModule` import from `@golevelup` removed entirely.
+- **`services/audit/src/audit.consumer.ts`** (REWRITTEN): `@Injectable()` → `@Controller()`; `@RabbitSubscribe(...)` → `@EventPattern('#')`; handler now `onEvent(@Payload() data, @Ctx() ctx: RmqContext)`; `MikroORM` injected for `RequestContext.create` (required because `MikroOrmAuditEventRepository` injects `EntityManager` directly — HTTP middleware does not run for hybrid microservice routes); routing key from `ctx.getMessage().fields.routingKey` (same AMQP field as old `amqpMsg.fields.routingKey`); missing `eventId` → `nack(false, false)`; DB success → `ack`; transient error → `nack(true)`.
+- **`services/audit/src/audit.module.ts`** (EDITED): `AuditConsumer` moved from `providers[]` to `controllers[]`.
+- **`services/audit/src/audit.consumer.spec.ts`** (REWRITTEN): Removed `Nack` + `amqpMsg` second param; added `RequestContext` vi.mock; `mockChannel`/`mockMsg`/`mockCtx` pattern; `MikroORM` stub passed to constructor; 5 tests: success+ack, PII strip+ack, missing eventId→nack(false,false), null workspaceId+ack, transient error→nack(true).
+- Tests: 295/295 total (9 audit passing). Lint: 0 errors.
 
 ### 2026-07-14 — TR.5 Migrate services/email to pure microservice
 
