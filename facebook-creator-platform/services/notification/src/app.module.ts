@@ -42,7 +42,6 @@ class NotificationRedisModule {}
  * - **NotificationRedisModule** — global ioredis client for dedup.
  * - **NotificationModule** — all consumers, orchestrator, reconciler, HTTP API.
  *
- * `NotificationMessagingModule` (`@golevelup` `RabbitMQModule` wrapper) removed in TR.9.
  * RMQ transport is connected in `main.ts` via `app.connectMicroservice(getRmqOptions(...))`.
  */
 @Module({

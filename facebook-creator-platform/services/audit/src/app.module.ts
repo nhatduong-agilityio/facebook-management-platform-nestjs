@@ -18,7 +18,6 @@ import { AuditModule } from './audit.module';
  *   unique index on `eventId` and the `workspaceId` index on startup.
  * - **AuditModule** — `@EventPattern('#')` consumer + HTTP read endpoints.
  *
- * `AuditMessagingModule` (`@golevelup` `RabbitMQModule` wrapper) removed in TR.6.
  * RMQ transport is connected in `main.ts` via `app.connectMicroservice(getRmqOptions(...))`.
  */
 @Module({

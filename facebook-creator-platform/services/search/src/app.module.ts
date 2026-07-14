@@ -36,7 +36,6 @@ class SearchRedisModule {}
  * - **SearchModule** — five post-event consumers + HTTP `GET /search` endpoint.
  *
  * No MikroORM — Algolia is the system of record for this service (no Postgres schema).
- * `SearchMessagingModule` (`@golevelup` `RabbitMQModule` wrapper) removed in TR.8.
  * RMQ transport is connected in `main.ts` via `app.connectMicroservice(getRmqOptions(...))`.
  */
 @Module({

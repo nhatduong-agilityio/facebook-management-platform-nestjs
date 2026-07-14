@@ -39,8 +39,7 @@ class EmailRedisModule {}
  * - **EmailRedisModule** — global ioredis client for consumer dedup keys.
  * - **EmailModule** — all 5 `@EventPattern` consumers, adapters, and port bindings.
  *
- * `EmailMessagingModule` (`@golevelup` `RabbitMQModule` wrapper) and `RetryQueueSetup`
- * have been removed.  The service now boots as a pure `@nestjs/microservices`
+ * The service boots as a pure `@nestjs/microservices`
  * Transport.RMQ microservice (TR.5).  Broker topology (`fcp.retry.30s`, exchanges)
  * is pre-declared via Docker Compose / `definitions.json` and is not asserted by
  * application code.

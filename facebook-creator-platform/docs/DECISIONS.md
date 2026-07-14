@@ -555,9 +555,102 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > Prefetch values come from `RMQ_PREFETCH` (default 10) and `RMQ_DLQ_PREFETCH` (default 5) env vars
 > so they can be tuned per environment without code changes.
 
+## ADR-085 — @golevelup/nestjs-rabbitmq → @nestjs/microservices Transport.RMQ migration (TR.1–TR.9)
+
+> **Date:** 2026-07-13 (mentor review; implementation completed 2026-07-14)
+
+### Context
+
+All eight packages in the monorepo (`apps/api`, `services/billing`, `services/email`, `services/audit`, `services/analytics`, `services/search`, `services/notification`) consumed `@golevelup/nestjs-rabbitmq@^9.0.2` for both publishing domain events and consuming them. The library had not been maintained since 2023, exposed its own `RabbitMQModule` wrapper (requiring a separate `*MessagingModule` in each service), and provided no first-party path to NestJS 11 compatibility. At mentor review (2026-07-13) the recommendation was to migrate to `@nestjs/microservices` Transport.RMQ, which is Anthropic's preferred integration path.
+
+### Decision
+
+Replace `@golevelup/nestjs-rabbitmq` with `@nestjs/microservices` Transport.RMQ. The migration was broken into 11 atomic tasks (TR.1–TR.11):
+
+- **TR.1** — Add `@nestjs/microservices`, `amqplib@^2.0.1`, `amqp-connection-manager@^5.0.0` as explicit deps; create `libs/rmq-options` shared factory (`getRmqOptions` / `getDlqRmqOptions`).
+- **TR.2** — Migrate `apps/api` publisher (`RabbitMqEventBus`): `AmqpConnection.publish` → `ClientProxy.emit`; `ClientsModule.registerAsync` wired in the domain module that owns the adapter.
+- **TR.3** — Migrate `apps/api` consumers (6 domain + 1 DLQ): `@RabbitSubscribe` → `@EventPattern`; `@Controller()` + `controllers[]`; `@Payload()` + `@Ctx() ctx: RmqContext`; `channel.ack/nack` via `ctx.getChannelRef() as Channel`.
+- **TR.4** — Migrate `services/billing` publisher: same `ClientProxy` pattern.
+- **TR.5** — Migrate `services/email` (pure microservice, `NestFactory.createMicroservice`): 5 consumers; `x-death` retry logic removed; permanent failure → `nack(false, false)` (DLX); transient → `nack(false, true)` (requeue).
+- **TR.6–TR.9** — Migrate `services/audit`, `services/analytics`, `services/search`, `services/notification` (hybrid apps, `NestFactory.create` + `connectMicroservice`): 1, 1, 5, and 11 `@EventPattern` consumers respectively.
+
+### Consumer shape
+
+```typescript
+@Controller()
+export class ExampleConsumer {
+  @EventPattern('routing.key')
+  async onEvent(@Payload() data: Payload, @Ctx() ctx: RmqContext): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+    const isNew = await this.redis.set(`dedup:${data.eventId}`, '1', 'EX', 86400, 'NX');
+    if (!isNew) { channel.ack(msg); return; }
+    try {
+      await RequestContext.create(this.orm.em, async () => { /* ORM work */ });
+      channel.ack(msg);
+    } catch {
+      await this.redis.del(`dedup:${data.eventId}`);
+      channel.nack(msg, false, true);   // transient → requeue
+    }
+  }
+}
+```
+
+`RequestContext.create` is required in any handler whose repository injects `EntityManager` directly (not just `MikroORM`); HTTP middleware does not run for microservice routes.
+
+### Bootstrap patterns
+
+**Pure microservice** (`services/email`):
+```typescript
+const app = await NestFactory.createMicroservice<MicroserviceOptions>(AppModule,
+  getRmqOptions(process.env['EMAIL_QUEUE'] ?? 'email_queue', process.env));
+await app.listen();
+```
+`ConfigService` is unavailable before module init; reads `process.env` directly (ADR-083).
+
+**Hybrid app** (`services/audit`, `services/analytics`, `services/search`, `services/notification`):
+```typescript
+const app = await NestFactory.create(AppModule, { bufferLogs: true });
+// ... logger, ValidationPipe, Swagger ...
+const configService = app.get(ConfigService);
+app.connectMicroservice<MicroserviceOptions>(getRmqOptions('queue_name', configService));
+await app.startAllMicroservices();
+await app.listen(port);
+```
+`ConfigService` is available post-`create`; `startAllMicroservices()` MUST precede `listen()` (ADR-084).
+
+### Known limitations
+
+1. **No publisher-confirms (broker-ack).** `ClientProxy.emit()` is fire-and-forget — it publishes to the AMQP channel but does not wait for a `ConfirmChannel` broker acknowledgement. `@golevelup/nestjs-rabbitmq` used `ConfirmChannel` under the hood, giving at-least-once delivery guarantees at the publisher side. Under `Transport.RMQ`, if the broker is unavailable or the exchange is misconfigured the message is silently dropped. Mitigation: the transactional outbox pattern (T2.6 event bus) still persists events to the DB before publishing; at-least-once is enforced by the consumer dedup key (`NX`), not the publish path. Acceptable for this training project; revisit if SLA requires confirmed publishing (ADR notes accepted by mentor 2026-07-13).
+
+2. **No `managedChannel.addSetup` for topology assertion.** `@golevelup` used `addSetup` callbacks to assert exchanges, queues, and bindings at connection time. Under `Transport.RMQ` this API is not exposed. Broker topology (topic exchange `fcp.events`, DLX → `fcp.dlq`, `fcp.retry.30s` TTL queue, per-queue bindings) must be declared in IaC (`docker/rabbitmq/definitions.json` in dev; Terraform in prod) — not in application code. This is the correct separation-of-concerns; the limitation is that missing topology fails at runtime rather than at startup.
+
+### Packages affected
+
+| Package | Role | Consumers migrated |
+|---|---|---|
+| `apps/api` | Publisher + consumers | 6 domain + 1 DLQ |
+| `services/billing` | Publisher only | 0 |
+| `services/email` | Pure microservice | 5 |
+| `services/audit` | Hybrid | 1 |
+| `services/analytics` | Hybrid | 1 |
+| `services/search` | Hybrid | 5 |
+| `services/notification` | Hybrid | 11 |
+| `libs/rmq-options` | Shared factory | — |
+
+**Total:** 30 consumers migrated across 7 packages.
+
+### Outcome
+
+`pnpm lint` — 0 errors. `pnpm -r test` — all packages green (345 tests as of TR.9 completion). `@golevelup/nestjs-rabbitmq` import count in production source: 0 (TR.11 will remove the package declaration from all `package.json` files).
+
+---
+
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-14 | **TR.10 complete. ADR-085:** Full migration ADR written; `@golevelup → @nestjs/microservices` across 8 packages documented; known limitations (no publisher-confirms, no topology assertion at boot) recorded; 345/345 tests, lint clean. |
+| 2026-07-14 | **TR.9 complete.** `services/notification` hybrid bootstrap (ADR-084); `NotificationMessagingModule` deleted; 11 consumers use `@EventPattern` + `channel.ack/nack`; 3 projection consumers gained `MikroORM` + `RequestContext.create` (their repository injects `EntityManager` directly). 40/40 notification tests, lint clean. |
 | 2026-07-14 | **TR.8 complete.** `services/search` hybrid bootstrap (ADR-084); `SearchMessagingModule` deleted; all 5 consumers use `@EventPattern` + `channel.ack/nack`; no `RequestContext.create` (Algolia-only, no ORM). 15/15 search tests, lint clean. |
 | 2026-07-14 | **TR.7 complete.** `services/analytics` hybrid bootstrap (ADR-084); `AnalyticsMessagingModule` deleted; `PostPublishedConsumer` uses `@EventPattern('posts.published')` + `RequestContext.create` + `channel.ack/nack`; error path changed from `throw err` to `nack(true)`. 9/9 analytics tests, lint clean. |
 | 2026-07-14 | **TR.6 complete. ADR-084:** `services/audit` is now a hybrid NestJS app; `AuditMessagingModule` deleted; `AuditConsumer` uses `@EventPattern('#')` + `RequestContext.create` + `channel.ack/nack`. 9/9 audit tests, lint clean. |
