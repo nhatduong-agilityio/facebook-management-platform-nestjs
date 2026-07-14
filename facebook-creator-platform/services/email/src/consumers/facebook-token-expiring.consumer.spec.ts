@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MikroORM } from '@mikro-orm/core';
-import type { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
+import type { RmqContext } from '@nestjs/microservices';
 import {
   FacebookTokenExpiringEmailConsumer,
   FacebookTokenExpiringPayload,
@@ -26,14 +26,6 @@ const makeMsg = (overrides: Partial<FacebookTokenExpiringPayload> = {}): Faceboo
 
 const makeLog = (id = 'log-5') => ({ id } as never);
 
-const makeMockAmqpMsg = (deathCount = 0) => ({
-  properties: {
-    headers: deathCount > 0
-      ? { 'x-death': [{ queue: 'email.facebook.token_expiring', count: deathCount }] }
-      : {},
-  },
-} as never);
-
 describe('FacebookTokenExpiringEmailConsumer', () => {
   let consumer: FacebookTokenExpiringEmailConsumer;
   let internalApi: IInternalApiClient;
@@ -41,7 +33,9 @@ describe('FacebookTokenExpiringEmailConsumer', () => {
   let emailLogRepo: IEmailDeliveryLogRepository;
   let redis: { set: ReturnType<typeof vi.fn>; del: ReturnType<typeof vi.fn> };
   let logger: { log: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
-  let amqpConnection: { publish: ReturnType<typeof vi.fn> };
+  let mockChannel: { ack: ReturnType<typeof vi.fn>; nack: ReturnType<typeof vi.fn> };
+  let mockMsg: object;
+  let mockCtx: RmqContext;
 
   beforeEach(() => {
     internalApi = { getUserEmail: vi.fn(), getWorkspaceOwnerEmail: vi.fn() } as unknown as IInternalApiClient;
@@ -49,20 +43,24 @@ describe('FacebookTokenExpiringEmailConsumer', () => {
     emailLogRepo = { create: vi.fn(), updateSent: vi.fn(), updateFailed: vi.fn() } as unknown as IEmailDeliveryLogRepository;
     redis = { set: vi.fn(), del: vi.fn() };
     logger = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
-    amqpConnection = { publish: vi.fn().mockResolvedValue(undefined) };
+    mockChannel = { ack: vi.fn(), nack: vi.fn() };
+    mockMsg = {};
+    mockCtx = {
+      getChannelRef: () => mockChannel,
+      getMessage: () => mockMsg,
+    } as unknown as RmqContext;
     const orm = { em: {} } as unknown as MikroORM;
     consumer = new FacebookTokenExpiringEmailConsumer(
       orm, internalApi, emailProvider, emailLogRepo, redis as never, logger as never,
-      amqpConnection as unknown as AmqpConnection,
     );
   });
 
-  it('resolves owner email, creates log, sends email, and marks sent', async () => {
+  it('resolves owner email, creates log, sends email, marks sent, and acks', async () => {
     redis.set.mockResolvedValue('OK');
     vi.mocked(internalApi.getWorkspaceOwnerEmail).mockResolvedValue({ ownerEmail: 'owner@example.com' });
     vi.mocked(emailLogRepo.create).mockResolvedValue(makeLog());
 
-    await consumer.onTokenExpiring(makeMsg(), makeMockAmqpMsg());
+    await consumer.onTokenExpiring(makeMsg(), mockCtx);
 
     expect(internalApi.getWorkspaceOwnerEmail).toHaveBeenCalledWith('ws-1');
     expect(emailLogRepo.create).toHaveBeenCalledWith(
@@ -77,52 +75,43 @@ describe('FacebookTokenExpiringEmailConsumer', () => {
       expect.objectContaining({ to: 'owner@example.com', templateName: 'token-expiring' }),
     );
     expect(emailLogRepo.updateSent).toHaveBeenCalledWith('log-5', expect.any(Date));
-    expect(amqpConnection.publish).not.toHaveBeenCalled();
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
+    expect(mockChannel.nack).not.toHaveBeenCalled();
   });
 
-  it('skips duplicate events', async () => {
+  it('acks duplicate events without processing', async () => {
     redis.set.mockResolvedValue(null);
 
-    await consumer.onTokenExpiring(makeMsg(), makeMockAmqpMsg());
+    await consumer.onTokenExpiring(makeMsg(), mockCtx);
 
     expect(internalApi.getWorkspaceOwnerEmail).not.toHaveBeenCalled();
     expect(emailProvider.send).not.toHaveBeenCalled();
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
+    expect(mockChannel.nack).not.toHaveBeenCalled();
   });
 
-  it('clears dedup key and returns Nack on transient error', async () => {
+  it('clears dedup key and nacks with requeue on transient error', async () => {
     redis.set.mockResolvedValue('OK');
     vi.mocked(internalApi.getWorkspaceOwnerEmail).mockRejectedValue(new Error('API down'));
 
-    const result = await consumer.onTokenExpiring(makeMsg(), makeMockAmqpMsg(0));
+    await consumer.onTokenExpiring(makeMsg(), mockCtx);
 
-    expect(result).toEqual(expect.objectContaining({ requeue: false }));
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
     expect(redis.del).toHaveBeenCalledWith('dedup:email:evt-5');
-    expect(amqpConnection.publish).not.toHaveBeenCalled();
+    expect(mockChannel.ack).not.toHaveBeenCalled();
   });
 
-  it('publishes to DLQ and acks on permanent email error', async () => {
+  it('nacks without requeue and marks failed on permanent email error', async () => {
     redis.set.mockResolvedValue('OK');
     vi.mocked(internalApi.getWorkspaceOwnerEmail).mockResolvedValue({ ownerEmail: 'owner@example.com' });
     vi.mocked(emailLogRepo.create).mockResolvedValue(makeLog());
     vi.mocked(emailProvider.send).mockRejectedValue(new PermanentEmailError('blocked'));
 
-    const result = await consumer.onTokenExpiring(makeMsg(), makeMockAmqpMsg(0));
+    await consumer.onTokenExpiring(makeMsg(), mockCtx);
 
-    expect(result).toBeUndefined(); // Ack
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, false);
     expect(emailLogRepo.updateFailed).toHaveBeenCalledWith('log-5', 1);
-    expect(amqpConnection.publish).toHaveBeenCalledWith('fcp.dlq', 'dead', expect.anything(), expect.anything());
     expect(redis.del).not.toHaveBeenCalled();
-  });
-
-  it('publishes to DLQ and acks when retries are exhausted', async () => {
-    redis.set.mockResolvedValue('OK');
-    vi.mocked(internalApi.getWorkspaceOwnerEmail).mockRejectedValue(new Error('Resend 503'));
-
-    const result = await consumer.onTokenExpiring(makeMsg(), makeMockAmqpMsg(3));
-
-    expect(result).toBeUndefined(); // Ack
-    expect(emailLogRepo.updateFailed).not.toHaveBeenCalled();
-    expect(amqpConnection.publish).toHaveBeenCalledWith('fcp.dlq', 'dead', expect.anything(), expect.anything());
-    expect(redis.del).not.toHaveBeenCalled();
+    expect(mockChannel.ack).not.toHaveBeenCalled();
   });
 });

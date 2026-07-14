@@ -5,11 +5,22 @@
 
 ## Resume point
 
-- **Next task:** `TR.5` — Migrate `services/email` to a pure `@nestjs/microservices` microservice.
+- **Next task:** `TR.6` — Migrate `services/audit` to a hybrid app + wildcard `@EventPattern('#')` consumer.
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.4 complete. `BillingRabbitMqAdapter` now injects `ClientProxy` via `@Inject(BILLING_EVENT_BUS)`; `BillingMessagingModule` (`@golevelup` wrapper) removed from `AppModule`; `ClientsModule.registerAsync` registered in `BillingModule` (DI scope fix — ADR-080). 27/27 billing tests green (3 new adapter tests). `libs/rmq-options` barrel refactored: both factory functions inlined into `index.ts`, sub-module file deleted, `package.json main`/`types` restored to `src/index.ts`. `T4.4` is paused until TR.x complete.
+- **Notes:** TR.5 complete. `services/email` is now a pure `NestFactory.createMicroservice` app (no HTTP server). `EmailMessagingModule` + `RetryQueueSetup` removed from `app.module.ts`. All 5 consumers migrated to `@Controller()` in `EmailModule.controllers` with `@EventPattern`/`@Payload`/`@Ctx RmqContext`; ack/nack replace `Nack` returns; `x-death` retry logic removed (DLX handles dead-letter routing via `nack(false, false)`; transient errors use `nack(true)` for immediate requeue). 20/20 email tests green. `T4.4` is paused until TR.x complete.
 
 ## Log
+
+### 2026-07-14 — TR.5 Migrate services/email to pure microservice
+
+- **`services/email/src/main.ts`** (REWRITTEN): `NestFactory.createMicroservice<MicroserviceOptions>` — no HTTP server, no `setGlobalPrefix`; transport options read directly from `process.env` (bootstrap chicken-and-egg: `ConfigService` not available before module init). Exchange `fcp.events` topic, queue `email_queue`, DLX → `fcp.dlq`.
+- **`services/email/src/app.module.ts`** (REWRITTEN): Removed `EmailMessagingModule` (the `@Global()` `@golevelup` wrapper) and `RetryQueueSetup` (`OnApplicationBootstrap` that asserted `fcp.retry.30s` via `managedChannel.addSetup` — unavailable under Transport.RMQ). `ConfigModule`, `LoggerModule`, `MikroOrmModule`, `EmailRedisModule`, `EmailModule` retained.
+- **`services/email/src/email.module.ts`** (EDITED): All 5 consumers moved from `providers[]` to `controllers[]` (NestJS microservices discovers `@EventPattern` handlers in controllers, not providers).
+- **`services/email/src/utils/email-retry.util.ts`** (DELETED): `getDeathCount` / `MAX_EMAIL_RETRIES` / `QUEUE_NAME` death-count logic superseded — DLX routes dead-lettered messages automatically via `nack(false, false)`.
+- **All 5 consumers rewritten** (`member-invited`, `post-published`, `post-failed`, `billing-payment-failed`, `facebook-token-expiring`): `@Injectable()` → `@Controller()`; `@RabbitSubscribe` → `@EventPattern`; handler params `(@Payload() data, @Ctx() ctx: RmqContext)`; `AmqpConnection` dependency removed; `channel.ack/nack` replaces `return new Nack(...)` / `return` (implicit ack). Permanent errors → `nack(false, false)` (DLX → `fcp.dlq`); transient → `redis.del(dedupKey)` + `nack(true)` (requeue). `updateFailed` still called on `PermanentEmailError` with fixed `1` attempt count (x-death counting removed).
+- **All 5 consumer specs rewritten**: `AmqpConnection` mock + `makeMockAmqpMsg` removed; `mockChannel = { ack, nack }` + `mockCtx = { getChannelRef, getMessage }` pattern; assertions on `channel.ack/nack` calls; 4 tests per consumer (success, duplicate, transient, permanent). 20/20 passing.
+- **Retry strategy change**: Old strategy used `fcp.retry.30s` TTL queue with `x-death` death-count tracking (3 max retries) routed manually via `AmqpConnection.publish`. New strategy: permanent → DLX routes to `fcp.dlq` automatically; transient → immediate requeue via `nack(true)`. Broker topology pre-declared via Docker Compose / `definitions.json`.
+- Tests: 290/290 total (20 email + 270 remaining). Lint: 0 errors.
 
 ### 2026-07-14 — TR.4 Migrate services/billing publisher to ClientProxy
 

@@ -1,14 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { AmqpConnection, RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload } from '@nestjs/microservices';
+import { RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
-import type { ConsumeMessage } from 'amqplib';
+import type { Channel, Message } from 'amqplib';
 import { IEmailProvider } from '../ports/email.provider.port';
 import { IEmailDeliveryLogRepository } from '../ports/email-delivery-log.repository.port';
 import { IInternalApiClient } from '../ports/internal-api.client.port';
 import { PermanentEmailError } from '../errors/permanent-email.error';
-import { getDeathCount, MAX_EMAIL_RETRIES } from '../utils/email-retry.util';
 
 /**
  * Shape of the `posts.published` event payload.
@@ -23,27 +23,23 @@ export interface PostPublishedPayload {
   readonly createdByUserId: string;
 }
 
-/** Name of the AMQP queue this consumer owns; used for x-death counting. */
-const QUEUE_NAME = 'email.posts.published';
-
 /**
  * Idempotent consumer for `posts.published`.
  *
  * Sends a `publish_success` email to the post author.
  * Recipient email resolved via `GET /internal/users/:id` on `apps/api` (ADR-050).
- * Transient failures are retried up to `MAX_EMAIL_RETRIES` times via `fcp.retry`
- * (30 s TTL); permanent failures and exhausted retries go to `fcp.dlq`.
+ * Permanent failures are nacked without requeue (DLX → `fcp.dlq`); transient
+ * failures are requeued for immediate retry.
  */
-@Injectable()
+@Controller()
 export class PostPublishedEmailConsumer {
   /**
-   * @param orm            - MikroORM instance used to create a per-message request context.
-   * @param internalApi    - Resolves user email from `apps/api`.
-   * @param emailProvider  - Delivers the email via the configured provider.
-   * @param emailLogRepo   - Persists `EmailDeliveryLog` rows.
-   * @param redis          - Redis client for idempotent dedup.
-   * @param logger         - Pino logger.
-   * @param amqpConnection - AMQP connection used to publish failed messages to `fcp.dlq`.
+   * @param orm           - MikroORM instance used to create a per-message request context.
+   * @param internalApi   - Resolves user email from `apps/api`.
+   * @param emailProvider - Delivers the email via the configured provider.
+   * @param emailLogRepo  - Persists `EmailDeliveryLog` rows.
+   * @param redis         - Redis client for idempotent dedup.
+   * @param logger        - Pino logger.
    */
   constructor(
     private readonly orm: MikroORM,
@@ -52,81 +48,78 @@ export class PostPublishedEmailConsumer {
     private readonly emailLogRepo: IEmailDeliveryLogRepository,
     private readonly redis: Redis,
     private readonly logger: Logger,
-    private readonly amqpConnection: AmqpConnection,
   ) {}
 
   /**
    * Handles `posts.published` — sends a publish-success email to the post author.
    *
-   * @param msg     - Deserialized `PostPublishedPayload`.
-   * @param amqpMsg - Raw AMQP message; provides `x-death` headers for retry counting.
+   * @param data - Deserialized `PostPublishedPayload`.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'posts.published',
-    queue: QUEUE_NAME,
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.retry' },
-  })
-  async onPostPublished(msg: PostPublishedPayload, amqpMsg: ConsumeMessage): Promise<void | Nack> {
-    const deathCount = getDeathCount(amqpMsg, QUEUE_NAME);
-    const dedupKey = `dedup:email:${msg.eventId}`;
+  @EventPattern('posts.published')
+  async onPostPublished(
+    @Payload() data: PostPublishedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:email:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'PostPublishedEmailConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'PostPublishedEmailConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     let logId: string | undefined;
 
     try {
-      const recipientEmail = await this.internalApi.getUserEmail(msg.createdByUserId);
+      const recipientEmail = await this.internalApi.getUserEmail(data.createdByUserId);
+
       await RequestContext.create(this.orm.em, async () => {
         const log = await this.emailLogRepo.create({
-          workspaceId: msg.workspaceId,
-          userId: msg.createdByUserId,
+          workspaceId: data.workspaceId,
+          userId: data.createdByUserId,
           emailType: 'publish_success',
           recipientEmail,
           templateName: 'post-published',
           provider: 'Resend',
-          dedupeKey: `${msg.eventId}:${recipientEmail}`,
+          dedupeKey: `${data.eventId}:${recipientEmail}`,
           relatedEntityType: 'post',
-          relatedEntityId: msg.postId,
+          relatedEntityId: data.postId,
         });
         logId = log.id;
         await this.emailProvider.send({
           to: recipientEmail,
           templateName: 'post-published',
-          data: { postId: msg.postId, facebookGraphPostId: msg.facebookGraphPostId },
+          data: { postId: data.postId, facebookGraphPostId: data.facebookGraphPostId },
         });
         await this.emailLogRepo.updateSent(log.id, new Date());
       });
-      this.logger.log({ eventId: msg.eventId }, 'PostPublishedEmailConsumer: sent');
-    } catch (err) {
-      const isPermanent = err instanceof PermanentEmailError;
-      const isExhausted = deathCount >= MAX_EMAIL_RETRIES;
 
-      if (isPermanent || isExhausted) {
+      this.logger.log({ eventId: data.eventId }, 'PostPublishedEmailConsumer: sent');
+      channel.ack(msg);
+    } catch (err) {
+      if (err instanceof PermanentEmailError) {
         if (logId) {
           await RequestContext.create(this.orm.em, async () => {
-            await this.emailLogRepo.updateFailed(logId!, deathCount + 1);
+            await this.emailLogRepo.updateFailed(logId!, 1);
           });
         }
-        await this.amqpConnection.publish('fcp.dlq', 'dead', msg, {
-          headers: amqpMsg.properties.headers,
-        });
         this.logger.error(
-          { eventId: msg.eventId, deathCount, isPermanent, isExhausted },
+          { eventId: data.eventId, isPermanent: true },
           'PostPublishedEmailConsumer: routing to DLQ',
         );
-        return; // Ack
+        channel.nack(msg, false, false);
+      } else {
+        await this.redis.del(dedupKey);
+        this.logger.warn(
+          { eventId: data.eventId },
+          'PostPublishedEmailConsumer: transient failure, scheduling retry',
+        );
+        channel.nack(msg, false, true);
       }
-
-      await this.redis.del(dedupKey);
-      this.logger.warn(
-        { eventId: msg.eventId, attempt: deathCount + 1 },
-        'PostPublishedEmailConsumer: transient failure, scheduling retry',
-      );
-      return new Nack(false);
     }
   }
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { MikroORM } from '@mikro-orm/core';
-import type { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
+import type { RmqContext } from '@nestjs/microservices';
 import { MemberInvitedEmailConsumer, MemberInvitedPayload } from './member-invited.consumer';
 import { IEmailProvider } from '../ports/email.provider.port';
 import { IEmailDeliveryLogRepository } from '../ports/email-delivery-log.repository.port';
@@ -22,17 +22,8 @@ const makeMsg = (overrides: Partial<MemberInvitedPayload> = {}): MemberInvitedPa
   ...overrides,
 });
 
-const makeLog = (id = 'log-1') => ({ id } as unknown as ReturnType<IEmailDeliveryLogRepository['create']> extends Promise<infer T> ? T : never);
-
+const makeLog = (id = 'log-1') => ({ id } as never);
 const makeInvitationCtx = () => ({ token: 'a'.repeat(64) });
-
-const makeMockAmqpMsg = (deathCount = 0) => ({
-  properties: {
-    headers: deathCount > 0
-      ? { 'x-death': [{ queue: 'email.workspace.member-invited', count: deathCount }] }
-      : {},
-  },
-} as never);
 
 describe('MemberInvitedEmailConsumer', () => {
   let consumer: MemberInvitedEmailConsumer;
@@ -42,7 +33,9 @@ describe('MemberInvitedEmailConsumer', () => {
   let redis: { set: ReturnType<typeof vi.fn>; del: ReturnType<typeof vi.fn> };
   let logger: { log: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
   let config: { get: ReturnType<typeof vi.fn> };
-  let amqpConnection: { publish: ReturnType<typeof vi.fn> };
+  let mockChannel: { ack: ReturnType<typeof vi.fn>; nack: ReturnType<typeof vi.fn> };
+  let mockMsg: object;
+  let mockCtx: RmqContext;
 
   beforeEach(() => {
     internalApi = {
@@ -55,26 +48,25 @@ describe('MemberInvitedEmailConsumer', () => {
     redis = { set: vi.fn(), del: vi.fn() };
     logger = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
     config = { get: vi.fn().mockImplementation((key: string, def: string) => key === 'API_URL' ? 'http://localhost:3000' : def) };
-    amqpConnection = { publish: vi.fn().mockResolvedValue(undefined) };
+    mockChannel = { ack: vi.fn(), nack: vi.fn() };
+    mockMsg = {};
+    mockCtx = {
+      getChannelRef: () => mockChannel,
+      getMessage: () => mockMsg,
+    } as unknown as RmqContext;
     const orm = { em: {} } as unknown as MikroORM;
     consumer = new MemberInvitedEmailConsumer(
-      orm,
-      internalApi,
-      emailProvider,
-      emailLogRepo,
-      redis as never,
-      logger as never,
-      config as never,
-      amqpConnection as unknown as AmqpConnection,
+      orm, internalApi, emailProvider, emailLogRepo,
+      redis as never, logger as never, config as never,
     );
   });
 
-  it('fetches invitation context, creates a log row, sends email with acceptUrl, and marks it sent', async () => {
+  it('fetches invitation context, creates log, sends email with acceptUrl, and acks', async () => {
     redis.set.mockResolvedValue('OK');
     vi.mocked(internalApi.getInvitationEmailContext).mockResolvedValue(makeInvitationCtx());
     vi.mocked(emailLogRepo.create).mockResolvedValue(makeLog() as never);
 
-    await consumer.onMemberInvited(makeMsg(), makeMockAmqpMsg());
+    await consumer.onMemberInvited(makeMsg(), mockCtx);
 
     expect(internalApi.getInvitationEmailContext).toHaveBeenCalledWith('inv-1');
     expect(emailLogRepo.create).toHaveBeenCalledWith(
@@ -88,54 +80,43 @@ describe('MemberInvitedEmailConsumer', () => {
       }),
     );
     expect(emailLogRepo.updateSent).toHaveBeenCalledWith('log-1', expect.any(Date));
-    expect(amqpConnection.publish).not.toHaveBeenCalled();
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
+    expect(mockChannel.nack).not.toHaveBeenCalled();
   });
 
-  it('skips duplicate events (Redis dedup returns null)', async () => {
+  it('acks duplicate events without processing', async () => {
     redis.set.mockResolvedValue(null);
 
-    await consumer.onMemberInvited(makeMsg(), makeMockAmqpMsg());
+    await consumer.onMemberInvited(makeMsg(), mockCtx);
 
     expect(internalApi.getInvitationEmailContext).not.toHaveBeenCalled();
     expect(emailProvider.send).not.toHaveBeenCalled();
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
+    expect(mockChannel.nack).not.toHaveBeenCalled();
   });
 
-  it('clears the dedup key and returns Nack on transient error', async () => {
+  it('clears dedup key and nacks with requeue on transient error', async () => {
     redis.set.mockResolvedValue('OK');
     vi.mocked(internalApi.getInvitationEmailContext).mockRejectedValue(new Error('internal API down'));
 
-    const result = await consumer.onMemberInvited(makeMsg(), makeMockAmqpMsg(0));
+    await consumer.onMemberInvited(makeMsg(), mockCtx);
 
-    expect(result).toEqual(expect.objectContaining({ requeue: false }));
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
     expect(redis.del).toHaveBeenCalledWith('dedup:email:evt-1');
-    expect(amqpConnection.publish).not.toHaveBeenCalled();
+    expect(mockChannel.ack).not.toHaveBeenCalled();
   });
 
-  it('publishes to DLQ and acks on permanent email error', async () => {
+  it('nacks without requeue and marks failed on permanent email error', async () => {
     redis.set.mockResolvedValue('OK');
     vi.mocked(internalApi.getInvitationEmailContext).mockResolvedValue(makeInvitationCtx());
     vi.mocked(emailLogRepo.create).mockResolvedValue(makeLog() as never);
     vi.mocked(emailProvider.send).mockRejectedValue(new PermanentEmailError('domain not verified'));
 
-    const result = await consumer.onMemberInvited(makeMsg(), makeMockAmqpMsg(0));
+    await consumer.onMemberInvited(makeMsg(), mockCtx);
 
-    expect(result).toBeUndefined(); // Ack
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, false);
     expect(emailLogRepo.updateFailed).toHaveBeenCalledWith('log-1', 1);
-    expect(amqpConnection.publish).toHaveBeenCalledWith('fcp.dlq', 'dead', expect.anything(), expect.anything());
     expect(redis.del).not.toHaveBeenCalled();
-  });
-
-  it('publishes to DLQ and acks when retries are exhausted', async () => {
-    redis.set.mockResolvedValue('OK');
-    vi.mocked(internalApi.getInvitationEmailContext).mockResolvedValue(makeInvitationCtx());
-    vi.mocked(emailLogRepo.create).mockResolvedValue(makeLog() as never);
-    vi.mocked(emailProvider.send).mockRejectedValue(new Error('Resend 503'));
-
-    const result = await consumer.onMemberInvited(makeMsg(), makeMockAmqpMsg(3));
-
-    expect(result).toBeUndefined(); // Ack
-    expect(emailLogRepo.updateFailed).toHaveBeenCalledWith('log-1', 4); // 3 deaths + 1
-    expect(amqpConnection.publish).toHaveBeenCalledWith('fcp.dlq', 'dead', expect.anything(), expect.anything());
-    expect(redis.del).not.toHaveBeenCalled();
+    expect(mockChannel.ack).not.toHaveBeenCalled();
   });
 });

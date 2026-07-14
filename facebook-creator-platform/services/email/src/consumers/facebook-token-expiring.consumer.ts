@@ -1,14 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { AmqpConnection, RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload } from '@nestjs/microservices';
+import { RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
-import type { ConsumeMessage } from 'amqplib';
+import type { Channel, Message } from 'amqplib';
 import { IEmailProvider } from '../ports/email.provider.port';
 import { IEmailDeliveryLogRepository } from '../ports/email-delivery-log.repository.port';
 import { IInternalApiClient } from '../ports/internal-api.client.port';
 import { PermanentEmailError } from '../errors/permanent-email.error';
-import { getDeathCount, MAX_EMAIL_RETRIES } from '../utils/email-retry.util';
 
 /**
  * Shape of the `facebook.token_expiring` event payload.
@@ -22,27 +22,23 @@ export interface FacebookTokenExpiringPayload {
   readonly tokenExpiresAt: string;
 }
 
-/** Name of the AMQP queue this consumer owns; used for x-death counting. */
-const QUEUE_NAME = 'email.facebook.token_expiring';
-
 /**
  * Idempotent consumer for `facebook.token_expiring`.
  *
  * Sends a `token_expiring` reminder email to the workspace owner.
  * Recipient email resolved via `GET /internal/workspaces/:id` on `apps/api` (ADR-050, ADR-053).
- * Transient failures are retried up to `MAX_EMAIL_RETRIES` times via `fcp.retry`
- * (30 s TTL); permanent failures and exhausted retries go to `fcp.dlq`.
+ * Permanent failures are nacked without requeue (DLX → `fcp.dlq`); transient
+ * failures are requeued for immediate retry.
  */
-@Injectable()
+@Controller()
 export class FacebookTokenExpiringEmailConsumer {
   /**
-   * @param orm            - MikroORM instance used to create a per-message request context.
-   * @param internalApi    - Resolves workspace owner email from `apps/api`.
-   * @param emailProvider  - Delivers the email via the configured provider.
-   * @param emailLogRepo   - Persists `EmailDeliveryLog` rows.
-   * @param redis          - Redis client for idempotent dedup.
-   * @param logger         - Pino logger.
-   * @param amqpConnection - AMQP connection used to publish failed messages to `fcp.dlq`.
+   * @param orm           - MikroORM instance used to create a per-message request context.
+   * @param internalApi   - Resolves workspace owner email from `apps/api`.
+   * @param emailProvider - Delivers the email via the configured provider.
+   * @param emailLogRepo  - Persists `EmailDeliveryLog` rows.
+   * @param redis         - Redis client for idempotent dedup.
+   * @param logger        - Pino logger.
    */
   constructor(
     private readonly orm: MikroORM,
@@ -51,86 +47,84 @@ export class FacebookTokenExpiringEmailConsumer {
     private readonly emailLogRepo: IEmailDeliveryLogRepository,
     private readonly redis: Redis,
     private readonly logger: Logger,
-    private readonly amqpConnection: AmqpConnection,
   ) {}
 
   /**
    * Handles `facebook.token_expiring` — sends a token-renewal reminder email.
    *
-   * @param msg     - Deserialized `FacebookTokenExpiringPayload`.
-   * @param amqpMsg - Raw AMQP message; provides `x-death` headers for retry counting.
+   * @param data - Deserialized `FacebookTokenExpiringPayload`.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'facebook.token_expiring',
-    queue: QUEUE_NAME,
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.retry' },
-  })
+  @EventPattern('facebook.token_expiring')
   async onTokenExpiring(
-    msg: FacebookTokenExpiringPayload,
-    amqpMsg: ConsumeMessage,
-  ): Promise<void | Nack> {
-    const deathCount = getDeathCount(amqpMsg, QUEUE_NAME);
-    const dedupKey = `dedup:email:${msg.eventId}`;
+    @Payload() data: FacebookTokenExpiringPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:email:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
       this.logger.log(
-        { eventId: msg.eventId },
+        { eventId: data.eventId },
         'FacebookTokenExpiringEmailConsumer: duplicate, skipping',
       );
+      channel.ack(msg);
       return;
     }
 
     let logId: string | undefined;
 
     try {
-      const { ownerEmail } = await this.internalApi.getWorkspaceOwnerEmail(msg.workspaceId);
+      const { ownerEmail } = await this.internalApi.getWorkspaceOwnerEmail(data.workspaceId);
+
       await RequestContext.create(this.orm.em, async () => {
         const log = await this.emailLogRepo.create({
-          workspaceId: msg.workspaceId,
+          workspaceId: data.workspaceId,
           emailType: 'token_expiring',
           recipientEmail: ownerEmail,
           templateName: 'token-expiring',
           provider: 'Resend',
-          dedupeKey: `${msg.eventId}:${ownerEmail}`,
+          dedupeKey: `${data.eventId}:${ownerEmail}`,
           relatedEntityType: 'facebook_account',
-          relatedEntityId: msg.accountId,
+          relatedEntityId: data.accountId,
         });
         logId = log.id;
         await this.emailProvider.send({
           to: ownerEmail,
           templateName: 'token-expiring',
-          data: { pageId: msg.pageId, tokenExpiresAt: msg.tokenExpiresAt, accountId: msg.accountId },
+          data: {
+            pageId: data.pageId,
+            tokenExpiresAt: data.tokenExpiresAt,
+            accountId: data.accountId,
+          },
         });
         await this.emailLogRepo.updateSent(log.id, new Date());
       });
-      this.logger.log({ eventId: msg.eventId }, 'FacebookTokenExpiringEmailConsumer: sent');
-    } catch (err) {
-      const isPermanent = err instanceof PermanentEmailError;
-      const isExhausted = deathCount >= MAX_EMAIL_RETRIES;
 
-      if (isPermanent || isExhausted) {
+      this.logger.log({ eventId: data.eventId }, 'FacebookTokenExpiringEmailConsumer: sent');
+      channel.ack(msg);
+    } catch (err) {
+      if (err instanceof PermanentEmailError) {
         if (logId) {
           await RequestContext.create(this.orm.em, async () => {
-            await this.emailLogRepo.updateFailed(logId!, deathCount + 1);
+            await this.emailLogRepo.updateFailed(logId!, 1);
           });
         }
-        await this.amqpConnection.publish('fcp.dlq', 'dead', msg, {
-          headers: amqpMsg.properties.headers,
-        });
         this.logger.error(
-          { eventId: msg.eventId, deathCount, isPermanent, isExhausted },
+          { eventId: data.eventId, isPermanent: true },
           'FacebookTokenExpiringEmailConsumer: routing to DLQ',
         );
-        return; // Ack
+        channel.nack(msg, false, false);
+      } else {
+        await this.redis.del(dedupKey);
+        this.logger.warn(
+          { eventId: data.eventId },
+          'FacebookTokenExpiringEmailConsumer: transient failure, scheduling retry',
+        );
+        channel.nack(msg, false, true);
       }
-
-      await this.redis.del(dedupKey);
-      this.logger.warn(
-        { eventId: msg.eventId, attempt: deathCount + 1 },
-        'FacebookTokenExpiringEmailConsumer: transient failure, scheduling retry',
-      );
-      return new Nack(false);
     }
   }
 }

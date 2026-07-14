@@ -22,15 +22,17 @@ import { FacebookTokenExpiringEmailConsumer } from './consumers/facebook-token-e
  */
 @Module({
   imports: [MikroOrmModule.forFeature([EmailDeliveryLog])],
-  providers: [
-    { provide: IEmailProvider, useClass: ResendEmailProvider },
-    { provide: IInternalApiClient, useClass: InternalApiAdapter },
-    { provide: IEmailDeliveryLogRepository, useClass: MikroOrmEmailDeliveryLogRepository },
+  controllers: [
     MemberInvitedEmailConsumer,
     PostPublishedEmailConsumer,
     PostFailedEmailConsumer,
     BillingPaymentFailedEmailConsumer,
     FacebookTokenExpiringEmailConsumer,
+  ],
+  providers: [
+    { provide: IEmailProvider, useClass: ResendEmailProvider },
+    { provide: IInternalApiClient, useClass: InternalApiAdapter },
+    { provide: IEmailDeliveryLogRepository, useClass: MikroOrmEmailDeliveryLogRepository },
   ],
 })
 export class EmailModule {}
