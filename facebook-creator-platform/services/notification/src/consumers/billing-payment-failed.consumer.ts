@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import type { PaymentFailedPayload } from '@fcp/billing-contracts';
 import { NotificationOrchestrator } from '../notification-orchestrator';
 
@@ -13,7 +14,7 @@ import { NotificationOrchestrator } from '../notification-orchestrator';
  * Published by `services/billing` when `invoice.payment_failed` transitions the
  * subscription from `active` to `grace_period` (ADR-054).
  */
-@Injectable()
+@Controller()
 export class BillingPaymentFailedConsumer {
   /**
    * @param orm          - MikroORM instance used to create a per-message request context.
@@ -31,38 +32,42 @@ export class BillingPaymentFailedConsumer {
   /**
    * Handles `billing.payment_failed`.
    *
-   * @param msg - Deserialized `PaymentFailedPayload`.
+   * @param data - Deserialized `PaymentFailedPayload`.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'billing.payment_failed',
-    queue: 'notification.billing.payment_failed',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onPaymentFailed(msg: PaymentFailedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:notification:${msg.eventId}`;
+  @EventPattern('billing.payment_failed')
+  async onPaymentFailed(
+    @Payload() data: PaymentFailedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:notification:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'BillingPaymentFailedConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'BillingPaymentFailedConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
       await RequestContext.create(this.orm.em, async () => {
         await this.orchestrator.notifyWorkspace(
-          msg.workspaceId,
+          data.workspaceId,
           'billing.payment_failed',
           'Payment failed',
-          `A payment for your ${msg.planCode} subscription failed. Your account is in a grace period — please update your payment method.`,
-          { planCode: msg.planCode },
+          `A payment for your ${data.planCode} subscription failed. Your account is in a grace period — please update your payment method.`,
+          { planCode: data.planCode },
           true,
         );
       });
-      this.logger.log({ workspaceId: msg.workspaceId, eventId: msg.eventId }, 'BillingPaymentFailedConsumer: notified');
+      this.logger.log({ workspaceId: data.workspaceId, eventId: data.eventId }, 'BillingPaymentFailedConsumer: notified');
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'BillingPaymentFailedConsumer: failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'BillingPaymentFailedConsumer: failed');
+      channel.nack(msg, false, true);
     }
   }
 }

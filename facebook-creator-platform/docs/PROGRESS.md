@@ -5,11 +5,24 @@
 
 ## Resume point
 
-- **Next task:** `TR.9` — Migrate `services/notification` to hybrid app + 11 `@EventPattern` consumers.
+- **Next task:** `TR.10` — ADR + full workspace smoke test.
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.8 complete. `services/search` is now a hybrid NestJS app. `SearchMessagingModule` (`@golevelup` wrapper) removed; `SearchRedisModule` retained. All 5 consumers migrated to `@Controller()` + `@EventPattern`. No `RequestContext.create` needed (no ORM — Algolia only). Error paths changed from `throw err` to `channel.nack(msg, false, true)`. 15/15 search tests green.
+- **Notes:** TR.9 complete. `services/notification` is now a hybrid NestJS app with 11 `@EventPattern` consumers. `NotificationMessagingModule` (`@golevelup` wrapper) removed. 3 projection consumers (`MemberJoined`, `MemberRemoved`, `MemberRoleChanged`) had `MikroORM` + `RequestContext.create` added (their repository injects `EntityManager` directly). `MemberInvitedConsumer` is dedup-only (no ORM). All 7 notification consumers retained existing `RequestContext.create`. 2 new spec files created (`billing-subscription-cancelled`, `billing-subscription-past-due`). 40/40 notification tests; 345/345 total.
 
 ## Log
+
+### 2026-07-14 — TR.9 Migrate services/notification to hybrid app + 11 consumers
+
+- **`services/notification/src/main.ts`** (REWRITTEN): Hybrid bootstrap — `app.connectMicroservice(getRmqOptions('notification_queue', configService))` + `await app.startAllMicroservices()` before `app.listen`. All existing HTTP setup retained.
+- **`services/notification/src/app.module.ts`** (REWRITTEN): Removed `NotificationMessagingModule` (`@Global()` `RabbitMQModule.forRootAsync` wrapper) and `@golevelup` import. `NotificationRedisModule` + `MikroOrmModule` kept.
+- **`services/notification/src/notification.module.ts`** (REWRITTEN): All 11 consumers moved from `providers[]` to `controllers[]`. `NotificationController` + services remain.
+- **`member-invited.consumer.ts`** (REWRITTEN): Dedup-only consumer — `@Controller()`, `@EventPattern('workspace.member-invited')`, no ORM. Logs event ID; acks on new or duplicate; nacks on Redis failure.
+- **`member-joined.consumer.ts`, `member-removed.consumer.ts`, `member-role-changed.consumer.ts`** (REWRITTEN): Projection consumers — added `MikroORM` as first constructor param + `RequestContext.create` (their `INotificationRepository` injects `EntityManager` directly; without this, `allowGlobalContext: false` would throw at runtime).
+- **All 7 notification consumers** (`post-published`, `post-failed`, `billing-*`, `facebook-token-expiring`) (REWRITTEN): `@Controller()`, `@EventPattern(routingKey)`, `channel.ack/nack`. Existing `MikroORM` + `RequestContext.create` retained.
+- **9 spec files** (REWRITTEN): `mockChannel`/`mockMsg`/`mockCtx` added; all handler calls pass `mockCtx`; success+dedup assert `ack(mockMsg)`; error tests assert `nack(mockMsg, false, true)`.
+- **2 new spec files** created: `billing-subscription-cancelled.consumer.spec.ts`, `billing-subscription-past-due.consumer.spec.ts` (3 tests each: success+ack, dedup+ack, error+nack).
+- Decision: projection consumers required `MikroORM` injection even though they don't call `em` directly — their repository port impl injects `EntityManager`, which needs a request context in microservice handlers.
+- Tests: 40/40 notification, 345/345 total. Lint: 0 errors.
 
 ### 2026-07-14 — TR.8 Migrate services/search to hybrid app + 5 consumers
 

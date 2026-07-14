@@ -2,7 +2,6 @@ import { join } from 'node:path';
 import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
-import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 import { PostgreSqlDriver } from '@mikro-orm/postgresql';
 import { Migrator } from '@mikro-orm/migrations';
 import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
@@ -12,33 +11,6 @@ import { Notification } from './entities/notification.entity';
 import { NotificationRecipient } from './entities/notification-recipient.entity';
 import { WorkspaceMemberProjection } from './entities/workspace-member-projection.entity';
 import { NotificationModule } from './notification.module';
-
-/**
- * Global wrapper around `RabbitMQModule` (ADR-063).
- *
- * `enableControllerDiscovery: true` ensures `@RabbitSubscribe` in `NotificationModule`
- * is discovered even though it is not in the root `AppModule`.
- */
-@Global()
-@Module({
-  imports: [
-    RabbitMQModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        uri: config.get<string>('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672'),
-        exchanges: [
-          { name: 'fcp.events', type: 'topic', options: { durable: true } },
-          { name: 'fcp.dlq', type: 'fanout', options: { durable: true } },
-        ],
-        connectionInitOptions: { wait: false },
-        enableControllerDiscovery: true,
-      }),
-    }),
-  ],
-  exports: [RabbitMQModule],
-})
-class NotificationMessagingModule {}
 
 /**
  * Global Redis provider (ADR-063).
@@ -67,9 +39,11 @@ class NotificationRedisModule {}
  * - **ConfigModule** — loads root `.env` (shared in monorepo).
  * - **LoggerModule** — Pino HTTP logger.
  * - **MikroOrmModule** — PostgreSQL connection to the `notification` schema.
- * - **NotificationMessagingModule** — global RabbitMQ + consumer discovery.
  * - **NotificationRedisModule** — global ioredis client for dedup.
  * - **NotificationModule** — all consumers, orchestrator, reconciler, HTTP API.
+ *
+ * `NotificationMessagingModule` (`@golevelup` `RabbitMQModule` wrapper) removed in TR.9.
+ * RMQ transport is connected in `main.ts` via `app.connectMicroservice(getRmqOptions(...))`.
  */
 @Module({
   imports: [
@@ -99,7 +73,6 @@ class NotificationRedisModule {}
       }),
       inject: [ConfigService],
     }),
-    NotificationMessagingModule,
     NotificationRedisModule,
     NotificationModule,
   ],

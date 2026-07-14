@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import type { SubscriptionActivatedPayload } from '@fcp/billing-contracts';
 import { NotificationOrchestrator } from '../notification-orchestrator';
 
@@ -11,7 +12,7 @@ import { NotificationOrchestrator } from '../notification-orchestrator';
  *
  * Notifies all workspace members in-app (no Slack — informational only).
  */
-@Injectable()
+@Controller()
 export class BillingSubscriptionActivatedConsumer {
   /**
    * @param orm          - MikroORM instance used to create a per-message request context.
@@ -29,38 +30,42 @@ export class BillingSubscriptionActivatedConsumer {
   /**
    * Handles `billing.subscription_activated`.
    *
-   * @param msg - Deserialized `SubscriptionActivatedPayload`.
+   * @param data - Deserialized `SubscriptionActivatedPayload`.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'billing.subscription_activated',
-    queue: 'notification.billing.subscription_activated',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onSubscriptionActivated(msg: SubscriptionActivatedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:notification:${msg.eventId}`;
+  @EventPattern('billing.subscription_activated')
+  async onSubscriptionActivated(
+    @Payload() data: SubscriptionActivatedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:notification:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'BillingSubscriptionActivatedConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'BillingSubscriptionActivatedConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
       await RequestContext.create(this.orm.em, async () => {
         await this.orchestrator.notifyWorkspace(
-          msg.workspaceId,
+          data.workspaceId,
           'billing.subscription_activated',
           'Subscription activated',
-          `Your ${msg.planCode} subscription is now active.`,
-          { planCode: msg.planCode },
+          `Your ${data.planCode} subscription is now active.`,
+          { planCode: data.planCode },
           false,
         );
       });
-      this.logger.log({ workspaceId: msg.workspaceId, eventId: msg.eventId }, 'BillingSubscriptionActivatedConsumer: notified');
+      this.logger.log({ workspaceId: data.workspaceId, eventId: data.eventId }, 'BillingSubscriptionActivatedConsumer: notified');
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'BillingSubscriptionActivatedConsumer: failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'BillingSubscriptionActivatedConsumer: failed');
+      channel.nack(msg, false, true);
     }
   }
 }

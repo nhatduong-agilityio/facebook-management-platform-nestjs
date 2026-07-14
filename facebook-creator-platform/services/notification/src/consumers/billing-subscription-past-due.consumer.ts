@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import type { SubscriptionPastDuePayload } from '@fcp/billing-contracts';
 import { NotificationOrchestrator } from '../notification-orchestrator';
 
@@ -11,7 +12,7 @@ import { NotificationOrchestrator } from '../notification-orchestrator';
  *
  * Notifies all workspace members in-app and fires a Slack alert (billing urgency).
  */
-@Injectable()
+@Controller()
 export class BillingSubscriptionPastDueConsumer {
   /**
    * @param orm          - MikroORM instance used to create a per-message request context.
@@ -29,38 +30,42 @@ export class BillingSubscriptionPastDueConsumer {
   /**
    * Handles `billing.subscription_past_due`.
    *
-   * @param msg - Deserialized `SubscriptionPastDuePayload`.
+   * @param data - Deserialized `SubscriptionPastDuePayload`.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'billing.subscription_past_due',
-    queue: 'notification.billing.subscription_past_due',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onSubscriptionPastDue(msg: SubscriptionPastDuePayload): Promise<void | Nack> {
-    const dedupKey = `dedup:notification:${msg.eventId}`;
+  @EventPattern('billing.subscription_past_due')
+  async onSubscriptionPastDue(
+    @Payload() data: SubscriptionPastDuePayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:notification:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'BillingSubscriptionPastDueConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'BillingSubscriptionPastDueConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
       await RequestContext.create(this.orm.em, async () => {
         await this.orchestrator.notifyWorkspace(
-          msg.workspaceId,
+          data.workspaceId,
           'billing.subscription_past_due',
           'Payment overdue',
-          `Your ${msg.planCode} subscription payment is overdue. Please update your payment method.`,
-          { planCode: msg.planCode },
+          `Your ${data.planCode} subscription payment is overdue. Please update your payment method.`,
+          { planCode: data.planCode },
           true,
         );
       });
-      this.logger.log({ workspaceId: msg.workspaceId, eventId: msg.eventId }, 'BillingSubscriptionPastDueConsumer: notified');
+      this.logger.log({ workspaceId: data.workspaceId, eventId: data.eventId }, 'BillingSubscriptionPastDueConsumer: notified');
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'BillingSubscriptionPastDueConsumer: failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'BillingSubscriptionPastDueConsumer: failed');
+      channel.nack(msg, false, true);
     }
   }
 }

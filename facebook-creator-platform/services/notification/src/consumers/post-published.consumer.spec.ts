@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { MikroORM } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
+import { RmqContext } from '@nestjs/microservices';
 import { PostPublishedNotificationConsumer, type PostPublishedPayload } from './post-published.consumer';
 import { NotificationOrchestrator } from '../notification-orchestrator';
 
@@ -25,6 +26,13 @@ function makeConsumer(opts: {
   redisDel?: () => Promise<number>;
   notifyWorkspace?: () => Promise<void>;
 }) {
+  const mockChannel = { ack: vi.fn(), nack: vi.fn() };
+  const mockMsg = {};
+  const mockCtx = {
+    getChannelRef: () => mockChannel,
+    getMessage: () => mockMsg,
+  } as unknown as RmqContext;
+
   const redis = {
     set: vi.fn(opts.redisSet ?? (() => Promise.resolve('OK'))),
     del: vi.fn(opts.redisDel ?? (() => Promise.resolve(1))),
@@ -40,13 +48,15 @@ function makeConsumer(opts: {
   } as unknown as Logger;
 
   const orm = { em: {} } as unknown as MikroORM;
-  return { consumer: new PostPublishedNotificationConsumer(orm, orchestrator, redis, logger), redis, orchestrator };
+  return { consumer: new PostPublishedNotificationConsumer(orm, orchestrator, redis, logger), redis, orchestrator, mockChannel, mockMsg, mockCtx };
 }
 
 describe('PostPublishedNotificationConsumer', () => {
-  it('calls notifyWorkspace with correct args on new event', async () => {
-    const { consumer, orchestrator } = makeConsumer({});
-    await consumer.onPostPublished(makeMsg());
+  it('calls notifyWorkspace and acks on new event', async () => {
+    const { consumer, orchestrator, mockChannel, mockMsg, mockCtx } = makeConsumer({});
+
+    await consumer.onPostPublished(makeMsg(), mockCtx);
+
     expect(orchestrator.notifyWorkspace).toHaveBeenCalledWith(
       'ws-001',
       'posts.published',
@@ -55,19 +65,28 @@ describe('PostPublishedNotificationConsumer', () => {
       expect.objectContaining({ postId: 'post-001' }),
       true,
     );
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
   });
 
-  it('skips duplicate event', async () => {
-    const { consumer, orchestrator } = makeConsumer({ redisSet: () => Promise.resolve(null) });
-    await consumer.onPostPublished(makeMsg());
+  it('acks and skips notify on duplicate event', async () => {
+    const { consumer, orchestrator, mockChannel, mockMsg, mockCtx } = makeConsumer({
+      redisSet: () => Promise.resolve(null),
+    });
+
+    await consumer.onPostPublished(makeMsg(), mockCtx);
+
     expect(orchestrator.notifyWorkspace).not.toHaveBeenCalled();
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
   });
 
-  it('deletes dedup key and rethrows on failure', async () => {
-    const { consumer, redis } = makeConsumer({
+  it('clears dedup key and nacks with requeue on failure', async () => {
+    const { consumer, redis, mockChannel, mockMsg, mockCtx } = makeConsumer({
       notifyWorkspace: () => Promise.reject(new Error('orchestrator error')),
     });
-    await expect(consumer.onPostPublished(makeMsg())).rejects.toThrow('orchestrator error');
+
+    await consumer.onPostPublished(makeMsg(), mockCtx);
+
     expect(redis.del).toHaveBeenCalledWith('dedup:notification:evt-p1');
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
   });
 });
