@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { Plan } from './entities/plan.entity';
 import { Subscription } from './entities/subscription.entity';
@@ -9,7 +11,7 @@ import { IBillingEventRepository } from './ports/billing-event.repository.port';
 import { IBillingEventBus } from './ports/billing-event-bus.port';
 import { IStripeProvider } from './ports/stripe.provider.port';
 import { StripeAdapter } from './adapters/stripe.adapter';
-import { BillingRabbitMqAdapter } from './adapters/billing-rabbitmq.adapter';
+import { BillingRabbitMqAdapter, BILLING_EVENT_BUS } from './adapters/billing-rabbitmq.adapter';
 import { MikroOrmPlanRepository } from './repositories/mikro-orm-plan.repository';
 import { MikroOrmSubscriptionRepository } from './repositories/mikro-orm-subscription.repository';
 import { MikroOrmBillingEventRepository } from './repositories/mikro-orm-billing-event.repository';
@@ -27,11 +29,33 @@ import { BillingWebhookController } from './billing.webhook.controller';
  * - `IPlanRepository`          → `MikroOrmPlanRepository`
  * - `ISubscriptionRepository`  → `MikroOrmSubscriptionRepository`
  * - `IBillingEventRepository`  → `MikroOrmBillingEventRepository`
- * - `IBillingEventBus`         → `BillingRabbitMqAdapter`
+ * - `IBillingEventBus`         → `BillingRabbitMqAdapter` (publishes via `BILLING_EVENT_BUS` ClientProxy)
  * - `IStripeProvider`          → `StripeAdapter`
+ *
+ * `ClientsModule` is registered here (not in `AppModule`) so `BILLING_EVENT_BUS`
+ * is visible to `BillingRabbitMqAdapter` within this module's DI scope.
  */
 @Module({
-  imports: [MikroOrmModule.forFeature([Plan, Subscription, BillingEvent])],
+  imports: [
+    MikroOrmModule.forFeature([Plan, Subscription, BillingEvent]),
+    ClientsModule.registerAsync([
+      {
+        name: BILLING_EVENT_BUS,
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [config.getOrThrow<string>('RABBITMQ_URL')],
+            queue: '',
+            noAssert: true,
+            exchange: 'fcp.events',
+            exchangeType: 'topic',
+          },
+        }),
+      },
+    ]),
+  ],
   controllers: [BillingController, BillingWebhookController],
   providers: [
     BillingService,

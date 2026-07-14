@@ -5,11 +5,20 @@
 
 ## Resume point
 
-- **Next task:** `TR.4` — Migrate `services/billing` publisher from `AmqpConnection` to `ClientProxy`.
+- **Next task:** `TR.5` — Migrate `services/email` to a pure `@nestjs/microservices` microservice.
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.3 complete. All 6 domain consumers + `DlqConsumer` now use `@Controller()` + `@EventPattern` + `@Payload()` + `@Ctx() RmqContext`; `channel.ack/nack` in every path via `IdempotentConsumer.withDedup`. `main.ts` wires two `connectMicroservice` calls. 4 module files updated (`providers → controllers`). 6 specs updated + 2 new specs created. 225/225 `apps/api` tests green. `T4.4` is paused until TR.x complete.
+- **Notes:** TR.4 complete. `BillingRabbitMqAdapter` now injects `ClientProxy` via `@Inject(BILLING_EVENT_BUS)`; `BillingMessagingModule` (`@golevelup` wrapper) removed from `AppModule`; `ClientsModule.registerAsync` registered in `BillingModule` (DI scope fix — ADR-080). 27/27 billing tests green (3 new adapter tests). `libs/rmq-options` barrel refactored: both factory functions inlined into `index.ts`, sub-module file deleted, `package.json main`/`types` restored to `src/index.ts`. `T4.4` is paused until TR.x complete.
 
 ## Log
+
+### 2026-07-14 — TR.4 Migrate services/billing publisher to ClientProxy
+
+- **`services/billing/src/adapters/billing-rabbitmq.adapter.ts`:** Replaced `AmqpConnection` with `@Inject(BILLING_EVENT_BUS) ClientProxy`; publish call changed to `await lastValueFrom(this.client.emit(routingKey, payload), { defaultValue: undefined })`. Exported `BILLING_EVENT_BUS = 'BILLING_EVENT_BUS'` token constant.
+- **`services/billing/src/app.module.ts`:** Removed `BillingMessagingModule` (the `@Global()` `@golevelup` `RabbitMQModule` wrapper).
+- **`services/billing/src/billing.module.ts`:** `ClientsModule.registerAsync([{ name: BILLING_EVENT_BUS, transport: Transport.RMQ, options: { noAssert: true, exchange: 'fcp.events', exchangeType: 'topic' } }])` registered here (not `AppModule`) — NestJS DI doesn't cross module boundaries; `BillingRabbitMqAdapter` lives in `BillingModule`, so the token must be provided there (ADR-080).
+- **`services/billing/src/adapters/billing-rabbitmq.adapter.spec.ts`** *(new)*: 3 tests — emits correct routing key + payload; resolves on success; throws on broker error.
+- **`libs/rmq-options/src/index.ts`:** Both factory functions (`getRmqOptions`, `getDlqRmqOptions`) inlined directly; `src/rmq-options.ts` sub-module deleted; `package.json main`/`types` restored to `src/index.ts`. Node.js 24 type-stripping loads `index.ts` directly with no sub-import to resolve, eliminating the extensionless-bare-import resolution failure.
+- Tests: 27/27 billing passing (24 existing + 3 new). Lint: 0 errors.
 
 ### 2026-07-14 — TR.3 Migrate apps/api consumers to @EventPattern
 
