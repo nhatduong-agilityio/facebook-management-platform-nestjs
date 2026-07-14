@@ -4,11 +4,25 @@
 > to read at the start of a session. Newest entries on top.
 
 ## Resume point
-- **Next task:** `T4.4` — Cross-cutting tests + docs gap-fill.
+
+- **Next task:** `TR.2` — Migrate `apps/api` publisher (`RabbitMqEventBus`) from `AmqpConnection` to `ClientProxy`.
 - **Branch:** `nestjs-practice`
-- **Notes:** 25 tests passing in `services/email` (lint clean). RabbitMQ native retry implemented (x-death, `fcp.retry` exchange, 30 s TTL queue, max 3 retries → DLQ). `@types/amqplib@0.10.8` added to workspace root devDependencies.
+- **Notes:** TR.1 complete. `@nestjs/microservices@^11.1.28`, `amqplib@^2.0.1`, `amqp-connection-manager@^5.0.0` added to all 7 packages. `libs/rmq-options/` (`@fcp/rmq-options`) created with `getRmqOptions` + `getDlqRmqOptions` factories. `RMQ_PREFETCH=10`, `RMQ_DLQ_PREFETCH=5` in `.env.example`. lint: 0 errors. tsc: 0 errors on new lib. `T4.4` is paused until TR.x complete.
 
 ## Log
+
+### 2026-07-14 — TR.1 @nestjs/microservices + AMQP peer deps + shared RMQ options factory
+
+- **New packages (all 7 packages — `apps/api` + 6 `services/*`):** `@nestjs/microservices@^11.1.28`, `amqplib@^2.0.1`, `amqp-connection-manager@^5.0.0`, `@fcp/rmq-options@workspace:*`.
+- **New workspace lib `libs/rmq-options/` (`@fcp/rmq-options`):**
+  - `src/rmq-options.ts` — `getRmqOptions(queue, configService)` (topic, `fcp.events`, wildcards, DLX → `fcp.dlq`, `RMQ_PREFETCH` env default 10) and `getDlqRmqOptions(queue, configService)` (fanout, `fcp.dlq`, no wildcards, `RMQ_DLQ_PREFETCH` env default 5). Both JSDoc-documented per CODING-STANDARDS.md §9.
+  - `src/index.ts` — barrel export.
+  - `package.json` — deps: `@nestjs/microservices`, `@nestjs/config`; devDeps: `@types/node`, `typescript`.
+  - `tsconfig.json` — extends `../../tsconfig.base.json`.
+- **`.env.example`:** `RMQ_PREFETCH=10` and `RMQ_DLQ_PREFETCH=5` added under the RabbitMQ section.
+- **Decision:** `amqplib` and `amqp-connection-manager` added in TR.1 (not deferred to TR.2+) because they are required peer deps of `@nestjs/microservices` RMQ transport and would silently disappear when `@golevelup` is removed in TR.11 (ADR-075). `amqplib@^2.0.1` bundles its own TS types — `@types/amqplib@0.10.8` at workspace root to be removed in TR.11 (ADR-075). Factories in `libs/rmq-options/` to avoid 7-way duplication (ADR-076).
+- No runtime behaviour changes — factories are scaffolded only; nothing wires them yet.
+- Tests: 327/327 passing (215 apps/api + 24 billing + 9 analytics + 9 audit + 25 email + 15 search + 30 notification). Lint: 0 errors.
 
 ### 2026-07-08 — T4.3 RabbitMQ native retry (x-death, fcp.retry)
 

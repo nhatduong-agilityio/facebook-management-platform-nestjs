@@ -148,13 +148,15 @@ For blocked tasks always append an inline note on the same line:
 > `@golevelup` supported this via `AmqpConnection.publish()` on a `ConfirmChannel`.
 > Acceptable for this training project; record as a known limitation in the TR.10 ADR.
 
-- [ ] **TR.1 Add `@nestjs/microservices` + shared RMQ options factory** (~1h) — add `@nestjs/microservices` to `apps/api` and all `services/*` packages; create **two** helper factories:
+- [x] **TR.1 Add `@nestjs/microservices` + AMQP peer deps + shared RMQ options factory** (~1h) — add `@nestjs/microservices`, `amqplib`, and `amqp-connection-manager` to `apps/api` and all `services/*` packages. `amqplib` and `amqp-connection-manager` are required peer deps of `@nestjs/microservices` RMQ transport; adding them explicitly now avoids a silent breakage when `@golevelup` is removed in TR.11 (currently they are only transitive deps via `@golevelup`). `amqplib@^2.0.1` bundles its own TS types — the `@types/amqplib@0.10.8` root devDep can be removed in TR.11 cleanup.
+
+  Create a new shared lib `libs/rmq-options/` (`@fcp/rmq-options`) with **two** exported factory functions:
   - `getRmqOptions(queue, configService): MicroserviceOptions` — topic consumer (transport=Transport.RMQ, wildcards=true, exchange=fcp.events, exchangeType=topic, noAck=false, prefetchCount from **`RMQ_PREFETCH` env** (default 10), durable queue, `x-dead-letter-exchange: fcp.dlq`)
   - `getDlqRmqOptions(queue, configService): MicroserviceOptions` — DLQ consumer (exchange=fcp.dlq, exchangeType=fanout, noAck=false, prefetchCount from **`RMQ_DLQ_PREFETCH` env** (default 5), durable queue, no wildcards, no x-dead-letter-exchange)
 
-  Add `RMQ_PREFETCH` and `RMQ_DLQ_PREFETCH` to `.env.example`.
+  Add `@fcp/rmq-options: workspace:*` to all 7 packages so TR.2–TR.9 can import without re-install. Add `RMQ_PREFETCH` and `RMQ_DLQ_PREFETCH` to `.env.example`.
 
-  No runtime behaviour changes yet. DoD: `@nestjs/microservices` resolves in all packages; both factories compile; `pnpm lint` clean.
+  No runtime behaviour changes yet. DoD: `@nestjs/microservices`, `amqplib`, `amqp-connection-manager` resolve in all packages; both factories compile; `pnpm lint` clean.
 
 - [ ] **TR.2 apps/api — migrate publisher (ClientProxy)** (~2h) — replace `AmqpConnection.publish()` in `RabbitMqEventBus` with `this.client.emit(event.routingKey, event)` where `client: ClientProxy` is injected via `@Inject('FCP_EVENT_BUS')`; replace `RabbitMQModule.forRootAsync` in `rabbitmq.module.ts` with `ClientsModule.registerAsync([{ name: 'FCP_EVENT_BUS', transport: Transport.RMQ, ... }])`; update `RabbitMqEventBus` spec to mock `ClientProxy` instead of `AmqpConnection`. DoD: publisher unit tests green; `apps/api` builds; no `@golevelup` import in publisher path.
 
@@ -178,7 +180,7 @@ For blocked tasks always append an inline note on the same line:
 
 - [ ] **TR.10 ADR + full workspace smoke test** (~1h) — append ADR to `docs/DECISIONS.md`: migration from `@golevelup/nestjs-rabbitmq` to `@nestjs/microservices` Transport.RMQ (date: 2026-07-13, mentor review); record known limitation: `ClientProxy.emit()` has no `ConfirmChannel` broker-ack (unlike `@golevelup`); record decision: broker topology (`fcp.retry.30s`, exchanges) declared via IaC, not application code. Run `pnpm lint && pnpm test` across all workspaces. DoD: ADR in DECISIONS.md; `pnpm test` green in all packages; `pnpm lint` clean.
 
-- [ ] **TR.11 Complete @golevelup removal** (~1h) — run `pnpm remove @golevelup/nestjs-rabbitmq` in every workspace that declares it (`apps/api`, `services/billing`, `services/email`, `services/audit`, `services/analytics`, `services/search`, `services/notification`); delete all `@golevelup` wrapper modules (`RabbitmqModule` (old), `EmailMessagingModule`, and any equivalent `*MessagingModule` in other services); remove all remaining imports of `Nack`, `RabbitSubscribe`, `AmqpConnection` from `@golevelup/nestjs-rabbitmq`. **Do not delete `RabbitMqEventBus`** — the class stays; only its internals changed in TR.2 (`AmqpConnection` → `ClientProxy`). The `IEventBus` port and all domain-layer injections remain untouched:
+- [ ] **TR.11 Complete @golevelup removal** (~1h) — run `pnpm remove @golevelup/nestjs-rabbitmq` in every workspace that declares it (`apps/api`, `services/billing`, `services/email`, `services/audit`, `services/analytics`, `services/search`, `services/notification`). `amqplib` and `amqp-connection-manager` are already explicit deps from TR.1 and will not be lost when `@golevelup` is removed. Also remove `@types/amqplib` from root devDependencies — `amqplib@^2.0.1` bundles its own types. Delete all `@golevelup` wrapper modules (`RabbitmqModule` (old), `EmailMessagingModule`, and any equivalent `*MessagingModule` in other services); remove all remaining imports of `Nack`, `RabbitSubscribe`, `AmqpConnection` from `@golevelup/nestjs-rabbitmq`. **Do not delete `RabbitMqEventBus`** — the class stays; only its internals changed in TR.2 (`AmqpConnection` → `ClientProxy`). The `IEventBus` port and all domain-layer injections remain untouched:
   ```
   Service → IEventBus ← RabbitMqEventBus → ClientProxy
   ```

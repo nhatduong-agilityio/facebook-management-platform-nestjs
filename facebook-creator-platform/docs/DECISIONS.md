@@ -522,9 +522,43 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > Env vars: `SEARCH_PORT=3004`, `SEARCH_SERVICE_URL`, `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`,
 > `ALGOLIA_POSTS_INDEX`. No migration step — no schema to create.
 
+## RabbitMQ refactor foundation (TR.1, 2026-07-14)
+| Package | Version | Purpose |
+|---|---|---|
+| @nestjs/microservices | ^11.1.28 | Transport.RMQ publisher + consumer abstraction (replaces @golevelup) |
+| amqplib | ^2.0.1 | AMQP client; required peer dep of @nestjs/microservices RMQ transport |
+| amqp-connection-manager | ^5.0.0 | Connection management; required peer dep of @nestjs/microservices RMQ transport |
+
+> **ADR-075 `amqplib` and `amqp-connection-manager` made explicit deps in TR.1 (not deferred to TR.2+).**
+> Both are required peer deps of `@nestjs/microservices` RMQ transport. Before TR.1 they were only
+> *transitive* deps — pulled in by `@golevelup/nestjs-rabbitmq@^9.0.2`. TR.11 removes `@golevelup`,
+> which would silently drop them. Adding explicit deps in TR.1 ensures the workspace is self-contained
+> from the first RMQ task and no hidden transitive dep is load-bearing across the track.
+>
+> `amqplib@^2.0.1` bundles its own TypeScript types (`./index.d.ts`). The `@types/amqplib@0.10.8`
+> devDep added at the workspace root in T4.3 (ADR-074) targets `amqplib@0.10.x` and is incompatible
+> with 2.x. It must be removed in TR.11 cleanup — keeping both would cause type conflicts.
+> `@nestjs/microservices` declares `amqplib: '*'` and `amqp-connection-manager: '*'` as optional peer
+> deps (any version accepted); both 2.x and 5.x are the current stables, verified 2026-07-14.
+>
+> **ADR-076 Shared RMQ factory functions live in `libs/rmq-options/` (`@fcp/rmq-options`).**
+> Seven packages (1 app + 6 services) all need identical `MicroserviceOptions` config for their
+> RMQ transport connections. Inlining the config in each `main.ts` would create 7 divergent copies
+> of the same exchange/queue/prefetch settings — a maintenance hazard. `libs/rmq-options/` is
+> consistent with the existing `libs/billing-contracts/`, `libs/analytics-contracts/`, and
+> `libs/audit-contracts/` pattern: a small, dependency-light package consumed workspace-wide.
+> Two exported functions:
+> - `getRmqOptions(queue, configService)` — topic consumer config (exchange: `fcp.events`, wildcards,
+>   DLQ header); used by TR.3, TR.6, TR.7, TR.8, TR.9.
+> - `getDlqRmqOptions(queue, configService)` — DLQ consumer config (exchange: `fcp.dlq`, fanout,
+>   no wildcards, no DLQ re-header); used by TR.3 (`dlq.logger` queue).
+> Prefetch values come from `RMQ_PREFETCH` (default 10) and `RMQ_DLQ_PREFETCH` (default 5) env vars
+> so they can be tuned per environment without code changes.
+
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-14 | **TR.1 started. ADR-075/076:** `@nestjs/microservices@^11.1.28`, `amqplib@^2.0.1`, `amqp-connection-manager@^5.0.0` added to all 7 packages; `libs/rmq-options/` created with `getRmqOptions` + `getDlqRmqOptions` factories. `@types/amqplib` to be removed in TR.11 (amqplib 2.x bundles types). |
 | 2026-07-08 | **ADR-074 RabbitMQ native retry replaces BullMQ/rethrow pattern in `services/email`.** `fcp.retry` (topic exchange) + `fcp.retry.30s` queue (30 s TTL, DLX → `fcp.events`) replaces the previous "clear dedup + rethrow" retry. `x-death` header `count` field tracks redeliveries per queue. After 3 deaths: `updateFailed(id, attempts)` + manual `AmqpConnection.publish('fcp.dlq', ...)` + Ack. Transient failures with retries remaining: `redis.del(dedupKey)` + `Nack(false)` → retry exchange → 30 s → original exchange → redeliver. `@types/amqplib@0.10.8` added at workspace root (amqplib@0.10.9 ships no bundled types). |
 | 2026-07-08 | **T4.3 post-task runtime fixes complete.** Security fix: invitation token removed from event bus; `PermanentEmailError` DLQ pattern added; `GET /workspaces/:workspaceId/members/:memberId` endpoint added; `acceptInvitation` 409 guard added. 261/261 tests, lint clean. ADR-072, ADR-073. |
 | 2026-07-08 | **ADR-073 `PermanentEmailError` for Resend DLQ routing.** Resend returns HTTP 4xx (non-429) for permanent failures (unverified domain, invalid recipient, blocked address). Retrying these wastes quota and loops forever. `ResendEmailProvider` throws `PermanentEmailError` (a distinct class, not a generic `Error`) on any Resend `statusCode >= 400 && < 500 && != 429`. Each email consumer catches `PermanentEmailError`, logs, and `return new Nack(false)` — routes to DLQ without clearing the Redis dedup key. The dedup key is intentionally preserved: if the DLQ message is ever re-enqueued manually, the event is silently discarded rather than triggering another attempt to a permanently-failing address. |
