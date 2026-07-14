@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
+import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { INotificationRepository } from '../ports/notification.repository.port';
 
 /**
@@ -21,14 +23,16 @@ export interface MemberRemovedPayload {
  * Deletes the projection row for `(workspaceId, removedUserId)` so the removed
  * member no longer receives workspace notifications.
  */
-@Injectable()
+@Controller()
 export class MemberRemovedConsumer {
   /**
+   * @param orm    - MikroORM instance used to create a per-message request context.
    * @param repo   - Notification repository for projection delete.
    * @param redis  - Redis client for idempotent dedup.
    * @param logger - Pino logger.
    */
   constructor(
+    private readonly orm: MikroORM,
     private readonly repo: INotificationRepository,
     private readonly redis: Redis,
     private readonly logger: Logger,
@@ -37,32 +41,38 @@ export class MemberRemovedConsumer {
   /**
    * Handles `workspace.member-removed` — removes the member from the projection.
    *
-   * @param msg - Deserialized `MemberRemovedPayload`.
+   * @param data - Deserialized `MemberRemovedPayload`.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'workspace.member-removed',
-    queue: 'notification.workspace.member-removed',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onMemberRemoved(msg: MemberRemovedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:notification:${msg.eventId}`;
+  @EventPattern('workspace.member-removed')
+  async onMemberRemoved(
+    @Payload() data: MemberRemovedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:notification:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'MemberRemovedConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'MemberRemovedConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
-      await this.repo.removeProjectionMember(msg.workspaceId, msg.removedUserId);
+      await RequestContext.create(this.orm.em, async () => {
+        await this.repo.removeProjectionMember(data.workspaceId, data.removedUserId);
+      });
       this.logger.log(
-        { workspaceId: msg.workspaceId, userId: msg.removedUserId },
+        { workspaceId: data.workspaceId, userId: data.removedUserId },
         'MemberRemovedConsumer: projection row removed',
       );
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'MemberRemovedConsumer: delete failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'MemberRemovedConsumer: delete failed');
+      channel.nack(msg, false, true);
     }
   }
 }

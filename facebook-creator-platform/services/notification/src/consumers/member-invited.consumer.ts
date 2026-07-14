@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 
 /**
  * Shape of the `workspace.member-invited` event payload.
@@ -27,7 +28,7 @@ export interface MemberInvitedPayload {
  *
  * We still dedup the event to prevent reprocessing if the message is redelivered.
  */
-@Injectable()
+@Controller()
 export class MemberInvitedConsumer {
   /**
    * @param redis  - Redis client for idempotent dedup key (`dedup:notification:<eventId>`).
@@ -39,27 +40,36 @@ export class MemberInvitedConsumer {
   ) {}
 
   /**
-   * Handles `workspace.member-invited` — dedup only.
+   * Handles `workspace.member-invited` — dedup only; no ORM access.
    *
-   * @param msg - Deserialized `MemberInvitedPayload`.
+   * @param data - Deserialized `MemberInvitedPayload`.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'workspace.member-invited',
-    queue: 'notification.workspace.member-invited',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onMemberInvited(msg: MemberInvitedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:notification:${msg.eventId}`;
-    const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
-    if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'MemberInvitedConsumer: duplicate, skipping');
-      return;
+  @EventPattern('workspace.member-invited')
+  async onMemberInvited(
+    @Payload() data: MemberInvitedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    try {
+      const dedupKey = `dedup:notification:${data.eventId}`;
+      const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
+      if (!isNew) {
+        this.logger.log({ eventId: data.eventId }, 'MemberInvitedConsumer: duplicate, skipping');
+        channel.ack(msg);
+        return;
+      }
+      /* No projection update — invitee userId unknown until invitation is accepted. */
+      this.logger.log(
+        { eventId: data.eventId, workspaceId: data.workspaceId },
+        'MemberInvitedConsumer: deduped, no projection action needed',
+      );
+      channel.ack(msg);
+    } catch (err) {
+      this.logger.error({ eventId: data.eventId, err }, 'MemberInvitedConsumer: failed');
+      channel.nack(msg, false, true);
     }
-    /* No projection update — invitee userId unknown until invitation is accepted. */
-    this.logger.log(
-      { eventId: msg.eventId, workspaceId: msg.workspaceId },
-      'MemberInvitedConsumer: deduped, no projection action needed',
-    );
   }
 }

@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller } from '@nestjs/common';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { NotificationOrchestrator } from '../notification-orchestrator';
 
 /**
@@ -24,7 +25,7 @@ export interface PostFailedPayload {
  * Notifies only the post creator (`createdByUserId`) that their post failed to publish.
  * Fires Slack alert as well (actionable failure).
  */
-@Injectable()
+@Controller()
 export class PostFailedNotificationConsumer {
   /**
    * @param orm          - MikroORM instance used to create a per-message request context.
@@ -42,39 +43,43 @@ export class PostFailedNotificationConsumer {
   /**
    * Handles `posts.failed` — notifies the post creator.
    *
-   * @param msg - Deserialized `PostFailedPayload`.
+   * @param data - Deserialized `PostFailedPayload`.
+   * @param ctx  - RMQ context providing the channel and raw message for ack/nack.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'posts.failed',
-    queue: 'notification.posts.failed',
-    queueOptions: { durable: true, deadLetterExchange: 'fcp.dlq' },
-  })
-  async onPostFailed(msg: PostFailedPayload): Promise<void | Nack> {
-    const dedupKey = `dedup:notification:${msg.eventId}`;
+  @EventPattern('posts.failed')
+  async onPostFailed(
+    @Payload() data: PostFailedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+
+    const dedupKey = `dedup:notification:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: msg.eventId }, 'PostFailedNotificationConsumer: duplicate, skipping');
+      this.logger.log({ eventId: data.eventId }, 'PostFailedNotificationConsumer: duplicate, skipping');
+      channel.ack(msg);
       return;
     }
 
     try {
       await RequestContext.create(this.orm.em, async () => {
         await this.orchestrator.notifyUser(
-          msg.createdByUserId,
-          msg.workspaceId,
+          data.createdByUserId,
+          data.workspaceId,
           'posts.failed',
           'Post publishing failed',
           `Your post failed to publish to Facebook.`,
-          { postId: msg.postId },
+          { postId: data.postId },
           true,
         );
       });
-      this.logger.log({ postId: msg.postId, eventId: msg.eventId }, 'PostFailedNotificationConsumer: notified');
+      this.logger.log({ postId: data.postId, eventId: data.eventId }, 'PostFailedNotificationConsumer: notified');
+      channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: msg.eventId, err }, 'PostFailedNotificationConsumer: failed');
-      throw err;
+      this.logger.error({ eventId: data.eventId, err }, 'PostFailedNotificationConsumer: failed');
+      channel.nack(msg, false, true);
     }
   }
 }

@@ -37,21 +37,16 @@ import { FacebookTokenExpiringConsumer } from './consumers/facebook-token-expiri
  * - Port → adapter bindings for repository, Slack, and internal API.
  * - `NotificationOrchestrator` — fan-out + channel routing.
  * - `WorkspaceMemberReconciler` — cold-start projection sync (ADR-059).
- * - All 4 projection consumers + 7 notification consumers.
+ * - All 4 projection consumers + 7 notification consumers in `controllers[]`
+ *   as required by `@nestjs/microservices` for `@EventPattern` handler discovery.
  * - `NotificationService` + `NotificationController` for the HTTP read API.
  */
 @Module({
   imports: [
     MikroOrmModule.forFeature([Notification, NotificationRecipient, WorkspaceMemberProjection]),
   ],
-  controllers: [NotificationController],
-  providers: [
-    { provide: INotificationRepository, useClass: MikroOrmNotificationRepository },
-    { provide: ISlackProvider, useClass: SlackWebhookProvider },
-    { provide: IInternalApiClient, useClass: InternalApiAdapter },
-    NotificationOrchestrator,
-    WorkspaceMemberReconciler,
-    NotificationService,
+  controllers: [
+    NotificationController,
     /* Projection consumers */
     MemberInvitedConsumer,
     MemberJoinedConsumer,
@@ -65,6 +60,14 @@ import { FacebookTokenExpiringConsumer } from './consumers/facebook-token-expiri
     BillingSubscriptionPastDueConsumer,
     BillingPaymentFailedConsumer,
     FacebookTokenExpiringConsumer,
+  ],
+  providers: [
+    { provide: INotificationRepository, useClass: MikroOrmNotificationRepository },
+    { provide: ISlackProvider, useClass: SlackWebhookProvider },
+    { provide: IInternalApiClient, useClass: InternalApiAdapter },
+    NotificationOrchestrator,
+    WorkspaceMemberReconciler,
+    NotificationService,
   ],
 })
 export class NotificationModule {}

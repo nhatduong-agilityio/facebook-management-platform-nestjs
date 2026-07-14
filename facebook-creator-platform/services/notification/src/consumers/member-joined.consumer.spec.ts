@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
+import type { MikroORM } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
+import { RmqContext } from '@nestjs/microservices';
 import { MemberJoinedConsumer, type MemberJoinedPayload } from './member-joined.consumer';
 import { INotificationRepository } from '../ports/notification.repository.port';
+
+vi.mock('@mikro-orm/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@mikro-orm/core')>();
+  return { ...actual, RequestContext: { create: (_em: unknown, fn: () => Promise<unknown>) => fn() } };
+});
 
 const makeMsg = (overrides: Partial<MemberJoinedPayload> = {}): MemberJoinedPayload => ({
   eventId: 'evt-001',
@@ -17,6 +24,13 @@ function makeConsumer(opts: {
   redisDel?: () => Promise<number>;
   upsert?: () => Promise<void>;
 }) {
+  const mockChannel = { ack: vi.fn(), nack: vi.fn() };
+  const mockMsg = {};
+  const mockCtx = {
+    getChannelRef: () => mockChannel,
+    getMessage: () => mockMsg,
+  } as unknown as RmqContext;
+
   const redis = {
     set: vi.fn(opts.redisSet ?? (() => Promise.resolve('OK'))),
     del: vi.fn(opts.redisDel ?? (() => Promise.resolve(1))),
@@ -31,27 +45,39 @@ function makeConsumer(opts: {
     error: vi.fn(),
   } as unknown as Logger;
 
-  return { consumer: new MemberJoinedConsumer(repo, redis, logger), redis, repo, logger };
+  const orm = { em: {} } as unknown as MikroORM;
+  return { consumer: new MemberJoinedConsumer(orm, repo, redis, logger), redis, repo, mockChannel, mockMsg, mockCtx };
 }
 
 describe('MemberJoinedConsumer', () => {
-  it('upserts projection on new event', async () => {
-    const { consumer, repo } = makeConsumer({});
-    await consumer.onMemberJoined(makeMsg());
+  it('upserts projection and acks on new event', async () => {
+    const { consumer, repo, mockChannel, mockMsg, mockCtx } = makeConsumer({});
+
+    await consumer.onMemberJoined(makeMsg(), mockCtx);
+
     expect(repo.upsertProjectionMember).toHaveBeenCalledWith('ws-001', 'user-001', 'editor');
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
   });
 
-  it('skips duplicate event (redis NX returns null)', async () => {
-    const { consumer, repo } = makeConsumer({ redisSet: () => Promise.resolve(null) });
-    await consumer.onMemberJoined(makeMsg());
+  it('acks and skips upsert on duplicate event', async () => {
+    const { consumer, repo, mockChannel, mockMsg, mockCtx } = makeConsumer({
+      redisSet: () => Promise.resolve(null),
+    });
+
+    await consumer.onMemberJoined(makeMsg(), mockCtx);
+
     expect(repo.upsertProjectionMember).not.toHaveBeenCalled();
+    expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
   });
 
-  it('deletes dedup key and rethrows on upsert failure', async () => {
-    const { consumer, redis } = makeConsumer({
+  it('clears dedup key and nacks with requeue on upsert failure', async () => {
+    const { consumer, redis, mockChannel, mockMsg, mockCtx } = makeConsumer({
       upsert: () => Promise.reject(new Error('db error')),
     });
-    await expect(consumer.onMemberJoined(makeMsg())).rejects.toThrow('db error');
+
+    await consumer.onMemberJoined(makeMsg(), mockCtx);
+
     expect(redis.del).toHaveBeenCalledWith('dedup:notification:evt-001');
+    expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
   });
 });

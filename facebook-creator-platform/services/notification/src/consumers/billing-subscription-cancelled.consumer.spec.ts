@@ -2,17 +2,17 @@ import { describe, it, expect, vi } from 'vitest';
 import type { MikroORM } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { RmqContext } from '@nestjs/microservices';
-import { BillingPaymentFailedConsumer } from './billing-payment-failed.consumer';
+import { BillingSubscriptionCancelledConsumer } from './billing-subscription-cancelled.consumer';
 import { NotificationOrchestrator } from '../notification-orchestrator';
-import type { PaymentFailedPayload } from '@fcp/billing-contracts';
+import type { SubscriptionCancelledPayload } from '@fcp/billing-contracts';
 
 vi.mock('@mikro-orm/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@mikro-orm/core')>();
   return { ...actual, RequestContext: { create: (_em: unknown, fn: () => Promise<unknown>) => fn() } };
 });
 
-const makeMsg = (overrides: Partial<PaymentFailedPayload> = {}): PaymentFailedPayload => ({
-  eventId: 'evt-bpf1',
+const makeMsg = (overrides: Partial<SubscriptionCancelledPayload> = {}): SubscriptionCancelledPayload => ({
+  eventId: 'evt-bc1',
   workspaceId: 'ws-001',
   planCode: 'pro',
   occurredAt: '2026-07-07T00:00:00Z',
@@ -46,20 +46,20 @@ function makeConsumer(opts: {
   } as unknown as Logger;
 
   const orm = { em: {} } as unknown as MikroORM;
-  return { consumer: new BillingPaymentFailedConsumer(orm, orchestrator, redis, logger), redis, orchestrator, mockChannel, mockMsg, mockCtx };
+  return { consumer: new BillingSubscriptionCancelledConsumer(orm, orchestrator, redis, logger), redis, orchestrator, mockChannel, mockMsg, mockCtx };
 }
 
-describe('BillingPaymentFailedConsumer', () => {
+describe('BillingSubscriptionCancelledConsumer', () => {
   it('calls notifyWorkspace with Slack and acks on new event', async () => {
     const { consumer, orchestrator, mockChannel, mockMsg, mockCtx } = makeConsumer({});
 
-    await consumer.onPaymentFailed(makeMsg(), mockCtx);
+    await consumer.onSubscriptionCancelled(makeMsg(), mockCtx);
 
     expect(orchestrator.notifyWorkspace).toHaveBeenCalledWith(
       'ws-001',
-      'billing.payment_failed',
+      'billing.subscription_cancelled',
       expect.any(String),
-      expect.stringContaining('grace period'),
+      expect.stringContaining('cancelled'),
       expect.objectContaining({ planCode: 'pro' }),
       true,
     );
@@ -71,7 +71,7 @@ describe('BillingPaymentFailedConsumer', () => {
       redisSet: () => Promise.resolve(null),
     });
 
-    await consumer.onPaymentFailed(makeMsg(), mockCtx);
+    await consumer.onSubscriptionCancelled(makeMsg(), mockCtx);
 
     expect(orchestrator.notifyWorkspace).not.toHaveBeenCalled();
     expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
@@ -82,9 +82,9 @@ describe('BillingPaymentFailedConsumer', () => {
       notifyWorkspace: () => Promise.reject(new Error('orchestrator error')),
     });
 
-    await consumer.onPaymentFailed(makeMsg(), mockCtx);
+    await consumer.onSubscriptionCancelled(makeMsg(), mockCtx);
 
-    expect(redis.del).toHaveBeenCalledWith('dedup:notification:evt-bpf1');
+    expect(redis.del).toHaveBeenCalledWith('dedup:notification:evt-bc1');
     expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
   });
 });
