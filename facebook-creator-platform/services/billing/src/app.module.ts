@@ -1,8 +1,7 @@
 import { join } from 'node:path';
-import { Global, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
-import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 import { PostgreSqlDriver } from '@mikro-orm/postgresql';
 import { Migrator } from '@mikro-orm/migrations';
 import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
@@ -13,43 +12,14 @@ import { BillingEvent } from './entities/billing-event.entity';
 import { BillingModule } from './billing.module';
 
 /**
- * Global wrapper around `RabbitMQModule`.
- *
- * `RabbitMQModule` v9 is not decorated with `@Global()`, so `AmqpConnection`
- * would only be visible inside `AppModule`. Wrapping it here makes
- * `AmqpConnection` available to all feature modules (`BillingModule`, etc.)
- * without requiring each to import `RabbitMQModule` again.
- */
-@Global()
-@Module({
-  imports: [
-    RabbitMQModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        uri: config.get<string>('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672'),
-        exchanges: [
-          { name: 'fcp.events', type: 'topic', options: { durable: true } },
-          { name: 'fcp.dlq', type: 'fanout', options: { durable: true } },
-        ],
-        connectionInitOptions: { wait: false },
-        enableControllerDiscovery: false,
-      }),
-    }),
-  ],
-  exports: [RabbitMQModule],
-})
-class BillingMessagingModule {}
-
-/**
  * Root application module for `services/billing`.
  *
  * Sets up:
  * - **ConfigModule** — loads the root `.env` file (shared with apps/api in monorepo).
  * - **LoggerModule** — Pino HTTP logger; redacts `stripeCustomerId` from logs.
  * - **MikroOrmModule** — PostgreSQL connection to the `billing` schema.
- * - **BillingMessagingModule** — global wrapper; makes `AmqpConnection` available to all modules.
- * - **BillingModule** — Plans, Subscriptions, Stripe Checkout, and state machine (T3.2).
+ * - **BillingModule** — Plans, Subscriptions, Stripe Checkout, state machine, and
+ *   `BILLING_EVENT_BUS` `ClientProxy` (publisher-only, `noAssert: true`).
  */
 @Module({
   imports: [
@@ -83,7 +53,6 @@ class BillingMessagingModule {}
       }),
       inject: [ConfigService],
     }),
-    BillingMessagingModule,
     BillingModule,
   ],
 })
