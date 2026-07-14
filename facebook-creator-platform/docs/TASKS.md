@@ -172,7 +172,7 @@ For blocked tasks always append an inline note on the same line:
 
 - [x] **TR.6 services/audit — migrate to hybrid + wildcard consumer** (~1h) — remove global `RabbitMQModule.forRootAsync` wrapper; add `app.connectMicroservice(getRmqOptions('audit_queue', ...))` + `startAllMicroservices()` in `main.ts`; change `AuditConsumer` to `@Controller()` with `@EventPattern('#')`; replace `Nack` with `channel.ack/nack`; add `RequestContext.create()` wrapper. Update spec. DoD: hybrid audit service receives all topic events via `#` wildcard; MongoDB write tested; no `@golevelup`.
 
-- [ ] **TR.7 services/analytics — migrate to hybrid + 1 consumer** (~1h) — same hybrid pattern as TR.6; queue `analytics_queue`; one `@EventPattern('posts.published')` handler. DoD: consumer receives `posts.published`; idempotent upsert test green; no `@golevelup`.
+- [x] **TR.7 services/analytics — migrate to hybrid + 1 consumer** (~1h) — same hybrid pattern as TR.6; queue `analytics_queue`; one `@EventPattern('posts.published')` handler. DoD: consumer receives `posts.published`; idempotent upsert test green; no `@golevelup`.
 
 - [ ] **TR.8 services/search — migrate to hybrid + 5 consumers** (~2h) — same hybrid pattern; queue `search_queue`; 5 `@EventPattern` handlers (`posts.created`, `posts.updated`, `posts.published`, `posts.failed`, `posts.deleted`). DoD: all 5 Algolia ops triggered correctly; Redis NX dedup path tested; no `@golevelup`.
 

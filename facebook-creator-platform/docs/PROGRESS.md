@@ -5,11 +5,20 @@
 
 ## Resume point
 
-- **Next task:** `TR.7` — Migrate `services/analytics` to hybrid app + one `@EventPattern('posts.published')` consumer.
+- **Next task:** `TR.8` — Migrate `services/search` to hybrid app + 5 `@EventPattern` consumers.
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.6 complete. `services/audit` is now a hybrid NestJS app. `AuditMessagingModule` (`@golevelup` wrapper) removed from `app.module.ts`. `AuditConsumer` migrated to `@Controller()` with `@EventPattern('#')` + `RequestContext.create` + `channel.ack/nack`. Routing key read from `ctx.getMessage().fields.routingKey`. 9/9 audit tests green. `T4.4` is paused until TR.x complete.
+- **Notes:** TR.7 complete. `services/analytics` is now a hybrid NestJS app. `AnalyticsMessagingModule` (`@golevelup` wrapper) removed; `RedisModule` retained. `PostPublishedConsumer` migrated to `@Controller()` with `@EventPattern('posts.published')` + `RequestContext.create` + `channel.ack/nack`. Error path changed from `throw err` to `nack(true)`. 9/9 analytics tests green. `T4.4` is paused until TR.x complete.
 
 ## Log
+
+### 2026-07-14 — TR.7 Migrate services/analytics to hybrid app + posts.published consumer
+
+- **`services/analytics/src/main.ts`** (EDITED): Hybrid bootstrap — `app.connectMicroservice(getRmqOptions('analytics.posts.published', configService))` + `await app.startAllMicroservices()` before `app.listen`. All existing HTTP setup (Swagger, ValidationPipe, global prefix) retained.
+- **`services/analytics/src/app.module.ts`** (REWRITTEN): Removed `AnalyticsMessagingModule` (`@Global()` `RabbitMQModule.forRootAsync` wrapper). `RedisModule` kept — consumer still injects `Redis` for dedup. `@golevelup` import removed.
+- **`services/analytics/src/analytics.consumer.ts`** (REWRITTEN): `@Injectable()` → `@Controller()`; `@RabbitSubscribe(...)` → `@EventPattern('posts.published')`; handler `onPostPublished(@Payload() data, @Ctx() ctx: RmqContext)`; `MikroORM` injected for `RequestContext.create` (wraps `metrics.upsert` — `MikroOrmPostMetricsRepository` injects `EntityManager` directly); duplicate → `channel.ack`; success → `channel.ack`; error → `redis.del(dedupKey)` + `channel.nack(msg, false, true)`.
+- **`services/analytics/src/analytics.module.ts`** (EDITED): `PostPublishedConsumer` moved from `providers[]` to `controllers[]`.
+- **`services/analytics/src/analytics.consumer.spec.ts`** (REWRITTEN): `vi.mock('@mikro-orm/core', ...)` for `RequestContext`; `makeConsumer` factory extended with `orm` stub + `mockChannel`/`mockMsg`/`mockCtx`; all 5 tests updated — error tests now assert `nack(mockMsg, false, true)` instead of `rejects.toThrow`; success/dedup tests assert `channel.ack`.
+- Tests: 295/295 total (9 analytics passing). Lint: 0 errors.
 
 ### 2026-07-14 — TR.6 Migrate services/audit to hybrid app + wildcard consumer
 
