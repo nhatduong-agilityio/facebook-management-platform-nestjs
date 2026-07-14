@@ -1,8 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller, Inject } from '@nestjs/common';
+import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { MikroORM } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { IOREDIS_CLIENT } from '../../../infrastructure/rabbitmq/rabbitmq.module';
 import { IdempotentConsumer } from '../../../common/consumers/idempotent-consumer.base';
 import { IEventBus } from '../../../common/events/event-bus.port';
@@ -27,9 +28,9 @@ export interface FacebookFeedPayload {
  * Uses `orm.em.fork()` to get a fresh `EntityManager` per message — avoids
  * identity-map pollution between consumer invocations outside an HTTP request context.
  *
- * Queue: `api.facebook.feed` (durable, DLX → `fcp.dlq`)
+ * Bound to `api_queue` via `connectMicroservice(getRmqOptions(...))` in `main.ts`.
  */
-@Injectable()
+@Controller()
 export class FacebookFeedConsumer extends IdempotentConsumer {
   constructor(
     @Inject(IOREDIS_CLIENT) redis: Redis,
@@ -43,31 +44,28 @@ export class FacebookFeedConsumer extends IdempotentConsumer {
   /**
    * Handles a `facebook.feed` event exactly once per `eventId`.
    *
-   * @param msg - Deserialized `FacebookFeedPayload` from the broker.
-   * @returns `undefined` on success/duplicate, or `Nack(false)` for a permanent failure.
+   * @param data - Deserialized `FacebookFeedPayload` from the broker.
+   * @param ctx  - RMQ execution context used to ack or nack the message.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'facebook.feed',
-    queue: 'api.facebook.feed',
-    queueOptions: {
-      durable: true,
-      deadLetterExchange: 'fcp.dlq',
-    },
-  })
-  async onFacebookFeed(msg: FacebookFeedPayload): Promise<void | Nack> {
-    return this.withDedup(msg.eventId, async () => {
+  @EventPattern('facebook.feed')
+  async onFacebookFeed(
+    @Payload() data: FacebookFeedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+    await this.withDedup(data.eventId, channel, msg, async () => {
       const em = this.orm.em.fork();
 
       const post = await em.findOne(Post, {
-        facebookGraphPostId: msg.facebookPostId,
+        facebookGraphPostId: data.facebookPostId,
         status: 'publishing',
         deletedAt: null,
       });
 
       if (!post) {
         this.logger.log(
-          { facebookPostId: msg.facebookPostId },
+          { facebookPostId: data.facebookPostId },
           'FacebookFeedConsumer: no publishing post found for graph post id — skipping',
         );
         return;
@@ -83,7 +81,7 @@ export class FacebookFeedConsumer extends IdempotentConsumer {
         new PostPublishedEvent(
           post.id,
           workspaceId,
-          msg.facebookPostId,
+          data.facebookPostId,
           post.facebookAccount?.id ?? '',
           post.createdByUserId ?? '',
         ),

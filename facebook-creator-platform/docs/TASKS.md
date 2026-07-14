@@ -158,9 +158,9 @@ For blocked tasks always append an inline note on the same line:
 
   No runtime behaviour changes yet. DoD: `@nestjs/microservices`, `amqplib`, `amqp-connection-manager` resolve in all packages; both factories compile; `pnpm lint` clean.
 
-- [ ] **TR.2 apps/api — migrate publisher (ClientProxy)** (~2h) — replace `AmqpConnection.publish()` in `RabbitMqEventBus` with `this.client.emit(event.routingKey, event)` where `client: ClientProxy` is injected via `@Inject('FCP_EVENT_BUS')`; replace `RabbitMQModule.forRootAsync` in `rabbitmq.module.ts` with `ClientsModule.registerAsync([{ name: 'FCP_EVENT_BUS', transport: Transport.RMQ, ... }])`; update `RabbitMqEventBus` spec to mock `ClientProxy` instead of `AmqpConnection`. DoD: publisher unit tests green; `apps/api` builds; no `@golevelup` import in publisher path.
+- [x] **TR.2 apps/api — migrate publisher (ClientProxy)** (~2h) — replace `AmqpConnection.publish()` in `RabbitMqEventBus` with `this.client.emit(event.routingKey, event)` where `client: ClientProxy` is injected via `@Inject('FCP_EVENT_BUS')`; replace `RabbitMQModule.forRootAsync` in `rabbitmq.module.ts` with `ClientsModule.registerAsync([{ name: 'FCP_EVENT_BUS', transport: Transport.RMQ, ... }])`; update `RabbitMqEventBus` spec to mock `ClientProxy` instead of `AmqpConnection`. DoD: publisher unit tests green; `apps/api` builds; no `@golevelup` import in publisher path.
 
-- [ ] **TR.3 apps/api — migrate consumers to `@EventPattern`** (~3h) — add **two** `connectMicroservice()` calls in `main.ts`:
+- [x] **TR.3 apps/api — migrate consumers to `@EventPattern`** (~3h) — add **two** `connectMicroservice()` calls in `main.ts`:
   - `app.connectMicroservice(getRmqOptions('api_queue', ...))` — 6 domain event consumers
   - `app.connectMicroservice(getDlqRmqOptions('dlq.logger', ...))` — `DlqConsumer` (fanout binding to `fcp.dlq`)
 

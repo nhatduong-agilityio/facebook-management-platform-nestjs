@@ -61,7 +61,6 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
       },
     }),
     DatabaseModule,
-    RabbitmqModule,
     ScheduleModule.forRoot(),
     HealthModule,
     IdentityModule,
@@ -73,6 +72,9 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     AnalyticsModule,
     SearchModule,
     NotificationModule,
+    // RabbitmqModule imported last so domain @EventPattern handlers register before
+    // DlqConsumer's '#' wildcard — exact patterns take priority in Map iteration order.
+    RabbitmqModule,
     ...(process.env.NODE_ENV !== 'production' ? [DevAuthModule] : []),
   ],
 })

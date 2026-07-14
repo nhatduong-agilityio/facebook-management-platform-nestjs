@@ -1,7 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller, Inject } from '@nestjs/common';
+import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { IOREDIS_CLIENT } from '../../../infrastructure/rabbitmq/rabbitmq.module';
 import { IdempotentConsumer } from '../../../common/consumers/idempotent-consumer.base';
 
@@ -22,9 +23,9 @@ export interface PostPublishedPayload {
  * infrastructure works. Business logic (Analytics metrics sync T3.3, Algolia
  * status update T4.1, Audit T3.4) will be added in their respective tasks.
  *
- * Queue: `api.posts.published` (durable, DLX → `fcp.dlq`)
+ * Bound to `api_queue` via `connectMicroservice(getRmqOptions(...))` in `main.ts`.
  */
-@Injectable()
+@Controller()
 export class PostPublishedConsumer extends IdempotentConsumer {
   constructor(
     @Inject(IOREDIS_CLIENT) redis: Redis,
@@ -36,22 +37,19 @@ export class PostPublishedConsumer extends IdempotentConsumer {
   /**
    * Handles a `posts.published` event exactly once per `eventId`.
    *
-   * @param msg - Deserialized `PostPublishedPayload` from the broker.
-   * @returns `undefined` on success/duplicate, or `Nack(false)` for a permanent failure.
+   * @param data - Deserialized `PostPublishedPayload` from the broker.
+   * @param ctx  - RMQ execution context used to ack or nack the message.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'posts.published',
-    queue: 'api.posts.published',
-    queueOptions: {
-      durable: true,
-      deadLetterExchange: 'fcp.dlq',
-    },
-  })
-  async onPostPublished(msg: PostPublishedPayload): Promise<void | Nack> {
-    return this.withDedup(msg.eventId, async () => {
+  @EventPattern('posts.published')
+  async onPostPublished(
+    @Payload() data: PostPublishedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+    await this.withDedup(data.eventId, channel, msg, async () => {
       this.logger.log(
-        { postId: msg.postId, workspaceId: msg.workspaceId },
+        { postId: data.postId, workspaceId: data.workspaceId },
         'PostPublishedConsumer: received posts.published',
       );
     });

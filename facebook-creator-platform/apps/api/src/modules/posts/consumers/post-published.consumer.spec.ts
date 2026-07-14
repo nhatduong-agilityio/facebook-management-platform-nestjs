@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Redis } from 'ioredis';
 import type { Logger } from 'nestjs-pino';
 import type { RmqContext } from '@nestjs/microservices';
-import { PostCreatedConsumer, type PostCreatedPayload } from './post-created.consumer';
+import { PostPublishedConsumer, type PostPublishedPayload } from './post-published.consumer';
 
 const mockRedis = {
   set: vi.fn(),
@@ -20,41 +20,41 @@ const mockCtx = {
   getMessage: () => mockMsg,
 } as unknown as RmqContext;
 
-const sampleData: PostCreatedPayload = {
-  eventId: 'evt-001',
-  routingKey: 'posts.created',
+const sampleData: PostPublishedPayload = {
+  eventId: 'evt-pub-001',
+  routingKey: 'posts.published',
   occurredAt: new Date().toISOString(),
   postId: 'post-abc',
   workspaceId: 'ws-xyz',
-  createdByUserId: 'user-111',
+  facebookGraphPostId: 'page-1_post-2',
 };
 
-describe('PostCreatedConsumer', () => {
-  let consumer: PostCreatedConsumer;
+describe('PostPublishedConsumer', () => {
+  let consumer: PostPublishedConsumer;
 
   beforeEach(() => {
-    consumer = new PostCreatedConsumer(mockRedis, mockLogger);
+    consumer = new PostPublishedConsumer(mockRedis, mockLogger);
     vi.clearAllMocks();
   });
 
   it('acks without logging when the event was already processed (duplicate)', async () => {
-    vi.mocked(mockRedis.set).mockResolvedValue(null); // NX condition failed — key exists
+    vi.mocked(mockRedis.set).mockResolvedValue(null);
 
-    await consumer.onPostCreated(sampleData, mockCtx);
+    await consumer.onPostPublished(sampleData, mockCtx);
 
     expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
     expect(mockLogger.log).not.toHaveBeenCalled();
   });
 
   it('logs the event and acks on first delivery (new event)', async () => {
-    vi.mocked(mockRedis.set).mockResolvedValue('OK'); // NX condition met — key was set
+    vi.mocked(mockRedis.set).mockResolvedValue('OK');
 
-    await consumer.onPostCreated(sampleData, mockCtx);
+    await consumer.onPostPublished(sampleData, mockCtx);
 
     expect(mockLogger.log).toHaveBeenCalledOnce();
     expect(mockLogger.log).toHaveBeenCalledWith(
       { postId: 'post-abc', workspaceId: 'ws-xyz' },
-      'PostCreatedConsumer: received posts.created',
+      'PostPublishedConsumer: received posts.published',
     );
     expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);
   });
@@ -62,15 +62,9 @@ describe('PostCreatedConsumer', () => {
   it('sets the dedup key with correct key pattern and TTL', async () => {
     vi.mocked(mockRedis.set).mockResolvedValue('OK');
 
-    await consumer.onPostCreated(sampleData, mockCtx);
+    await consumer.onPostPublished(sampleData, mockCtx);
 
-    expect(mockRedis.set).toHaveBeenCalledWith(
-      'dedup:evt-001',
-      '1',
-      'EX',
-      86400,
-      'NX',
-    );
+    expect(mockRedis.set).toHaveBeenCalledWith('dedup:evt-pub-001', '1', 'EX', 86400, 'NX');
   });
 
   it('deletes the dedup key and nacks with requeue on a transient error', async () => {
@@ -80,9 +74,9 @@ describe('PostCreatedConsumer', () => {
       throw transientError;
     });
 
-    await consumer.onPostCreated(sampleData, mockCtx);
+    await consumer.onPostPublished(sampleData, mockCtx);
 
-    expect(mockRedis.del).toHaveBeenCalledWith('dedup:evt-001');
+    expect(mockRedis.del).toHaveBeenCalledWith('dedup:evt-pub-001');
     expect(mockChannel.nack).toHaveBeenCalledWith(mockMsg, false, true);
   });
 });

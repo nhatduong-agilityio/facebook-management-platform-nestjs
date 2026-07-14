@@ -1,8 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
+import { Controller, Inject } from '@nestjs/common';
+import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { MikroORM } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import type { Channel, Message } from 'amqplib';
 import { IOREDIS_CLIENT } from '../../../infrastructure/rabbitmq/rabbitmq.module';
 import { IdempotentConsumer } from '../../../common/consumers/idempotent-consumer.base';
 import { FacebookAccount } from '../entities/facebook-account.entity';
@@ -28,9 +29,9 @@ export interface FacebookDeauthorizedPayload {
  *
  * Uses `orm.em.fork()` per message (§ consumer context — no HTTP request scope).
  *
- * Queue: `api.facebook.deauthorized` (durable, DLX → `fcp.dlq`)
+ * Bound to `api_queue` via `connectMicroservice(getRmqOptions(...))` in `main.ts`.
  */
-@Injectable()
+@Controller()
 export class FacebookPageDeauthorizedConsumer extends IdempotentConsumer {
   constructor(
     @Inject(IOREDIS_CLIENT) redis: Redis,
@@ -43,30 +44,27 @@ export class FacebookPageDeauthorizedConsumer extends IdempotentConsumer {
   /**
    * Handles a `facebook.page.deauthorized` event exactly once per `eventId`.
    *
-   * @param msg - Deserialized payload from the broker.
-   * @returns `undefined` on success/duplicate, or `Nack(false)` for a permanent failure.
+   * @param data - Deserialized payload from the broker.
+   * @param ctx  - RMQ execution context used to ack or nack the message.
    */
-  @RabbitSubscribe({
-    exchange: 'fcp.events',
-    routingKey: 'facebook.page.deauthorized',
-    queue: 'api.facebook.deauthorized',
-    queueOptions: {
-      durable: true,
-      deadLetterExchange: 'fcp.dlq',
-    },
-  })
-  async onPageDeauthorized(msg: FacebookDeauthorizedPayload): Promise<void | Nack> {
-    return this.withDedup(msg.eventId, async () => {
+  @EventPattern('facebook.page.deauthorized')
+  async onPageDeauthorized(
+    @Payload() data: FacebookDeauthorizedPayload,
+    @Ctx() ctx: RmqContext,
+  ): Promise<void> {
+    const channel = ctx.getChannelRef() as Channel;
+    const msg = ctx.getMessage() as Message;
+    await this.withDedup(data.eventId, channel, msg, async () => {
       const em = this.orm.em.fork();
 
       const account = await em.findOne(FacebookAccount, {
-        pageId: msg.pageId,
+        pageId: data.pageId,
         deletedAt: null,
       });
 
       if (!account) {
         this.logger.log(
-          { pageId: msg.pageId },
+          { pageId: data.pageId },
           'FacebookPageDeauthorizedConsumer: no active account found — already deauthorized or never connected',
         );
         return;
@@ -90,7 +88,7 @@ export class FacebookPageDeauthorizedConsumer extends IdempotentConsumer {
       });
 
       this.logger.log(
-        { pageId: msg.pageId, accountId: account.id },
+        { pageId: data.pageId, accountId: account.id },
         'FacebookPageDeauthorizedConsumer: account soft-deleted and active posts cancelled',
       );
     });

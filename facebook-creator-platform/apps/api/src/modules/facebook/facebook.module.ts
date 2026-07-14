@@ -32,13 +32,12 @@ import { InternalFacebookController } from './internal-api.controller';
  */
 @Module({
   imports: [IdentityModule, MikroOrmModule.forFeature([FacebookAccount])],
-  controllers: [FacebookController, FacebookCallbackController, FacebookWebhookController, InternalFacebookController],
+  controllers: [FacebookController, FacebookCallbackController, FacebookWebhookController, InternalFacebookController, FacebookPageDeauthorizedConsumer],
   providers: [
     FacebookService,
     { provide: IFacebookOAuthProvider, useClass: FacebookOAuthAdapter },
     { provide: IFacebookGraphApiProvider, useClass: FacebookGraphApiAdapter },
     { provide: IFacebookAccountRepository, useClass: MikroOrmFacebookAccountRepository },
-    FacebookPageDeauthorizedConsumer,
     FacebookTokenExpiryScheduler,
   ],
   exports: [FacebookService],

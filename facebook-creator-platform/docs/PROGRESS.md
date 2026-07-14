@@ -5,11 +5,31 @@
 
 ## Resume point
 
-- **Next task:** `TR.2` — Migrate `apps/api` publisher (`RabbitMqEventBus`) from `AmqpConnection` to `ClientProxy`.
+- **Next task:** `TR.4` — Migrate `services/billing` publisher from `AmqpConnection` to `ClientProxy`.
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.1 complete. `@nestjs/microservices@^11.1.28`, `amqplib@^2.0.1`, `amqp-connection-manager@^5.0.0` added to all 7 packages. `libs/rmq-options/` (`@fcp/rmq-options`) created with `getRmqOptions` + `getDlqRmqOptions` factories. `RMQ_PREFETCH=10`, `RMQ_DLQ_PREFETCH=5` in `.env.example`. lint: 0 errors. tsc: 0 errors on new lib. `T4.4` is paused until TR.x complete.
+- **Notes:** TR.3 complete. All 6 domain consumers + `DlqConsumer` now use `@Controller()` + `@EventPattern` + `@Payload()` + `@Ctx() RmqContext`; `channel.ack/nack` in every path via `IdempotentConsumer.withDedup`. `main.ts` wires two `connectMicroservice` calls. 4 module files updated (`providers → controllers`). 6 specs updated + 2 new specs created. 225/225 `apps/api` tests green. `T4.4` is paused until TR.x complete.
 
 ## Log
+
+### 2026-07-14 — TR.3 Migrate apps/api consumers to @EventPattern
+
+- **`apps/api/src/main.ts`:** Added `app.connectMicroservice(getRmqOptions('api_queue', configService))` + `app.connectMicroservice(getDlqRmqOptions('dlq.logger', configService))` + `await app.startAllMicroservices()` before `app.listen()`.
+- **`apps/api/src/app.module.ts`:** Moved `RabbitmqModule` import to LAST position so domain exact patterns register before `DlqConsumer`'s `#` wildcard in the shared handler Map.
+- **`libs/rmq-options/src/rmq-options.ts`:** `getDlqRmqOptions` changed from `wildcards: false` → `wildcards: true` (required for `@EventPattern('#')` to act as catch-all on the DLQ fanout exchange).
+- **`apps/api/src/common/consumers/idempotent-consumer.base.ts`:** `withDedup` signature changed from `(eventId, fn)` to `(eventId, channel, msg, fn)`; ack/nack now live inside the base class; `fn` returns `void | 'nack'` instead of `void | Nack`.
+- **6 consumer files migrated** (dlq, post-created, post-published, facebook-feed, facebook-deauthorized, billing-subscription): `@Injectable()` → `@Controller()`; `@RabbitSubscribe` → `@EventPattern('routing.key')`; handler params changed to `(@Payload() data, @Ctx() ctx: RmqContext)`; `channel.ack/nack` replaces `return new Nack(...)`.
+- **4 module files updated** (rabbitmq, posts, facebook, billing): consumers moved from `providers[]` to `controllers[]`.
+- **4 existing specs updated + 2 new specs created** (post-published, billing-subscription): mock `RmqContext` pattern with `{ getChannelRef: () => mockChannel, getMessage: () => mockMsg }`; assertions on `channel.ack/nack` instead of return values; transient error path now asserts `channel.nack(mockMsg, false, true)` instead of `rejects.toThrow`.
+- **Known limitation recorded in `DlqConsumer` JSDoc:** Messages with a `pattern` field matching a registered domain consumer route to that consumer, not `DlqConsumer`, because both transports share the NestJS handler registry. Acceptable for training project.
+- Tests: 225/225 `apps/api` passing. Lint: 0 errors.
+
+### 2026-07-14 — TR.2 Migrate apps/api publisher to ClientProxy
+
+- **`apps/api/src/common/events/rabbitmq-event-bus.ts`:** Replaced `AmqpConnection` from `@golevelup` with `@Inject('FCP_EVENT_BUS') ClientProxy` from `@nestjs/microservices`. Publish call changed from `await this.amqp.publish(exchange, key, payload)` to `await lastValueFrom(this.client.emit(routingKey, payload), { defaultValue: undefined })`. `FCP_EVENTS_EXCHANGE` constant retained for messaging log. New `FCP_EVENT_BUS` token constant exported.
+- **`apps/api/src/infrastructure/rabbitmq/rabbitmq.module.ts`:** Removed `RabbitMQModule.forRootAsync` (and `@golevelup` import). Added `ClientsModule.registerAsync` with `name: 'FCP_EVENT_BUS'`, `transport: Transport.RMQ`, `exchange: 'fcp.events'`, `exchangeType: 'topic'`, `noAssert: true` (publisher never asserts its own queue). Removed `RabbitMQModule` from exports. `DlqConsumer` stays in providers (inert until TR.3). Updated JSDoc.
+- **`apps/api/src/common/events/rabbitmq-event-bus.spec.ts`:** Replaced `AmqpConnection` mock with `ClientProxy` stub. `emit` mocked to return `of(undefined)` (happy path) and `throwError()` (error path). Assertions updated from 3-arg `amqp.publish(exchange, key, payload)` to 2-arg `client.emit(key, payload)`.
+- **Decision:** `noAssert: true` on the publisher `ClientProxy` — prevents NestJS from asserting a consumer queue on the broker. The `fcp.events` exchange is still asserted by `ClientRMQ.setupChannel` on connection. Consumer queue assertion happens in TR.3 via `connectMicroservice`.
+- Tests: 215/215 `apps/api` passing. Lint: 0 errors.
 
 ### 2026-07-14 — TR.1 @nestjs/microservices + AMQP peer deps + shared RMQ options factory
 
@@ -188,8 +208,6 @@
   - `MONGODB_URL` → `MONGODB_URI` in `app.module.ts` and `mikro-orm.config.ts` to match the existing env var name.
   - Root `migration:audit` script removed from `package.json` (MongoDB does not support SQL migrations; indexes are created via `ensureIndexes: true` on startup).
 - **Setup:** Add `MONGODB_URI=mongodb://localhost:27017/fcp_audit` and `AUDIT_PORT=3003` to `.env`. Indexes created automatically on startup.
-
-
 
 ### 2026-07-06 — T3.3 Analytics service
 
