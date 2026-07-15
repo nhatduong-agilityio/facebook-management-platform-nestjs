@@ -44,6 +44,9 @@ importers:
       '@fcp/billing-contracts':
         specifier: workspace:*
         version: link:../../libs/billing-contracts
+      '@fcp/constants':
+        specifier: workspace:*
+        version: link:../../libs/constants
       '@fcp/rmq-options':
         specifier: workspace:*
         version: link:../../libs/rmq-options
@@ -190,8 +193,13 @@ importers:
         specifier: ~5.9.3
         version: 5.9.3
 
+  libs/constants: {}
+
   libs/rmq-options:
     dependencies:
+      '@fcp/constants':
+        specifier: workspace:*
+        version: link:../constants
       '@nestjs/config':
         specifier: ^4.0.4
         version: 4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
@@ -211,6 +219,9 @@ importers:
       '@fcp/analytics-contracts':
         specifier: workspace:*
         version: link:../../libs/analytics-contracts
+      '@fcp/constants':
+        specifier: workspace:*
+        version: link:../../libs/constants
       '@fcp/rmq-options':
         specifier: workspace:*
         version: link:../../libs/rmq-options
@@ -429,6 +440,9 @@ importers:
       '@fcp/billing-contracts':
         specifier: workspace:*
         version: link:../../libs/billing-contracts
+      '@fcp/constants':
+        specifier: workspace:*
+        version: link:../../libs/constants
       '@fcp/rmq-options':
         specifier: workspace:*
         version: link:../../libs/rmq-options
@@ -547,6 +561,9 @@ importers:
       '@fcp/billing-contracts':
         specifier: workspace:*
         version: link:../../libs/billing-contracts
+      '@fcp/constants':
+        specifier: workspace:*
+        version: link:../../libs/constants
       '@fcp/rmq-options':
         specifier: workspace:*
         version: link:../../libs/rmq-options
@@ -665,6 +682,9 @@ importers:
       '@fcp/billing-contracts':
         specifier: workspace:*
         version: link:../../libs/billing-contracts
+      '@fcp/constants':
+        specifier: workspace:*
+        version: link:../../libs/constants
       '@fcp/rmq-options':
         specifier: workspace:*
         version: link:../../libs/rmq-options
@@ -777,6 +797,9 @@ importers:
 
   services/search:
     dependencies:
+      '@fcp/constants':
+        specifier: workspace:*
+        version: link:../../libs/constants
       '@fcp/rmq-options':
         specifier: workspace:*
         version: link:../../libs/rmq-options

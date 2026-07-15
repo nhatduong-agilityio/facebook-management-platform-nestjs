@@ -1,6 +1,7 @@
 import { Transport } from '@nestjs/microservices';
 import type { MicroserviceOptions } from '@nestjs/microservices';
 import type { ConfigService } from '@nestjs/config';
+import { FCP_EVENTS_EXCHANGE, FCP_DLQ_EXCHANGE } from '@fcp/constants';
 
 /**
  * Returns `MicroserviceOptions` for a topic-exchange consumer bound to `fcp.events`.
@@ -14,10 +15,7 @@ import type { ConfigService } from '@nestjs/config';
  * @param queue - Name of the durable queue to bind and consume from.
  * @param configService - NestJS ConfigService for reading `RABBITMQ_URL` and `RMQ_PREFETCH`.
  */
-export function getRmqOptions(
-  queue: string,
-  configService: ConfigService,
-): MicroserviceOptions {
+export function getRmqOptions(queue: string, configService: ConfigService): MicroserviceOptions {
   return {
     transport: Transport.RMQ,
     options: {
@@ -26,12 +24,12 @@ export function getRmqOptions(
       noAck: false,
       prefetchCount: configService.get<number>('RMQ_PREFETCH', 10),
       wildcards: true,
-      exchange: 'fcp.events',
+      exchange: FCP_EVENTS_EXCHANGE,
       exchangeType: 'topic',
       queueOptions: {
         durable: true,
         arguments: {
-          'x-dead-letter-exchange': 'fcp.dlq',
+          'x-dead-letter-exchange': FCP_DLQ_EXCHANGE,
         },
       },
     },
@@ -51,10 +49,7 @@ export function getRmqOptions(
  * @param queue - Name of the durable DLQ queue (e.g. `'dlq.logger'`).
  * @param configService - NestJS ConfigService for reading `RABBITMQ_URL` and `RMQ_DLQ_PREFETCH`.
  */
-export function getDlqRmqOptions(
-  queue: string,
-  configService: ConfigService,
-): MicroserviceOptions {
+export function getDlqRmqOptions(queue: string, configService: ConfigService): MicroserviceOptions {
   return {
     transport: Transport.RMQ,
     options: {
@@ -63,7 +58,7 @@ export function getDlqRmqOptions(
       noAck: false,
       prefetchCount: configService.get<number>('RMQ_DLQ_PREFETCH', 5),
       wildcards: true,
-      exchange: 'fcp.dlq',
+      exchange: FCP_DLQ_EXCHANGE,
       exchangeType: 'fanout',
       queueOptions: {
         durable: true,

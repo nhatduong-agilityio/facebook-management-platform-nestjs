@@ -7,6 +7,7 @@ import { Migrator } from '@mikro-orm/migrations';
 import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
 import { LoggerModule } from 'nestjs-pino';
 import Redis from 'ioredis';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import { Notification } from './entities/notification.entity';
 import { NotificationRecipient } from './entities/notification-recipient.entity';
 import { WorkspaceMemberProjection } from './entities/workspace-member-projection.entity';
@@ -22,13 +23,13 @@ import { NotificationModule } from './notification.module';
 @Module({
   providers: [
     {
-      provide: Redis,
+      provide: IOREDIS_CLIENT,
       useFactory: (config: ConfigService) =>
         new Redis(config.get<string>('REDIS_URL', 'redis://localhost:6379')),
       inject: [ConfigService],
     },
   ],
-  exports: [Redis],
+  exports: [IOREDIS_CLIENT],
 })
 class NotificationRedisModule {}
 

@@ -3,7 +3,7 @@ import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
 import type { Channel, Message } from 'amqplib';
-import { IOREDIS_CLIENT } from '../../../infrastructure/rabbitmq/rabbitmq.module';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import { IdempotentConsumer } from '../../../common/consumers/idempotent-consumer.base';
 
 /** Shape of the message payload published by `PostPublishedEvent`. */

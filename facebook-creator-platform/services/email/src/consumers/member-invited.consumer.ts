@@ -1,10 +1,11 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Inject } from '@nestjs/common';
 import { Ctx, EventPattern, Payload } from '@nestjs/microservices';
 import { RmqContext } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import type { Channel, Message } from 'amqplib';
 import { IEmailProvider } from '../ports/email.provider.port';
 import { IEmailDeliveryLogRepository } from '../ports/email-delivery-log.repository.port';
@@ -50,7 +51,7 @@ export class MemberInvitedEmailConsumer {
     private readonly internalApi: IInternalApiClient,
     private readonly emailProvider: IEmailProvider,
     private readonly emailLogRepo: IEmailDeliveryLogRepository,
-    private readonly redis: Redis,
+    @Inject(IOREDIS_CLIENT) private readonly redis: Redis,
     private readonly logger: Logger,
     private readonly config: ConfigService,
   ) {}

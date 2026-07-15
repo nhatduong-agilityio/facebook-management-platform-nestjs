@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { Transport } from '@nestjs/microservices';
 import type { MicroserviceOptions } from '@nestjs/microservices';
 import { Logger } from 'nestjs-pino';
+import { FCP_EVENTS_EXCHANGE, FCP_DLQ_EXCHANGE } from '@fcp/constants';
 import { AppModule } from './app.module';
 
 /**
@@ -22,12 +23,12 @@ async function bootstrap() {
       noAck: false,
       prefetchCount: Number(process.env['RMQ_PREFETCH'] ?? 10),
       wildcards: true,
-      exchange: 'fcp.events',
+      exchange: FCP_EVENTS_EXCHANGE,
       exchangeType: 'topic',
       queueOptions: {
         durable: true,
         arguments: {
-          'x-dead-letter-exchange': 'fcp.dlq',
+          'x-dead-letter-exchange': FCP_DLQ_EXCHANGE,
         },
       },
     },

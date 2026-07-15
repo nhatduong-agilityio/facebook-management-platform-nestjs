@@ -7,6 +7,7 @@ import { Migrator } from '@mikro-orm/migrations';
 import { TsMorphMetadataProvider } from '@mikro-orm/reflection';
 import { LoggerModule } from 'nestjs-pino';
 import Redis from 'ioredis';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import { EmailDeliveryLog } from './entities/email-delivery-log.entity';
 import { EmailModule } from './email.module';
 
@@ -19,13 +20,13 @@ import { EmailModule } from './email.module';
 @Module({
   providers: [
     {
-      provide: Redis,
+      provide: IOREDIS_CLIENT,
       useFactory: (config: ConfigService) =>
         new Redis(config.get<string>('REDIS_URL', 'redis://localhost:6379')),
       inject: [ConfigService],
     },
   ],
-  exports: [Redis],
+  exports: [IOREDIS_CLIENT],
 })
 class EmailRedisModule {}
 

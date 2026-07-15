@@ -4,7 +4,7 @@ import { MikroORM } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
 import type { Channel, Message } from 'amqplib';
-import { IOREDIS_CLIENT } from '../../../infrastructure/rabbitmq/rabbitmq.module';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import { IdempotentConsumer } from '../../../common/consumers/idempotent-consumer.base';
 import { IEventBus } from '../../../common/events/event-bus.port';
 import { Post } from '../entities/post.entity';

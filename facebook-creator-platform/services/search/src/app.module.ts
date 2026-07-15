@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import Redis from 'ioredis';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import { SearchModule } from './search.module';
 
 /**
@@ -16,13 +17,13 @@ import { SearchModule } from './search.module';
 @Module({
   providers: [
     {
-      provide: Redis,
+      provide: IOREDIS_CLIENT,
       useFactory: (config: ConfigService) =>
         new Redis(config.get<string>('REDIS_URL', 'redis://localhost:6379')),
       inject: [ConfigService],
     },
   ],
-  exports: [Redis],
+  exports: [IOREDIS_CLIENT],
 })
 class SearchRedisModule {}
 

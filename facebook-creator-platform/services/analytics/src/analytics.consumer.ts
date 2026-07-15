@@ -1,9 +1,10 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Inject } from '@nestjs/common';
 import { Ctx, EventPattern, Payload } from '@nestjs/microservices';
 import { RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import type { Channel, Message } from 'amqplib';
 import type { PostPublishedPayload } from '@fcp/analytics-contracts';
 import { IPostMetricsRepository } from './ports/post-metrics.repository.port';
@@ -36,7 +37,7 @@ export class PostPublishedConsumer {
     private readonly metrics: IPostMetricsRepository,
     private readonly internalApi: IInternalApiClient,
     private readonly insights: IFacebookInsightsProvider,
-    private readonly redis: Redis,
+    @Inject(IOREDIS_CLIENT) private readonly redis: Redis,
     private readonly logger: Logger,
   ) {}
 

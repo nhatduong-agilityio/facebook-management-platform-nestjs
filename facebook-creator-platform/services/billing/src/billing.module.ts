@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { FCP_EVENTS_EXCHANGE } from '@fcp/constants';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { Plan } from './entities/plan.entity';
 import { Subscription } from './entities/subscription.entity';
@@ -49,7 +50,7 @@ import { BillingWebhookController } from './billing.webhook.controller';
             urls: [config.getOrThrow<string>('RABBITMQ_URL')],
             queue: '',
             noAssert: true,
-            exchange: 'fcp.events',
+            exchange: FCP_EVENTS_EXCHANGE,
             exchangeType: 'topic',
           },
         }),

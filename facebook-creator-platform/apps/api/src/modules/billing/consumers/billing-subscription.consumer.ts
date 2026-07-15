@@ -4,7 +4,7 @@ import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
 import type { Channel, Message } from 'amqplib';
 import type { SubscriptionActivatedPayload, SubscriptionCancelledPayload } from '@fcp/billing-contracts';
-import { IOREDIS_CLIENT } from '../../../infrastructure/rabbitmq/rabbitmq.module';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import { IdempotentConsumer } from '../../../common/consumers/idempotent-consumer.base';
 
 /**
