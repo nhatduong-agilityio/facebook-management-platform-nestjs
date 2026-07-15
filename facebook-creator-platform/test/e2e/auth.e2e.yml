@@ -1,0 +1,86 @@
+config:
+  # Default: local Docker stack. Override for other envs:
+  #   artillery run --target http://staging.example.com test/e2e/auth.e2e.yml
+  target: "http://localhost:3000"
+  phases:
+    - duration: 1
+      arrivalCount: 1
+  plugins:
+    expect:
+      outputFormat: prettyError
+      reportFailuresAsErrors: true
+  defaults:
+    headers:
+      content-type: "application/json"
+
+# E2E contract tests for authentication + identity endpoints.
+#
+# Run:
+#   API_URL=http://localhost:3000 TEST_JWT=<token> \
+#     artillery run test/e2e/auth.e2e.yml
+#
+# Required env:
+#   API_URL  — e.g. http://localhost:3000
+#   TEST_JWT — a valid Clerk JWT; obtain via:
+#                curl -s -X POST $API_URL/api/v1/dev-auth/token \
+#                  -H 'content-type: application/json' \
+#                  -d '{"email":"you@example.com"}' | jq -r '.accessToken'
+#              (NODE_ENV must NOT be production for dev-auth to be mounted)
+
+scenarios:
+  - name: "auth contract tests"
+    flow:
+      # ── Health ──────────────────────────────────────────────────────────────
+      - get:
+          url: "/api/v1/health"
+          capture:
+            - json: "$.status"
+              as: "healthStatus"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "status"
+            - equals: ["{{ healthStatus }}", "ok"]
+
+      # ── Unauthenticated paths return 401 ────────────────────────────────────
+      - get:
+          url: "/api/v1/auth/me"
+          expect:
+            - statusCode: 401
+
+      - get:
+          url: "/api/v1/workspaces"
+          expect:
+            - statusCode: 401
+
+      # ── Invalid token returns 401 (not 500) ─────────────────────────────────
+      - get:
+          url: "/api/v1/auth/me"
+          headers:
+            authorization: "Bearer not.a.real.token"
+          expect:
+            - statusCode: 401
+            - notStatusCode: [500]
+
+      # ── Valid JWT returns user profile; no PII tokens in response ───────────
+      - get:
+          url: "/api/v1/auth/me"
+          headers:
+            authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "id"
+            - hasProperty: "email"
+            - hasProperty: "status"
+            - notHasProperty: "accessToken"
+            - notHasProperty: "pageToken"
+
+      # ── Authenticated workspace list is accessible ───────────────────────────
+      - get:
+          url: "/api/v1/workspaces"
+          headers:
+            authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+          expect:
+            - statusCode: 200
+            - contentType: json

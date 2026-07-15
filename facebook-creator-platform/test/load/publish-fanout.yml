@@ -1,15 +1,19 @@
 config:
-  target: "{{ $processEnvironment.API_URL }}"
+  # Default: local Docker stack. Override for staging/prod:
+  #   artillery run --target https://staging.example.com test/load/publish-fanout.yml
+  target: "http://localhost:3000"
+  processor: "../helpers/processor.cjs"
   phases:
     - duration: 30
       arrivalRate: 2
-      name: "seed-scheduled-posts"
-    - duration: 90
-      arrivalRate: 0
-      name: "wait-for-publish-job"
-    - duration: 30
-      arrivalRate: 2
-      name: "observe-outcomes"
+      name: "seed"
+  plugins:
+    # expect plugin must be declared — without it `expect:` blocks are silently ignored.
+    expect:
+      outputFormat: prettyError
+      reportFailuresAsErrors: true
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
   ensure:
     maxErrorRate: 1
   defaults:
@@ -17,49 +21,74 @@ config:
       authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
       content-type: "application/json"
 
-# Publish fan-out scenario (NFR: burst publish, consumers keep up, no DLQ growth).
+# Publish fan-out scenario (NFR: burst publish, all consumers keep up, no DLQ growth).
 #
-# Phase 1 — seed: create posts with scheduledAt = now() so the PublishJob picks
-#   them up on the next cron tick (every minute).
-# Phase 2 — wait: 90s idle lets the cron fire once and consumers process events.
-# Phase 3 — observe: poll each post expecting status = 'publishing' or 'published'.
-#   maxErrorRate < 1% ensures fan-out consumers (Audit, Analytics, Notification,
-#   Search, Email) did not produce DLQ messages (errors would surface as 5xx on
-#   the re-poll or as DLQ depth growth visible in the RabbitMQ management UI).
+# Each virtual user:
+#   1. Creates a draft post.
+#   2. Calls the processor to compute scheduledAt = now + 60 s (ISO-8601 string).
+#   3. Transitions the post to `scheduled` with that scheduledAt value.
+#   4. Waits 120 s — enough for the EVERY_MINUTE PublishJob to fire once after
+#      scheduledAt passes and process the post.
+#   5. Polls the post; expects HTTP 200.  After the run inspect the final `status`
+#      field in the Artillery JSON report (publishing | published | failed).
 #
-# Requires env:
+# Fan-out consumer health is NOT directly asserted here because consumers run
+# asynchronously.  After the run, verify that:
+#   - RabbitMQ management UI (http://localhost:15672) shows fcp.dlq message count
+#     has NOT grown during the test window.
+#   - services/audit, analytics, notification, search, and email logs show no errors.
+#
+# Run:
+#   pnpm load:fanout
+# or:
+#   API_URL=http://localhost:3000 TEST_JWT=<token> WORKSPACE_ID=<uuid> \
+#     artillery run test/load/publish-fanout.yml -o test/load/reports/fanout.json
+#
+# Required env:
 #   API_URL      — e.g. http://localhost:3000
-#   TEST_JWT     — a valid Clerk JWT with Owner/Editor role
+#   TEST_JWT     — a valid Clerk JWT with Owner or Editor role on the test workspace
 #   WORKSPACE_ID — UUID of a seeded test workspace with a connected Facebook Page
-#
-# Run: pnpm load:fanout
-# or:  API_URL=http://localhost:3000 TEST_JWT=<token> WORKSPACE_ID=<uuid> pnpm load:fanout
-#
-# After the run inspect RabbitMQ management (http://localhost:15672) to confirm
-# fcp.dlq message count has not grown during the test window.
+#                  (posts will fail with `failed` status if no Page is connected —
+#                   that is still useful for verifying consumer error-handling)
+
 scenarios:
   - name: "schedule post then observe publish outcome"
     flow:
+      # 1 — Create draft post
       - post:
+          name: "POST /workspaces/:id/posts"
           url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts"
           json:
-            content: "Fanout load test {{ $timestamp }}"
-            scheduledAt: "{{ $timestamp }}"
+            content: "Fanout load test {{ $uuid }}"
           capture:
             - json: "$.id"
               as: "postId"
           expect:
             - statusCode: 201
-      - think: 90
+
+      # 2 — Compute scheduledAt = now + 60 s (must be a future ISO-8601 string per BR-F06)
+      - function: "setScheduledAt"
+
+      # 3 — Transition draft → scheduled
       - patch:
+          name: "PATCH /posts/:id/status (→ scheduled)"
           url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts/{{ postId }}/status"
+          ifTrue: "postId"
           json:
             status: "scheduled"
-          ifTrue: "postId"
+            scheduledAt: "{{ scheduledAt }}"
           expect:
-            - statusCode: [200, 409]
+            - statusCode: 200
+
+      # 4 — Wait for the EVERY_MINUTE publish cron to fire after scheduledAt
+      - think: 120
+
+      # 5 — Observe outcome; status is publishing | published | failed depending
+      #     on whether a real Facebook Page is connected.
       - get:
+          name: "GET /posts/:id (observe publish outcome)"
           url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts/{{ postId }}"
           ifTrue: "postId"
           expect:
             - statusCode: 200
+            - notStatusCode: [500]
