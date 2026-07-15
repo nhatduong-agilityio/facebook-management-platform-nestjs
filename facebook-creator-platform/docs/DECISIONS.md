@@ -649,6 +649,7 @@ await app.listen(port);
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-14 | **ADR-086 Redis injection token standardised to Symbol.** All 4 services (`notification`, `search`, `analytics`, `email`) now export `IOREDIS_CLIENT = Symbol('IOREDIS_CLIENT')` from a per-service `redis.constants.ts`; all 22 consumer constructors use `@Inject(IOREDIS_CLIENT)`. Eliminates class-as-token fragility (package renames break injection silently). Matches `apps/api` pattern (ADR-063). |
 | 2026-07-14 | **TR.10 complete. ADR-085:** Full migration ADR written; `@golevelup → @nestjs/microservices` across 8 packages documented; known limitations (no publisher-confirms, no topology assertion at boot) recorded; 345/345 tests, lint clean. |
 | 2026-07-14 | **TR.9 complete.** `services/notification` hybrid bootstrap (ADR-084); `NotificationMessagingModule` deleted; 11 consumers use `@EventPattern` + `channel.ack/nack`; 3 projection consumers gained `MikroORM` + `RequestContext.create` (their repository injects `EntityManager` directly). 40/40 notification tests, lint clean. |
 | 2026-07-14 | **TR.8 complete.** `services/search` hybrid bootstrap (ADR-084); `SearchMessagingModule` deleted; all 5 consumers use `@EventPattern` + `channel.ack/nack`; no `RequestContext.create` (Algolia-only, no ORM). 15/15 search tests, lint clean. |

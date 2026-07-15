@@ -1,8 +1,9 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Inject } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import type { Channel, Message } from 'amqplib';
 import { NotificationOrchestrator } from '../notification-orchestrator';
 
@@ -37,7 +38,7 @@ export class PostPublishedNotificationConsumer {
   constructor(
     private readonly orm: MikroORM,
     private readonly orchestrator: NotificationOrchestrator,
-    private readonly redis: Redis,
+    @Inject(IOREDIS_CLIENT) private readonly redis: Redis,
     private readonly logger: Logger,
   ) {}
 
@@ -58,7 +59,10 @@ export class PostPublishedNotificationConsumer {
     const dedupKey = `dedup:notification:${data.eventId}`;
     const isNew = await this.redis.set(dedupKey, '1', 'EX', 86400, 'NX');
     if (!isNew) {
-      this.logger.log({ eventId: data.eventId }, 'PostPublishedNotificationConsumer: duplicate, skipping');
+      this.logger.log(
+        { eventId: data.eventId },
+        'PostPublishedNotificationConsumer: duplicate, skipping',
+      );
       channel.ack(msg);
       return;
     }
@@ -74,11 +78,17 @@ export class PostPublishedNotificationConsumer {
           true,
         );
       });
-      this.logger.log({ postId: data.postId, eventId: data.eventId }, 'PostPublishedNotificationConsumer: notified');
+      this.logger.log(
+        { postId: data.postId, eventId: data.eventId },
+        'PostPublishedNotificationConsumer: notified',
+      );
       channel.ack(msg);
     } catch (err) {
       await this.redis.del(dedupKey);
-      this.logger.error({ eventId: data.eventId, err }, 'PostPublishedNotificationConsumer: failed');
+      this.logger.error(
+        { eventId: data.eventId, err },
+        'PostPublishedNotificationConsumer: failed',
+      );
       channel.nack(msg, false, true);
     }
   }

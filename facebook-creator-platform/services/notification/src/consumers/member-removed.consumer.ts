@@ -1,8 +1,9 @@
-import { Controller } from '@nestjs/common';
+import { Controller, Inject } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { MikroORM, RequestContext } from '@mikro-orm/core';
 import { Logger } from 'nestjs-pino';
 import { Redis } from 'ioredis';
+import { IOREDIS_CLIENT } from '@fcp/constants';
 import type { Channel, Message } from 'amqplib';
 import { INotificationRepository } from '../ports/notification.repository.port';
 
@@ -34,7 +35,7 @@ export class MemberRemovedConsumer {
   constructor(
     private readonly orm: MikroORM,
     private readonly repo: INotificationRepository,
-    private readonly redis: Redis,
+    @Inject(IOREDIS_CLIENT) private readonly redis: Redis,
     private readonly logger: Logger,
   ) {}
 

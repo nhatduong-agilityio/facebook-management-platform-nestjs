@@ -1,11 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom } from 'rxjs';
+import { FCP_EVENTS_EXCHANGE } from '@fcp/constants';
 import { DomainEvent, IEventBus } from './event-bus.port';
 import { IMessagingLogRepository } from './messaging-log.port';
-
-/** Exchange name for all FCP domain events. */
-export const FCP_EVENTS_EXCHANGE = 'fcp.events';
 
 /** Injection token for the RMQ `ClientProxy` publisher. */
 export const FCP_EVENT_BUS = 'FCP_EVENT_BUS';
