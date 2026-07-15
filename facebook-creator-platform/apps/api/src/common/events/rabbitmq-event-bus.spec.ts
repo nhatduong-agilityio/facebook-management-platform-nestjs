@@ -1,7 +1,8 @@
 import { of, throwError } from 'rxjs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ClientProxy } from '@nestjs/microservices';
-import { RabbitMqEventBus, FCP_EVENTS_EXCHANGE } from './rabbitmq-event-bus';
+import { FCP_EVENTS_EXCHANGE } from '@fcp/constants';
+import { RabbitMqEventBus } from './rabbitmq-event-bus';
 import { IMessagingLogRepository } from './messaging-log.port';
 import { PostCreatedEvent } from '../../modules/posts/events/post-created.event';
 import { PostPublishedEvent } from '../../modules/posts/events/post-published.event';

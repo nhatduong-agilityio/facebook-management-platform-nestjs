@@ -116,7 +116,7 @@ For blocked tasks always append an inline note on the same line:
   Note: `billing.subscription_activated` and `billing.subscription_cancelled` do NOT trigger emails (no matching `email_type` in DDL); handled by Notification Service (in-app only).
 
   **Dedup** (BR-R08): `dedupe_key = '{eventId}:{recipientEmail}'`, UNIQUE on `email_delivery_logs`. DoD: all consumers create log rows; BullMQ retries 3× then marks failed; dedup prevents double-send on replay; `related_entity_type/id` populated; tests for all consumers + retry behavior.
-- [ ] **T4.4 Cross-cutting tests + docs** (~6h) — unit + API tests fill gaps; Swagger complete; ADRs current. DoD: coverage targets met; Swagger builds.
+- [x] **T4.4 Cross-cutting tests + docs** (~6h) — unit + API tests fill gaps; Swagger complete; ADRs current. DoD: coverage targets met; Swagger builds.
 
 ## RabbitMQ Refactor — @golevelup → Transport.RMQ
 

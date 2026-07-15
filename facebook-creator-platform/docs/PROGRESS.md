@@ -7,9 +7,19 @@
 
 - **Next task:** `T5.1` — MikroORM/UoW verification pass (Week 5 hardening).
 - **Branch:** `nestjs-practice`
-- **Notes:** TR.11 complete. RabbitMQ refactor track (TR.1–TR.11) finished. `@golevelup/nestjs-rabbitmq` removed from all 7 package.json files; `@types/amqplib` removed from root devDependencies. Lockfile updated (9 packages removed). JSDoc comments referencing `@golevelup` cleaned from 5 `app.module.ts` files. `grep -r golevelup .` → 0 hits in source. All 7 packages build; 345/345 tests; 0 lint errors.
+- **Notes:** T4.4 complete. 13 new controller spec files added to `apps/api`; 1 broken test fixed (`rabbitmq-event-bus.spec.ts` imported `FCP_EVENTS_EXCHANGE` from the wrong module after it moved to `@fcp/constants`). Total: 411/411 tests, 0 lint errors. ADRs current.
 
 ## Log
+
+### 2026-07-15 — T4.4 Cross-cutting tests + docs
+
+- **`apps/api/src/common/events/rabbitmq-event-bus.spec.ts`** (FIXED): Changed `FCP_EVENTS_EXCHANGE` import from `'./rabbitmq-event-bus'` to `'@fcp/constants'` — the constant moved to the shared constants lib in TR.1 but the spec was not updated, causing a `undefined !== 'fcp.events'` mismatch.
+- **13 new spec files** added (`identity.controller`, `facebook.controller`, `facebook-callback.controller`, `facebook-webhook.controller`, `internal-api.controller`, `posts.controller`, `workspace.controller`, `billing.controller`, `billing-redirect.controller`, `notification.controller`, `search.controller`, `dev-auth.controller`): Cover all previously untested controllers in `apps/api`. Each spec covers the happy path and at least one primary error path per endpoint.
+- **Swagger**: All existing public controllers already had `@ApiResponse` decorators; no gaps found.
+- **ADRs**: DECISIONS.md current as of TR.11 (2026-07-14); no new decisions introduced in T4.4.
+- Tests: 291/291 `apps/api`, 411/411 total workspace. Lint: 0 errors.
+
+
 
 ### 2026-07-14 — TR.11 Complete @golevelup removal
 
