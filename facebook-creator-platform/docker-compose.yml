@@ -1,4 +1,35 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Facebook Creator Platform — Docker Compose
+#
+# Usage:
+#   docker compose up -d                # start everything
+#   docker compose up -d postgres redis rabbitmq mongodb   # infra only (local dev)
+#   docker compose logs -f api          # tail a specific service
+#
+# Before first run:
+#   1. Copy .env.example → .env and fill in secrets (Clerk, Stripe, Facebook, etc.)
+#   2. Build the app image once: docker compose build
+#   3. Run migrations (see bottom of this file for commands)
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: fcp-app
+  restart: unless-stopped
+  # Secrets (Clerk, Stripe, Facebook, Algolia, PII key, etc.) come from .env.
+  # Infrastructure URLs defined below override the localhost values in .env.
+  env_file: .env
+  networks:
+    - fcp
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+
 services:
+  # ── Infrastructure ───────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:16
     environment:
@@ -9,6 +40,8 @@ services:
       - '5432:5432'
     volumes:
       - pg_data:/var/lib/postgresql/data
+    networks:
+      - fcp
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U fcp']
       interval: 5s
@@ -21,6 +54,8 @@ services:
       - '27017:27017'
     volumes:
       - mongo_data:/data/db
+    networks:
+      - fcp
     healthcheck:
       test: ['CMD', 'mongosh', '--eval', 'db.adminCommand("ping")']
       interval: 5s
@@ -31,6 +66,8 @@ services:
     image: redis:7-alpine
     ports:
       - '6379:6379'
+    networks:
+      - fcp
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -45,12 +82,206 @@ services:
     ports:
       - '5672:5672'
       - '15672:15672'
+    volumes:
+      - rmq_data:/var/lib/rabbitmq
+    networks:
+      - fcp
     healthcheck:
       test: ['CMD', 'rabbitmq-diagnostics', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ── Application services ─────────────────────────────────────────────────────
+
+  billing:
+    <<: *app
+    command: node services/billing/dist/main.js
+    ports:
+      - '3001:3001'
+    environment:
+      BILLING_PORT: '3001'
+      DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z localhost 3001']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  analytics:
+    <<: *app
+    command: node services/analytics/dist/main.js
+    ports:
+      - '3002:3002'
+    environment:
+      ANALYTICS_PORT: '3002'
+      DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z localhost 3002']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  audit:
+    <<: *app
+    command: node services/audit/dist/main.js
+    ports:
+      - '3003:3003'
+    environment:
+      AUDIT_PORT: '3003'
+      MONGODB_URI: mongodb://mongodb:27017/fcp_audit
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z localhost 3003']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  search:
+    <<: *app
+    command: node services/search/dist/main.js
+    ports:
+      - '3004:3004'
+    environment:
+      SEARCH_PORT: '3004'
+      DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z localhost 3004']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  notification:
+    <<: *app
+    command: node services/notification/dist/main.js
+    ports:
+      - '3005:3005'
+    environment:
+      NOTIFICATION_PORT: '3005'
+      DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z localhost 3005']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  email:
+    <<: *app
+    command: node services/email/dist/main.js
+    environment:
+      DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    command: node apps/api/dist/main.js
+    ports:
+      - '3000:3000'
+    environment:
+      PORT: '3000'
+      DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
+      MONGODB_URI: mongodb://mongodb:27017/fcp_audit
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      # Internal service URLs — use Docker service names, not localhost
+      BILLING_SERVICE_URL: http://billing:3001/api/v1
+      ANALYTICS_SERVICE_URL: http://analytics:3002/api/v1
+      AUDIT_SERVICE_URL: http://audit:3003/api/v1
+      SEARCH_SERVICE_URL: http://search:3004/api/v1
+      NOTIFICATION_SERVICE_URL: http://notification:3005/api/v1
+      # Stripe browser redirects must be browser-reachable (localhost, not docker hostname)
+      BILLING_SUCCESS_URL: http://localhost:3000/api/v1/billing/success
+      BILLING_CANCEL_URL: http://localhost:3000/api/v1/billing/cancel
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      billing:
+        condition: service_healthy
+      analytics:
+        condition: service_healthy
+      audit:
+        condition: service_healthy
+      search:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/v1/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Migrations (run once after `docker compose up -d`):
+#
+#   docker compose run --rm --no-deps api node -e \
+#     "require('./apps/api/dist/database/run-migrations').runMigrations()"
+#
+# Or from the host with pnpm (faster for dev):
+#   pnpm migration              # core schema (apps/api)
+#   pnpm migration:billing      # billing schema
+#   pnpm migration:analytics    # analytics schema
+#   pnpm migration:notification # notification schema
+#   pnpm migration:email        # email schema (delivery log)
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  fcp:
+    driver: bridge
+
 volumes:
   pg_data:
   mongo_data:
+  rmq_data:
