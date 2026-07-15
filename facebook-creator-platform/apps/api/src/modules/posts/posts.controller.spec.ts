@@ -69,20 +69,32 @@ describe('PostsController', () => {
   });
 
   describe('listPosts', () => {
-    it('returns an array of PostResponseDtos', async () => {
-      vi.mocked(service.listPosts).mockResolvedValue(ok([makePost(), makePost({ id: 'post-2' })]));
+    it('returns a PostsPageDto with data and nextCursor', async () => {
+      vi.mocked(service.listPosts).mockResolvedValue(
+        ok({ data: [makePost(), makePost({ id: 'post-2' })], nextCursor: 'cursor123' }),
+      );
 
-      const result = await controller.listPosts('ws-1');
+      const result = await controller.listPosts('ws-1', {});
 
-      expect(result).toHaveLength(2);
+      expect(result.data).toHaveLength(2);
+      expect(result.nextCursor).toBe('cursor123');
     });
 
-    it('returns an empty array when there are no posts', async () => {
-      vi.mocked(service.listPosts).mockResolvedValue(ok([]));
+    it('returns empty data and null nextCursor on last page', async () => {
+      vi.mocked(service.listPosts).mockResolvedValue(ok({ data: [], nextCursor: null }));
 
-      const result = await controller.listPosts('ws-1');
+      const result = await controller.listPosts('ws-1', {});
 
-      expect(result).toHaveLength(0);
+      expect(result.data).toHaveLength(0);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('passes limit and cursor query params to the service', async () => {
+      vi.mocked(service.listPosts).mockResolvedValue(ok({ data: [], nextCursor: null }));
+
+      await controller.listPosts('ws-1', { limit: 10, cursor: 'abc' });
+
+      expect(service.listPosts).toHaveBeenCalledWith('ws-1', { limit: 10, cursor: 'abc' });
     });
   });
 

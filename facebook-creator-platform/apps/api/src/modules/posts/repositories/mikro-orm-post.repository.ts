@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { EntityManager, EntityRepository } from '@mikro-orm/core';
+import { EntityManager, EntityRepository, type FilterQuery } from '@mikro-orm/core';
 import { Post, type CreatePostData } from '../entities/post.entity';
-import { IPostRepository } from '../ports/post.repository.port';
+import {
+  IPostRepository,
+  type ListPostsQuery,
+  type PostsPage,
+} from '../ports/post.repository.port';
 import { Workspace } from '../../workspace/entities/workspace.entity';
 import { FacebookAccount } from '../../facebook/entities/facebook-account.entity';
 
@@ -33,11 +37,39 @@ export class MikroOrmPostRepository extends IPostRepository {
   }
 
   /** @inheritdoc */
-  findAll(workspaceId: string): Promise<Post[]> {
-    return this.repo.findAll({
-      where: { workspace: workspaceId },
-      orderBy: { createdAt: 'DESC' },
+  async findAll(workspaceId: string, query: ListPostsQuery = {}): Promise<PostsPage> {
+    const limit = Math.min(query.limit ?? 50, 100);
+
+    const where: FilterQuery<Post> = { workspace: workspaceId };
+
+    if (query.cursor) {
+      const raw = Buffer.from(query.cursor, 'base64url').toString('utf8');
+      const { createdAt, id } = JSON.parse(raw) as { createdAt: string; id: string };
+      const cursorDate = new Date(createdAt);
+      // Keyset: rows strictly before (createdAt DESC, id DESC) of the cursor row.
+      where.$or = [
+        { createdAt: { $lt: cursorDate } },
+        { createdAt: cursorDate, id: { $lt: id } },
+      ];
+    }
+
+    // Fetch one extra row to determine whether a next page exists.
+    const rows = await this.repo.find(where, {
+      orderBy: { createdAt: 'DESC', id: 'DESC' },
+      limit: limit + 1,
     });
+
+    const hasMore = rows.length > limit;
+    const data = hasMore ? rows.slice(0, limit) : rows;
+    const last = data.at(-1);
+    const nextCursor =
+      hasMore && last
+        ? Buffer.from(
+            JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id }),
+          ).toString('base64url')
+        : null;
+
+    return { data, nextCursor };
   }
 
   /** @inheritdoc */

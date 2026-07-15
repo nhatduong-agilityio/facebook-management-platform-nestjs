@@ -66,6 +66,19 @@ export abstract class IFacebookAccountRepository {
   abstract save(account: FacebookAccount): Promise<void>;
 
   /**
+   * Returns all active (non-deleted) connected Facebook Pages for a workspace.
+   *
+   * Used by `GET /workspaces/:id/facebook/pages` to list connected Pages.
+   * Results are ordered by `connectedAt DESC` so the most recently connected
+   * page appears first. Access tokens are **never** included in the returned objects
+   * (BR-F11); callers receive only metadata (id, pageId, pageName, connectedAt).
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @returns All non-deleted `FacebookAccount` records for the workspace, newest first.
+   */
+  abstract findAllByWorkspace(workspaceId: string): Promise<FacebookAccount[]>;
+
+  /**
    * Creates or updates a `FacebookAccount` for the given workspace and page.
    *
    * If a record with `data.pageId` already exists, its token is refreshed via

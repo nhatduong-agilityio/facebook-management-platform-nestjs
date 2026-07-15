@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, Post } from '@nestjs/common';
 import {
   ApiCreatedResponse,
   ApiNotFoundResponse,
@@ -6,6 +6,8 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { unref } from '@mikro-orm/core';
+import type { SubscriptionResponse } from '@fcp/billing-contracts';
 import { toHttpException } from './common/to-http-exception';
 import { BillingService } from './billing.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
@@ -60,5 +62,38 @@ export class BillingController {
   ): Promise<{ postLimit: number }> {
     const postLimit = await this.billingService.getPostLimit(workspaceId);
     return { postLimit };
+  }
+
+  /**
+   * Returns the current subscription for a workspace.
+   *
+   * Called by `apps/api GET /workspaces/:id/subscription` after auth/role validation.
+   * Stripe customer/subscription IDs are **never** included in the response.
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @returns `SubscriptionResponse` wire shape.
+   * @throws 404 when the workspace has no subscription record.
+   */
+  @Get('workspaces/:workspaceId/subscription')
+  @ApiOperation({ summary: 'Get current subscription for a workspace (internal)' })
+  @ApiOkResponse({ description: 'Returns SubscriptionResponse.' })
+  @ApiNotFoundResponse({ description: 'No subscription exists for this workspace.' })
+  async getSubscription(
+    @Param('workspaceId') workspaceId: string,
+  ): Promise<SubscriptionResponse> {
+    const sub = await this.billingService.findSubscription(workspaceId);
+    if (!sub) throw new NotFoundException(`No subscription found for workspace ${workspaceId}`);
+    const plan = unref(sub.plan);
+    return {
+      id: sub.id,
+      workspaceId: sub.workspaceId,
+      status: sub.status,
+      plan: { code: plan.code, name: plan.name, postLimit: plan.postLimit },
+      currentPeriodStart: sub.currentPeriodStart?.toISOString() ?? null,
+      currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
+      gracePeriodEnd: sub.gracePeriodEnd?.toISOString() ?? null,
+      createdAt: sub.createdAt.toISOString(),
+      updatedAt: sub.updatedAt.toISOString(),
+    };
   }
 }

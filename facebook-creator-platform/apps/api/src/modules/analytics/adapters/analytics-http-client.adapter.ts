@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { MetricsSummaryResponse } from '@fcp/analytics-contracts';
+import type { MetricsSummaryResponse, PostMetricsResponse } from '@fcp/analytics-contracts';
 import { IHttpClient } from '../../../common/http/http-client.port';
 import { IAnalyticsClient } from '../ports/analytics-http.client.port';
-import type { MetricsSummaryDto } from '../dto/analytics.dto';
+import type { MetricsSummaryDto, PostMetricsDayDto } from '../dto/analytics.dto';
 
 /** Maps the wire response to the API's public `MetricsSummaryDto`. */
 function toDto(raw: MetricsSummaryResponse): MetricsSummaryDto {
@@ -13,6 +13,21 @@ function toDto(raw: MetricsSummaryResponse): MetricsSummaryDto {
     likes: raw.likes,
     comments: raw.comments,
     shares: raw.shares,
+  };
+}
+
+/** Maps a `PostMetricsResponse` wire row to `PostMetricsDayDto`. */
+function toPostMetricsDto(raw: PostMetricsResponse): PostMetricsDayDto {
+  return {
+    id: raw.id,
+    postId: raw.postId,
+    metricDate: raw.metricDate,
+    reach: raw.reach,
+    impressions: raw.impressions,
+    likes: raw.likes,
+    comments: raw.comments,
+    shares: raw.shares,
+    createdAt: raw.createdAt,
   };
 }
 
@@ -52,5 +67,18 @@ export class AnalyticsHttpClientAdapter extends IAnalyticsClient {
       `${this.baseUrl}/workspaces/${workspaceId}/metrics`,
     );
     return toDto(raw);
+  }
+
+  /**
+   * Calls `GET /posts/:postId/metrics` on the analytics service.
+   *
+   * @param postId - UUID of the post.
+   * @returns Array of mapped `PostMetricsDayDto` (empty when no data exists).
+   */
+  async getPostMetrics(postId: string): Promise<PostMetricsDayDto[]> {
+    const rows = await this.http.get<PostMetricsResponse[]>(
+      `${this.baseUrl}/posts/${postId}/metrics`,
+    );
+    return rows.map(toPostMetricsDto);
   }
 }

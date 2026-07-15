@@ -24,6 +24,7 @@ const mockGraphApi = {
 const mockFacebookAccounts = {
   findByPageId: vi.fn(),
   findByIdAndWorkspace: vi.fn(),
+  findAllByWorkspace: vi.fn(),
   save: vi.fn(),
   connectPage: vi.fn(),
 } as unknown as IFacebookAccountRepository;
@@ -38,6 +39,48 @@ describe('FacebookService', () => {
   beforeEach(() => {
     service = new FacebookService(mockOAuthProvider, mockGraphApi, mockFacebookAccounts, mockEventBus);
     vi.clearAllMocks();
+  });
+
+  describe('listPages', () => {
+    it('returns ok with mapped page DTOs for all connected accounts', async () => {
+      const connectedAt = new Date('2026-07-01T10:00:00Z');
+      vi.mocked(mockFacebookAccounts.findAllByWorkspace).mockResolvedValue([
+        { id: 'fa-1', pageId: 'pg-1', pageName: 'Test Page', connectedAt } as unknown as FacebookAccount,
+      ]);
+
+      const result = await service.listPages('ws-1');
+
+      expect(result.isOk()).toBe(true);
+      const pages = result._unsafeUnwrap();
+      expect(pages).toHaveLength(1);
+      expect(pages[0]).toEqual({ id: 'fa-1', pageId: 'pg-1', pageName: 'Test Page', connectedAt });
+    });
+
+    it('returns ok with empty array when no pages are connected', async () => {
+      vi.mocked(mockFacebookAccounts.findAllByWorkspace).mockResolvedValue([]);
+
+      const result = await service.listPages('ws-1');
+
+      expect(result.isOk()).toBe(true);
+      expect(result._unsafeUnwrap()).toEqual([]);
+    });
+
+    it('never includes accessToken in the returned DTOs (BR-F11)', async () => {
+      vi.mocked(mockFacebookAccounts.findAllByWorkspace).mockResolvedValue([
+        {
+          id: 'fa-1',
+          pageId: 'pg-1',
+          pageName: 'Secure Page',
+          accessToken: 'secret-token',
+          connectedAt: new Date(),
+        } as unknown as FacebookAccount,
+      ]);
+
+      const result = await service.listPages('ws-1');
+
+      const page = result._unsafeUnwrap()[0];
+      expect(page).not.toHaveProperty('accessToken');
+    });
   });
 
   describe('getConnectUrl', () => {

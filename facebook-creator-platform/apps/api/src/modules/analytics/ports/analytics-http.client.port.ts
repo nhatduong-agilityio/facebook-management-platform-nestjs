@@ -1,4 +1,4 @@
-import type { MetricsSummaryDto } from '../dto/analytics.dto';
+import type { MetricsSummaryDto, PostMetricsDayDto } from '../dto/analytics.dto';
 
 /**
  * Port: outbound client contract for the analytics service.
@@ -15,4 +15,15 @@ export abstract class IAnalyticsClient {
    * @returns Summed `{ reach, impressions, likes, comments, shares }`.
    */
   abstract getWorkspaceMetrics(workspaceId: string): Promise<MetricsSummaryDto>;
+
+  /**
+   * Returns daily metric rows for a specific post.
+   *
+   * Proxies `GET /posts/:postId/metrics` on `services/analytics`.
+   * Returns an empty array when no Facebook Insights data has been ingested yet.
+   *
+   * @param postId - UUID v7 of the post in `core.posts`.
+   * @returns Array of daily `PostMetricsDayDto` records, oldest first.
+   */
+  abstract getPostMetrics(postId: string): Promise<PostMetricsDayDto[]>;
 }

@@ -51,6 +51,10 @@ class RedisModule {}
     }),
     LoggerModule.forRoot({
       pinoHttp: {
+        redact: {
+          paths: ['*.email', '*.fullName', '*.accessToken', '*.pageToken'],
+          censor: '[REDACTED]',
+        },
         transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
       },
     }),

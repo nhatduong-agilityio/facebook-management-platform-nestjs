@@ -18,7 +18,8 @@ import { BillingSubscriptionConsumer } from './consumers/billing-subscription.co
  * 2. Export `IPostQuotaProvider` (backed by HTTP call to billing service) so
  *    `PostsModule` can check post limits without owning billing data.
  * 3. Consume `billing.subscription_activated` / `billing.subscription_cancelled` events
- *    from `fcp.events` (T3.2 placeholders; full logic in T4.2/T4.3).
+ *    from `fcp.events` via `BillingSubscriptionConsumer`; downstream notifications and
+ *    emails are handled by `services/notification` (T4.2) and `services/email` (T4.3).
  *
  * Communication:
  * - Sync HTTP to `services/billing` for checkout and quota lookups.

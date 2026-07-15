@@ -84,16 +84,22 @@ export class WorkspaceService {
    * Returns `NOT_FOUND` when the workspace does not exist, is soft-deleted, or
    * the user is not a member (avoids leaking workspace existence to non-members).
    *
+   * Two queries run in parallel (§12): load workspace + check membership simultaneously.
+   * Previously three serial queries were issued (findById + findAllByUserId which itself
+   * does two round-trips). The membership check now targets a single row by (workspaceId,
+   * userId) hitting the `uq_workspace_member` unique index.
+   *
    * @param id     - UUID of the workspace.
    * @param userId - UUID of the authenticated user.
    * @returns `ok(workspace)` or `err(NOT_FOUND)`.
    */
   async getById(id: string, userId: string): Promise<Result<Workspace, AppError>> {
-    const workspace = await this.workspaces.findById(id);
-    if (!workspace) return err(AppError.notFound('Workspace'));
+    const [workspace, member] = await Promise.all([
+      this.workspaces.findById(id),
+      this.members.findByWorkspaceAndUserId(id, userId),
+    ]);
 
-    const userWorkspaces = await this.workspaces.findAllByUserId(userId);
-    if (!userWorkspaces.some((w) => w.id === id)) return err(AppError.notFound('Workspace'));
+    if (!workspace || !member) return err(AppError.notFound('Workspace'));
 
     return ok(workspace);
   }

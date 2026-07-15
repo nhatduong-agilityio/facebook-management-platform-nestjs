@@ -16,7 +16,7 @@ import { toHttpException } from '../../common/http/to-http-exception';
 import { AppError } from '../../common/errors/app-error';
 import { DownstreamServiceError } from '../../common/http/http-client.port';
 import { IAnalyticsClient } from './ports/analytics-http.client.port';
-import { MetricsSummaryDto } from './dto/analytics.dto';
+import { MetricsSummaryDto, PostMetricsDayDto } from './dto/analytics.dto';
 
 /** Maps a caught downstream error to a clean `AppError` without exposing transport details. */
 function mapDownstreamError(e: unknown): AppError {
@@ -68,6 +68,34 @@ export class AnalyticsController {
   ): Promise<MetricsSummaryDto> {
     try {
       return await this.analyticsClient.getWorkspaceMetrics(workspaceId);
+    } catch (e) {
+      throw toHttpException(mapDownstreamError(e));
+    }
+  }
+
+  /**
+   * Returns daily Facebook Insights metrics for a specific post.
+   *
+   * Proxies to `services/analytics GET /posts/:postId/metrics`.
+   * Returns an empty array when no data has been ingested yet for this post.
+   *
+   * @param workspaceId - UUID of the workspace (used by `WorkspaceRolesGuard`).
+   * @param postId      - UUID v7 of the post in `core.posts`.
+   * @returns Array of `PostMetricsDayDto`, each representing one day's Insights data.
+   */
+  @Get('posts/:postId/analytics')
+  @ApiOperation({ summary: 'Daily Facebook Insights metrics for a specific post' })
+  @ApiParam({ name: 'workspaceId', description: 'Workspace UUID' })
+  @ApiParam({ name: 'postId', description: 'Post UUID' })
+  @ApiOkResponse({ type: [PostMetricsDayDto], description: 'Daily metric rows for the post.' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Clerk JWT.' })
+  @ApiForbiddenResponse({ description: 'User is not an Owner of this workspace.' })
+  @ApiServiceUnavailableResponse({ description: 'Analytics service is unreachable.' })
+  async getPostAnalytics(
+    @Param('postId') postId: string,
+  ): Promise<PostMetricsDayDto[]> {
+    try {
+      return await this.analyticsClient.getPostMetrics(postId);
     } catch (e) {
       throw toHttpException(mapDownstreamError(e));
     }

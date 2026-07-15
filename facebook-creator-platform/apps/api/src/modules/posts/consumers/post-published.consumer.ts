@@ -19,9 +19,11 @@ export interface PostPublishedPayload {
 /**
  * Idempotent consumer for `posts.published` events on the `fcp.events` exchange.
  *
- * For T2.6 this is a placeholder that logs the event and proves the idempotent
- * infrastructure works. Business logic (Analytics metrics sync T3.3, Algolia
- * status update T4.1, Audit T3.4) will be added in their respective tasks.
+ * Acks exactly once per `eventId` (Redis `SET NX EX` dedup — §8). Downstream
+ * work for this event is distributed across specialist services: `services/analytics`
+ * syncs Graph API metrics (T3.3), `services/search` updates the Algolia index (T4.1),
+ * and `services/audit` records the event (T3.4). This consumer handles any
+ * `apps/api`-local side effects and provides an observability log.
  *
  * Bound to `api_queue` via `connectMicroservice(getRmqOptions(...))` in `main.ts`.
  */

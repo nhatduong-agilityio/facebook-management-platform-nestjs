@@ -11,9 +11,11 @@ import { IdempotentConsumer } from '../../../common/consumers/idempotent-consume
  * Idempotent consumer for `billing.subscription_activated` and
  * `billing.subscription_cancelled` events on the `fcp.events` exchange.
  *
- * For T3.2 these are placeholders that log the event and prove the idempotent
- * infrastructure works. Business logic (notification T4.2, email T4.3) will be
- * added in their respective tasks.
+ * Acks exactly once per `eventId` (Redis `SET NX EX` dedup — §8). Downstream
+ * notifications and emails for these events are handled by `services/notification`
+ * (T4.2) and `services/email` (T4.3) independently. This consumer logs for
+ * observability and handles any `apps/api`-local side effects (e.g. post-quota
+ * cache invalidation if a Redis response cache is added post-T5.5).
  *
  * Bound to `api_queue` via `connectMicroservice(getRmqOptions(...))` in `main.ts`.
  */

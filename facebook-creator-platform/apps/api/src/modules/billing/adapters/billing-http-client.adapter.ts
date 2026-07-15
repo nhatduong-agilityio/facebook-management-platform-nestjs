@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { CheckoutRequest, CheckoutResponse, QuotaResponse } from '@fcp/billing-contracts';
+import type { CheckoutRequest, CheckoutResponse, QuotaResponse, SubscriptionResponse } from '@fcp/billing-contracts';
+import { DownstreamServiceError } from '../../../common/http/http-client.port';
 import { IBillingHttpClient } from '../ports/billing-http.client.port';
 
 /** Free-plan post limit — used when the billing service is unreachable. */
@@ -63,5 +64,21 @@ export class BillingHttpClientAdapter extends IBillingHttpClient {
     } catch {
       return FALLBACK_POST_LIMIT;
     }
+  }
+
+  /**
+   * Fetches the current subscription for a workspace from `services/billing`.
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @returns `SubscriptionResponse` with plan metadata.
+   * @throws `DownstreamServiceError` with status 404 when no subscription exists,
+   *         or with status 5xx when the billing service is unavailable.
+   */
+  async getSubscription(workspaceId: string): Promise<SubscriptionResponse> {
+    const res = await fetch(`${this.baseUrl}/workspaces/${workspaceId}/subscription`);
+    if (!res.ok) {
+      throw new DownstreamServiceError(res.status, `Billing service: ${res.statusText}`);
+    }
+    return res.json() as Promise<SubscriptionResponse>;
   }
 }

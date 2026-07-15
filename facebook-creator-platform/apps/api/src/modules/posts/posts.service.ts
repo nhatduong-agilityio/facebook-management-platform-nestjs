@@ -12,6 +12,7 @@ import { PostDeletedEvent } from './events/post-deleted.event';
 import { Post, type PostStatus } from './entities/post.entity';
 import { type CreatePostDto, type UpdatePostDto } from './dto/post.dto';
 import { type UpdatePostStatusDto } from './dto/update-post-status.dto';
+import type { ListPostsQuery, PostsPage } from './ports/post.repository.port';
 
 /**
  * Legal state transitions for the Post lifecycle state machine.
@@ -127,14 +128,18 @@ export class PostsService {
   }
 
   /**
-   * Returns all active (non-soft-deleted) posts for the workspace, newest first.
+   * Returns a page of active (non-soft-deleted) posts for the workspace, newest first.
+   *
+   * Uses keyset pagination (§12) — pass `query.cursor` from the previous response's
+   * `nextCursor` to advance to the next page. Default page size is 50.
    *
    * @param workspaceId - UUID of the owning workspace.
-   * @returns `ok(posts)` — always succeeds (returns empty array if no posts).
+   * @param query       - Pagination options (limit, cursor).
+   * @returns `ok(page)` — always succeeds; `page.data` is empty on the last page.
    */
-  async listPosts(workspaceId: string): Promise<Result<Post[], AppError>> {
-    const posts = await this.postRepo.findAll(workspaceId);
-    return ok(posts);
+  async listPosts(workspaceId: string, query?: ListPostsQuery): Promise<Result<PostsPage, AppError>> {
+    const page = await this.postRepo.findAll(workspaceId, query);
+    return ok(page);
   }
 
   /**

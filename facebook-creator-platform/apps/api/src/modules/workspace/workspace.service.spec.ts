@@ -160,8 +160,9 @@ describe('WorkspaceService', () => {
   describe('getById', () => {
     it('returns ok(workspace) when workspace exists and user is a member', async () => {
       const ws = Object.assign(new Workspace(), { id: 'ws-1', name: 'My WS' });
+      const member = Object.assign(new WorkspaceMember(), { id: 'm-1' });
       vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(ws);
-      vi.mocked(mockWorkspaceRepo.findAllByUserId).mockResolvedValue([ws]);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(member);
 
       const result = await service.getById('ws-1', 'user-1');
 
@@ -169,8 +170,21 @@ describe('WorkspaceService', () => {
       expect(result._unsafeUnwrap().id).toBe('ws-1');
     });
 
+    it('runs workspace and membership lookups in parallel', async () => {
+      const ws = Object.assign(new Workspace(), { id: 'ws-1', name: 'My WS' });
+      const member = Object.assign(new WorkspaceMember(), { id: 'm-1' });
+      vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(ws);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(member);
+
+      await service.getById('ws-1', 'user-1');
+
+      expect(mockWorkspaceRepo.findById).toHaveBeenCalledWith('ws-1');
+      expect(mockMemberRepo.findByWorkspaceAndUserId).toHaveBeenCalledWith('ws-1', 'user-1');
+    });
+
     it('returns err(NOT_FOUND) when workspace does not exist', async () => {
       vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(null);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(null);
 
       const result = await service.getById('missing', 'user-1');
 
@@ -181,7 +195,7 @@ describe('WorkspaceService', () => {
     it('returns err(NOT_FOUND) when workspace exists but user is not a member', async () => {
       const ws = Object.assign(new Workspace(), { id: 'ws-1', name: 'My WS' });
       vi.mocked(mockWorkspaceRepo.findById).mockResolvedValue(ws);
-      vi.mocked(mockWorkspaceRepo.findAllByUserId).mockResolvedValue([]);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(null);
 
       const result = await service.getById('ws-1', 'user-99');
 

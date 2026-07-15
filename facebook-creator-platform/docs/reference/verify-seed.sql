@@ -19,7 +19,8 @@ UNION ALL SELECT 'core.workspace_members', count(*) FROM core.workspace_members
 UNION ALL SELECT 'core.invitations', count(*) FROM core.invitations
 UNION ALL SELECT 'core.facebook_accounts', count(*) FROM core.facebook_accounts
 UNION ALL SELECT 'core.posts', count(*) FROM core.posts
-UNION ALL SELECT 'core.audit_logs', count(*) FROM core.audit_logs
+-- core.audit_logs does not exist in Postgres — audit records live in MongoDB
+-- audit_events collection in services/audit (ADR-047, T5.2 confirmed).
 UNION ALL SELECT 'billing.plans', count(*) FROM billing.plans
 UNION ALL SELECT 'billing.subscriptions', count(*) FROM billing.subscriptions
 UNION ALL SELECT 'billing.billing_events', count(*) FROM billing.billing_events

@@ -1,2 +1,2 @@
-export type { MetricsSummaryResponse } from './metrics';
+export type { MetricsSummaryResponse, PostMetricsResponse } from './metrics';
 export type { PostPublishedPayload } from './events';

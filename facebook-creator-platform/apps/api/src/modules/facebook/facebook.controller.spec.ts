@@ -22,10 +22,31 @@ describe('FacebookController', () => {
   beforeEach(() => {
     service = {
       getConnectUrl: vi.fn(),
+      listPages: vi.fn(),
       connectPage: vi.fn(),
       refreshAccountToken: vi.fn(),
     } as unknown as FacebookService;
     controller = new FacebookController(service);
+  });
+
+  describe('listPages', () => {
+    it('returns all connected pages for a workspace', async () => {
+      vi.mocked(service.listPages).mockResolvedValue(ok(makePages()));
+
+      const result = await controller.listPages('ws-1');
+
+      expect(service.listPages).toHaveBeenCalledWith('ws-1');
+      expect(result).toHaveLength(1);
+      expect(result[0].pageId).toBe('pg-1');
+    });
+
+    it('returns an empty array when no pages are connected', async () => {
+      vi.mocked(service.listPages).mockResolvedValue(ok([]));
+
+      const result = await controller.listPages('ws-1');
+
+      expect(result).toEqual([]);
+    });
   });
 
   describe('getConnectUrl', () => {

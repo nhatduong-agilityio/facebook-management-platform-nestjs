@@ -19,9 +19,10 @@ export interface PostCreatedPayload {
 /**
  * Idempotent consumer for `posts.created` events on the `fcp.events` exchange.
  *
- * For T2.6 this is a placeholder that logs the event and proves the idempotent
- * infrastructure works. Business logic (Algolia indexing T4.1, Audit T3.4)
- * will be added in their respective tasks.
+ * Acks exactly once per `eventId` (Redis `SET NX EX` dedup — §8). Downstream
+ * indexing and audit for this event are handled by `services/search` (Algolia,
+ * T4.1) and `services/audit` (wildcard `#` consumer, T3.4) independently.
+ * This consumer logs for observability and drives any `apps/api`-local side effects.
  *
  * Bound to `api_queue` via `connectMicroservice(getRmqOptions(...))` in `main.ts`.
  */

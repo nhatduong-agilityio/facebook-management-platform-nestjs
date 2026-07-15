@@ -7,8 +7,9 @@ import { Migration } from '@mikro-orm/migrations';
  * - `id` has no `DEFAULT` — the application generates UUID v7 before persist (ADR-013).
  * - `status` CHECK includes all five states agreed in T2.5 design (`publishing` is the
  *   state set synchronously when `facebook_graph_post_id` is captured from the Graph API).
- * - `deleted_at` is added for soft-delete support (T2.4 DoD); the reference DDL omits it
- *   but the T5.2 audit pass will reconcile the DDL.
+ * - `deleted_at` is added for soft-delete support (T2.4 DoD); the reference DDL omits it.
+ *   T5.2 confirmed this is an intentional divergence: `Post` extends `BaseEntity`, which
+ *   requires the full `createdAt / updatedAt / deletedAt` triplet (ADR-036).
  * - `workspace_id` and `facebook_account_id` are real same-schema FKs (both in `core`); indexed (BR-R08).
  * - `created_by_user_id` is a logical FK to `core.users` (cross-module — BR-R06); indexed (BR-R08).
  * - Partial index on `scheduled_at WHERE status = 'scheduled'` matches the reference DDL pattern.

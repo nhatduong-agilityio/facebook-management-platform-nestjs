@@ -86,7 +86,40 @@ test/load/                    # Artillery smoke + load scenarios
 - Add new repeated chores as skills; add new work as tasks (keep them ≤ ~1 day).
 - Run a `/finish-task` before context gets large; long sessions degrade quality.
 
-## Bootstrapping the actual app
-There's no application code yet. Start with **T1.1** in `docs/TASKS.md`
-(`/start-task T1.1`). If you already have the Week-1 monorepo, jump to the
-resume point in `docs/PROGRESS.md` (T2.1, Facebook OAuth).
+## Current project state (as of T5.7)
+
+All 5 weeks of tasks are complete. The full `apps/api` NestJS monolith and 6
+supporting microservices are implemented. To bring up the stack locally:
+
+```bash
+# 1. Start infrastructure
+docker compose up -d
+
+# 2. Apply all migrations (each service has its own MikroORM config)
+pnpm mikro-orm migration:up                                    # apps/api
+cd services/billing  && pnpm mikro-orm migration:up && cd ../..
+cd services/analytics && pnpm mikro-orm migration:up && cd ../..
+cd services/email    && pnpm mikro-orm migration:up && cd ../..
+cd services/notification && pnpm mikro-orm migration:up && cd ../..
+
+# 3. Start all services (separate terminals or use a process manager)
+pnpm start:dev                        # apps/api  :3000
+cd services/billing  && pnpm start:dev  # billing   :3001
+cd services/analytics && pnpm start:dev # analytics :3002
+cd services/audit    && pnpm start:dev  # audit     :3003
+cd services/search   && pnpm start:dev  # search    :3004
+cd services/notification && pnpm start:dev # notification :3005
+cd services/email    && pnpm start:dev  # email     :3006
+
+# 4. Run load tests (requires a Clerk JWT and seeded workspace)
+export API_URL=http://localhost:3000
+export TEST_JWT=<clerk-jwt>
+export TEST_WORKSPACE_ID=<uuid>
+pnpm load:smoke    # 20 s smoke gate
+pnpm load:read     # 150 rps read dashboard
+pnpm load:write    # 30 wps write burst
+pnpm load:fanout   # publish fan-out + DLQ check
+```
+
+To resume adding tasks or debugging: check `docs/PROGRESS.md` for the current
+state, then use `/start-task <id>` for any new work.

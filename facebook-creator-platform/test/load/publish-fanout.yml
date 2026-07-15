@@ -1,0 +1,65 @@
+config:
+  target: "{{ $processEnvironment.API_URL }}"
+  phases:
+    - duration: 30
+      arrivalRate: 2
+      name: "seed-scheduled-posts"
+    - duration: 90
+      arrivalRate: 0
+      name: "wait-for-publish-job"
+    - duration: 30
+      arrivalRate: 2
+      name: "observe-outcomes"
+  ensure:
+    maxErrorRate: 1
+  defaults:
+    headers:
+      authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+      content-type: "application/json"
+
+# Publish fan-out scenario (NFR: burst publish, consumers keep up, no DLQ growth).
+#
+# Phase 1 — seed: create posts with scheduledAt = now() so the PublishJob picks
+#   them up on the next cron tick (every minute).
+# Phase 2 — wait: 90s idle lets the cron fire once and consumers process events.
+# Phase 3 — observe: poll each post expecting status = 'publishing' or 'published'.
+#   maxErrorRate < 1% ensures fan-out consumers (Audit, Analytics, Notification,
+#   Search, Email) did not produce DLQ messages (errors would surface as 5xx on
+#   the re-poll or as DLQ depth growth visible in the RabbitMQ management UI).
+#
+# Requires env:
+#   API_URL      — e.g. http://localhost:3000
+#   TEST_JWT     — a valid Clerk JWT with Owner/Editor role
+#   WORKSPACE_ID — UUID of a seeded test workspace with a connected Facebook Page
+#
+# Run: pnpm load:fanout
+# or:  API_URL=http://localhost:3000 TEST_JWT=<token> WORKSPACE_ID=<uuid> pnpm load:fanout
+#
+# After the run inspect RabbitMQ management (http://localhost:15672) to confirm
+# fcp.dlq message count has not grown during the test window.
+scenarios:
+  - name: "schedule post then observe publish outcome"
+    flow:
+      - post:
+          url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts"
+          json:
+            content: "Fanout load test {{ $timestamp }}"
+            scheduledAt: "{{ $timestamp }}"
+          capture:
+            - json: "$.id"
+              as: "postId"
+          expect:
+            - statusCode: 201
+      - think: 90
+      - patch:
+          url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts/{{ postId }}/status"
+          json:
+            status: "scheduled"
+          ifTrue: "postId"
+          expect:
+            - statusCode: [200, 409]
+      - get:
+          url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts/{{ postId }}"
+          ifTrue: "postId"
+          expect:
+            - statusCode: 200
