@@ -1,0 +1,28 @@
+.git
+.gitignore
+.env
+.env.*
+*.md
+docs/
+test/
+
+# Exclude all node_modules — Docker installs its own inside the image
+node_modules
+apps/*/node_modules
+services/*/node_modules
+libs/*/node_modules
+
+# Exclude compiled output — Docker builds its own
+apps/*/dist
+services/*/dist
+libs/*/dist
+
+# Exclude incremental TypeScript state — stale tsbuildinfo causes tsc to skip
+# emit entirely when dist/ doesn't exist in the image
+**/*.tsbuildinfo
+
+# Misc
+.husky
+*.log
+coverage
+.DS_Store
