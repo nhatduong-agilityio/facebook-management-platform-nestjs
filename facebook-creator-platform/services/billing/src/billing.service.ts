@@ -61,6 +61,19 @@ export class BillingService {
   ) {}
 
   /**
+   * Looks up the subscription for a workspace with its plan populated.
+   *
+   * Thin delegation to `ISubscriptionRepository.findByWorkspaceId`. Returns `null`
+   * when no subscription exists (workspace still on implicit free tier before checkout).
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @returns The `Subscription` with `plan` loaded, or `null`.
+   */
+  findSubscription(workspaceId: string): Promise<Subscription | null> {
+    return this.subscriptions.findByWorkspaceId(workspaceId);
+  }
+
+  /**
    * Returns the maximum post count allowed by the workspace's current plan.
    *
    * Falls back to the free-plan default (10) when no subscription exists yet.

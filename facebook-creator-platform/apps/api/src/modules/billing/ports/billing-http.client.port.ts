@@ -1,6 +1,6 @@
-import type { CheckoutRequest, CheckoutResponse } from '@fcp/billing-contracts';
+import type { CheckoutRequest, CheckoutResponse, SubscriptionResponse } from '@fcp/billing-contracts';
 
-export type { CheckoutRequest, CheckoutResponse };
+export type { CheckoutRequest, CheckoutResponse, SubscriptionResponse };
 
 /**
  * Port (outbound): typed HTTP client for `services/billing`.
@@ -25,4 +25,13 @@ export abstract class IBillingHttpClient {
    * @returns The maximum number of non-deleted posts the workspace's plan allows.
    */
   abstract getPostLimit(workspaceId: string): Promise<number>;
+
+  /**
+   * Calls `services/billing GET /workspaces/:workspaceId/subscription`.
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @returns `SubscriptionResponse` — current subscription with plan metadata.
+   * @throws `DownstreamServiceError` with status 404 when no subscription exists.
+   */
+  abstract getSubscription(workspaceId: string): Promise<SubscriptionResponse>;
 }

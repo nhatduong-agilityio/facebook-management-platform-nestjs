@@ -1,0 +1,53 @@
+config:
+  target: "{{ $processEnvironment.API_URL }}"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 150
+      name: "ramp"
+    - duration: 120
+      arrivalRate: 150
+      name: "sustain"
+  ensure:
+    p99: 300
+    maxErrorRate: 1
+  defaults:
+    headers:
+      authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+      content-type: "application/json"
+
+# Read-heavy dashboard scenario (NFR: 150 rps p99 < 300 ms).
+# Requires env:
+#   API_URL  — e.g. http://localhost:3000
+#   TEST_JWT — a valid Clerk JWT for a seeded test user
+#
+# Run: pnpm load:read
+# or:  API_URL=http://localhost:3000 TEST_JWT=<token> pnpm load:read
+scenarios:
+  - name: "workspace dashboard reads"
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/v1/auth/me"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/v1/workspaces"
+          capture:
+            - json: "$[0].id"
+              as: "workspaceId"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts"
+          ifTrue: "workspaceId"
+          expect:
+            - statusCode: 200
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/members"
+          ifTrue: "workspaceId"
+          expect:
+            - statusCode: 200

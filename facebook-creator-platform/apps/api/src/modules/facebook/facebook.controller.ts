@@ -31,6 +31,32 @@ export class FacebookController {
   constructor(private readonly facebookService: FacebookService) {}
 
   /**
+   * Lists all Facebook Pages currently connected to a workspace.
+   *
+   * Returns only active (non-deleted) connections. Access tokens are **never**
+   * included in the response (BR-F11) — only display metadata is returned.
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @returns Array of connected page records (id, pageId, pageName, connectedAt).
+   */
+  @Get(':workspaceId/facebook/pages')
+  @UseGuards(WorkspaceRolesGuard)
+  @Roles('owner', 'editor')
+  @ApiOperation({ summary: 'List connected Facebook Pages for a workspace' })
+  @ApiOkResponse({ type: [ConnectedPageResponseDto], description: 'Active Facebook Page connections (no tokens).' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
+  @ApiForbiddenResponse({ description: 'Insufficient workspace role (Owner or Editor required)' })
+  async listPages(
+    @Param('workspaceId') workspaceId: string,
+  ): Promise<ConnectedPageResponseDto[]> {
+    const result = await this.facebookService.listPages(workspaceId);
+    return result.match(
+      (pages) => pages,
+      (e) => { throw toHttpException(e); },
+    );
+  }
+
+  /**
    * Returns a Facebook OAuth authorization URL for connecting a Page to the workspace.
    *
    * The client should redirect the user's browser to `url`. The returned `state`

@@ -218,10 +218,25 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > `pnpm view stripe version` = `22.3.0`. Also added `@mikro-orm/decorators@^7.1.5` (required for
 > `@mikro-orm/decorators/legacy` decorator imports — same pattern as `apps/api`).
 >
-> **ADR-036 Plan + Subscription entities do not extend `BaseEntity`.**
-> DDL has no `deleted_at` on either table. Plans are static reference data; subscriptions use `status`
-> for lifecycle (T3.2 state machine). Extending `BaseEntity` would add a soft-delete filter and column
-> that the schema does not have.
+> **ADR-036 Entities that intentionally do not extend `BaseEntity` (T5.2 audit confirmed).**
+> `BaseEntity` provides `id` (uuid v7), `createdAt`, `updatedAt`, `deletedAt`, and the entity-level
+> `@Filter('softDelete')`. Entities omit it when the DDL has no `deleted_at`/`updated_at` or when the
+> row lifecycle does not use soft-delete. Confirmed and documented in T5.2:
+>
+> | Entity | Package | Reason |
+> |---|---|---|
+> | `WorkspaceMember` | `apps/api` | DDL has no `deleted_at`; members are hard-deleted on removal (BR-R02 prevents sole-owner removal). |
+> | `Invitation` | `apps/api` | DDL has only `created_at` + `expires_at`; records are immutable; status transitions only. |
+> | `FacebookAccount` | `apps/api` | DDL uses `connected_at`/`updated_at` (no `deleted_at`); `deleted_at` added later via ADR-031 migration but entity predates `BaseEntity` convention and soft-delete is handled by an explicit property, not the filter. |
+> | `Plan` | `services/billing` | Static reference data; no `deleted_at` in DDL; plans are never deleted. |
+> | `Subscription` | `services/billing` | No `deleted_at`; lifecycle is entirely via `status` (T3.2 state machine). |
+> | `BillingEvent` | `services/billing` | Append-only audit log (CLAUDE.md §3 exception); no `updated_at` or `deleted_at`. |
+> | `PostMetrics` | `services/analytics` | DDL has only `created_at`; metrics are upserted, never soft-deleted. |
+> | `AuditEvent` | `services/audit` | MongoDB collection; append-only (CLAUDE.md §3 exception). |
+> | `EmailDeliveryLog` | `services/email` | DDL has `sent_at`/`created_at` only; append-only delivery record. |
+> | `Notification` | `services/notification` | DDL has only `created_at`; notifications are never updated or deleted. |
+> | `NotificationRecipient` | `services/notification` | DDL has only `created_at`/`read_at`; one-way `readStatus` flag (BR-F08). |
+> | `WorkspaceMemberProjection` | `services/notification` | CQRS read-model (ADR-052); upserted via raw SQL; composite PK, no surrogate uuid. |
 >
 > **ADR-037 Plan seed embedded in `services/billing` migration (`ON CONFLICT DO NOTHING`).**
 > Three rows (free/pro/team) seeded in `Migration20260703000001_BillingSchema` with fixed UUID v7 values.
@@ -252,7 +267,9 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > T2.7 needs to soft-delete accounts on deauthorization, so `deleted_at timestamptz NULL`
 > is added via `Migration20260703000000_FacebookAccountSoftDelete`. No global ORM filter
 > is applied — repository queries filter `{ deletedAt: null }` explicitly. T5.2 schema
-> audit will evaluate whether a `@Filter` should be added.
+> audit confirmed this is intentional: `FacebookAccount` is listed in ADR-036 as an
+> entity that does not extend `BaseEntity`; explicit repo filtering is the sanctioned
+> pattern for non-`BaseEntity` soft-delete columns.
 
 ## Pre-T3.3 architecture decisions — task audit (2026-07-03)
 
@@ -329,6 +346,24 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > Service was running, those workspaces will never appear in the projection until a new membership event
 > arrives. Acceptable for current scale; full event sourcing / replay is the long-term fix.
 
+> **ADR-088 Pino PII redaction paths standardised across all services (T5.3).**
+> T5.3 audit found that four services had no `redact` config in their `pinoHttp` block:
+> `services/notification`, `services/audit`, `services/analytics`, `services/search`.
+> Additionally, `apps/api` was missing `*.pageToken` — the `GET /internal/facebook-accounts/:id`
+> endpoint returns `{ id, pageToken }` where `pageToken` is the decrypted `accessToken`; without
+> this path the field would not be censored if it appeared in structured log output.
+>
+> Fixes applied (T5.3):
+> - `apps/api`: added `'*.pageToken'` to existing redact paths.
+> - `services/notification`, `services/audit`, `services/analytics`, `services/search`:
+>   added `redact: { paths: ['*.email', '*.fullName', '*.accessToken', '*.pageToken'], censor: '[REDACTED]' }`.
+>
+> The `services/audit` wildcard consumer already strips PII via `stripPii()` before DB insert
+> (ADR-064); the Pino redaction is defence-in-depth for any future `logger.log({ data })` call
+> where the raw payload is passed before stripping. `services/billing` and `services/email` already
+> had service-specific redact configs (`stripeCustomerId`/`stripeSubscriptionId` and `email`/`recipientEmail`
+> respectively) — no change needed for those two.
+
 > **ADR-060 Billing lifecycle events extended to cover `past_due` and `subscription_renewed`.**
 > T3.2 published only `billing.subscription_activated` and `billing.subscription_cancelled`.
 > Two additional Stripe lifecycle events are needed for a complete notification surface:
@@ -338,6 +373,93 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 >   → publish `billing.subscription_renewed`. No downstream notification required at current scope;
 >   recorded in `billing_events` log. Available for future Audit / Analytics consumers.
 > Both are idempotent via `stripe_event_id` unique key (same pattern as T3.2). Added as T3.6.
+
+> **ADR-092 Three CR-01 API gaps closed — list Facebook pages, subscription GET, per-post analytics.**
+>
+> **Problem:** CR-01 API design specified three endpoints that were missing from the implementation:
+> 1. `GET /workspaces/:id/facebook/pages` — lists all active connected Facebook Pages.
+> 2. `GET /workspaces/:id/billing/subscription` — returns current subscription with plan metadata.
+> 3. `GET /workspaces/:id/posts/:postId/analytics` — returns daily Facebook Insights rows for a post.
+>
+> **Decisions:**
+> - `IFacebookAccountRepository.findAllByWorkspace` added; results ordered by `connectedAt DESC`
+>   so the most recently connected page appears first. Access tokens excluded (BR-F11) — only
+>   `id`, `pageId`, `pageName`, `connectedAt` returned via the existing `ConnectedPageResponseDto`.
+> - `SubscriptionResponse` wire type added to `@fcp/billing-contracts` with embedded `PlanSummary`.
+>   Stripe customer/subscription IDs are **not** included in the wire type (billing identity PII).
+>   `GET /workspaces/:id/subscription` added to `services/billing` controller; `getSubscription`
+>   added to `IBillingHttpClient` + `BillingHttpClientAdapter`; `SubscriptionResponseDto` added
+>   to `apps/api`; 404 from billing service mapped to `AppError.notFound('Subscription')`.
+> - `PostMetricsResponse` wire type added to `@fcp/analytics-contracts`. Per-post endpoint proxies
+>   `GET /posts/:postId/metrics` on `services/analytics` (already implemented since T3.3).
+>   `getPostMetrics` added to `IAnalyticsClient` port + `AnalyticsHttpClientAdapter`.
+>   `GET posts/:postId/analytics` added to `apps/api AnalyticsController` under
+>   `workspaces/:workspaceId`; 503 from analytics service → `AppError.serviceUnavailable`.
+> - 11 new tests added across analytics, facebook, and billing specs.
+> - `BillingService.findSubscription` is a thin delegation wrapper (not a new query) — avoids
+>   leaking `ISubscriptionRepository` into the controller layer.
+
+> **ADR-091 T5.6 performance optimisation pass — indexes + keyset pagination + parallel membership check.**
+>
+> **Problem:** three concrete deficiencies identified via static query analysis (no live
+> load-test data; queries inspected without running T5.5):
+>
+> 1. `invitations(workspace_id, email, status)` — `findPendingByWorkspaceAndEmail` filtered
+>    email + status in memory after a single-column `workspace_id` index scan. Fix: composite
+>    index `idx_invitations_workspace_email_status` in `Migration20260715000001_PerfIndexes`.
+>
+> 2. `posts(workspace_id, created_at DESC, id DESC) WHERE deleted_at IS NULL` — the list
+>    query `WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?` had only a single-column
+>    `workspace_id` index, forcing a sort step after the index scan. Fix: partial composite
+>    index `idx_posts_ws_created_at` (same migration). The `WHERE deleted_at IS NULL` predicate
+>    keeps the index small (soft-deleted posts excluded).
+>
+> 3. `WorkspaceService.getById` issued three serial queries: `findById` + `findAllByUserId`
+>    (itself two round-trips: memberships SELECT → workspaces IN-list). Fix: replaced with
+>    `Promise.all([findById, members.findByWorkspaceAndUserId])` — two parallel queries, each
+>    hitting a unique index (`pk_workspaces` and `uq_workspace_member`).
+>
+> **Pagination:** `listPosts` previously returned all posts unbounded. Added keyset pagination
+> (`?limit=50&cursor=<base64url>`) to `IPostRepository.findAll`, `PostsService.listPosts`, and
+> `PostsController.listPosts`. Response shape changed from `PostResponseDto[]` to
+> `{ data: PostResponseDto[], nextCursor: string | null }`. Page default: 50; max: 100.
+> Cursor encodes `{ createdAt, id }` — the two columns of the composite index — ensuring
+> every page continuation is an index range scan with no sequential file scan.
+>
+> **Cache:** not added. Per §12 and ADR-019, Redis response / RBAC cache is only justified
+> when T5.5 proves that steps 1+2 cannot meet thresholds. Run `pnpm load:read` against a
+> live stack after deploying this migration to get the before/after data; if p99 still
+> exceeds 300 ms, cache is the next step and must be recorded here.
+
+> **ADR-090 `artillery@^2.0.33` added as root devDependency (T5.5).**
+> Verified version with `pnpm view artillery version` → `2.0.33` (2026-07-15).
+> Four `load:*` scripts added to root `package.json`:
+> - `load:smoke` — fast 20s gate for CI (existing `smoke.yml`)
+> - `load:read` — ramp to 150 rps; `ensure p99: 300`
+> - `load:write` — ramp to 30 wps burst; `ensure p99: 500`
+> - `load:fanout` — 30s seed → 90s wait → 30s observe; `ensure maxErrorRate: 1`
+>
+> Running load tests requires a live stack:
+> `API_URL`, `TEST_JWT` (Clerk JWT), and `WORKSPACE_ID` env vars must be set.
+> Reports written to `test/load/reports/` (gitignored). If T5.5 Artillery results
+> show any threshold failures, T5.6 addresses them in order: index → query → cache.
+
+> **ADR-089 T5.4 Result-pattern + FK-index pass — all checks clean (no code changes).**
+> Every public domain service method in `apps/api` returns `Promise<Result<T, AppError>>`.
+> Two service files that do not use Result are exempt: `ClerkWebhookService` (infrastructure
+> webhook handler — throws HTTP exceptions, not domain errors) and `DevAuthService` (dev-only
+> Clerk utility). All infrastructure adapters throw — correct per §13. Every real and logical FK
+> has a btree index in the migration SQL. `email.related_entity_id` has no index intentionally:
+> it is a nullable polymorphic context field, not a query FK; the reference DDL omits it.
+
+> **ADR-087 `billing.subscriptions` CHECK constraint updated to include `'past_due'` (T5.1 fix).**
+> T3.6 (ADR-060) added `'past_due'` to the `SubscriptionStatus` TypeScript type but did not add a
+> corresponding DB migration to update the `chk_subscriptions_status` CHECK constraint. The migration
+> `BillingSchema.ts` (T3.2) only lists `('trialing', 'active', 'grace_period', 'cancelled')`. Any
+> DB write with `status = 'past_due'` would have thrown a check violation at runtime.
+> Corrected in T5.1 via `Migration20260714000001_SubscriptionPastDueStatus.ts` which drops and
+> recreates the constraint to include `'past_due'`. PostgreSQL does not support `ALTER CONSTRAINT`;
+> the drop+recreate runs in a single transaction and does not lock the table for reads.
 
 > **ADR-061 Analytics service: package, ports, and environment variables (T3.3).**
 > `services/analytics` is registered as `@fcp/analytics` in the pnpm workspace (`services/*` glob already covers it).
@@ -693,7 +815,7 @@ await app.listen(port);
 | 2026-07-03 | **T2.7 complete.** `POST /webhooks/facebook` with `X-Hub-Signature-256` HMAC verification; `FacebookFeedConsumer` drives `publishing→published`; `FacebookPageDeauthorizedConsumer` soft-deletes account + bulk-cancels posts. ADR-030/031 below. |
 | 2026-07-03 | **T2.6 complete.** `RabbitmqModule` (global) wires `IEventBus → RabbitMqEventBus`; `IOREDIS_CLIENT` for consumer dedup. `PostCreatedConsumer` + `PostPublishedConsumer` in `PostsModule` (idempotent; DLX → `fcp.dlq`). ADR-028/029 below. |
 | 2026-07-02 | **Graph API version bumped to `v25.0`** (released 2026-02-18, current stable; v21.0 was used in T2.1). Both `FacebookOAuthAdapter` and `FacebookGraphApiAdapter` share the `GRAPH_VERSION` constant. v26.0 is due later in 2026 — revisit when released. |
-| 2026-07-02 | **T2.2 complete.** `POST /workspaces/:id/facebook/pages` OAuth callback. `IFacebookGraphApiProvider` port + `FacebookGraphApiAdapter` uses native `fetch` (Node 18+, no extra dep) — three Graph API calls: code→short token→long-lived token→/me/accounts. `timingSafeEqual` comparison (hex strings, equal-length) for CSRF HMAC verification — avoids buffer-length-mismatch throw on malformed state. `FacebookAccount` entity does NOT extend `BaseEntity` — DDL uses `connected_at`/`updated_at`, no `deleted_at` (same rationale as `WorkspaceMember`; T5.2 audit pass will evaluate). `MikroOrmFacebookAccountRepository.connectPage` uses `em.getReference(Workspace, id)` to set the FK without a SELECT — safe because `WorkspaceRolesGuard` already verified workspace existence. ADR-027 (fetch). |
+| 2026-07-02 | **T2.2 complete.** `POST /workspaces/:id/facebook/pages` OAuth callback. `IFacebookGraphApiProvider` port + `FacebookGraphApiAdapter` uses native `fetch` (Node 18+, no extra dep) — three Graph API calls: code→short token→long-lived token→/me/accounts. `timingSafeEqual` comparison (hex strings, equal-length) for CSRF HMAC verification — avoids buffer-length-mismatch throw on malformed state. `FacebookAccount` entity does NOT extend `BaseEntity` — DDL uses `connected_at`/`updated_at`, no `deleted_at` (T5.2 confirmed intentional — see ADR-036). `MikroOrmFacebookAccountRepository.connectPage` uses `em.getReference(Workspace, id)` to set the FK without a SELECT — safe because `WorkspaceRolesGuard` already verified workspace existence. ADR-027 (fetch). |
 | 2026-07-01 | **Global ORM filter removed.** `database.module.ts` had `filters: { softDelete: ... }` at the ORM level (applies to all entities) AND `BaseEntity` had `@Filter` (entity-scoped, inherited). The global filter caused runtime 500s on `WorkspaceMember`/`Invitation` queries (no `deletedAt` column). Removed the global one; `@Filter` on `BaseEntity` is the sole mechanism — it inherits to all `BaseEntity` subclasses and does not affect entities that opt out. |
 | 2026-07-01 | **T1.5 complete.** `Invitation` entity + invite/remove member endpoints. `WorkspaceMember` and `Invitation` use `@ManyToOne(() => Workspace)` with `Ref<Workspace>` — type-safe same-module relations. Static factory methods (`forOwner`, `forAcceptedInvite`, `Invitation.create`) keep `ref()` inside entity files so services stay ORM-free (§14). `IEventBus` port + `NoopEventBus` adapter wired; T2.6 swaps for RabbitMQ publisher. BR-R02 sole-owner guard enforced in `removeMember`. `WorkspaceRolesGuard` activates on `POST :workspaceId/members/invite` (Owner/Editor) and `DELETE :workspaceId/members/:memberId` (Owner). |
 | 2026-07-01 | **T1.4 complete.** Workspace + WorkspaceMember entities; Ports & Adapters (`IWorkspaceRepository`, `IWorkspaceMemberWriteRepository`); `WorkspaceService.create/listForUser/getById` (Result pattern); migration adds `core.workspaces` + `core.workspace_members`. `WorkspaceMember` does NOT extend BaseEntity — DDL has no `deletedAt` for this table (members are hard-deleted on removal). `findAllByUserId` uses raw SQL join to respect the cross-aggregate boundary (BR-R06). |

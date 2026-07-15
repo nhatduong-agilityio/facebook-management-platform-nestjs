@@ -1,0 +1,47 @@
+config:
+  target: "{{ $processEnvironment.API_URL }}"
+  phases:
+    - duration: 30
+      arrivalRate: 2
+      rampTo: 30
+      name: "ramp"
+    - duration: 60
+      arrivalRate: 30
+      name: "burst"
+    - duration: 30
+      arrivalRate: 5
+      name: "cooldown"
+  ensure:
+    p99: 500
+    maxErrorRate: 1
+  defaults:
+    headers:
+      authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+      content-type: "application/json"
+
+# Write-path scenario (NFR: ~5 wps burst ~30, p99 < 500 ms).
+# Exercises the full create-post path: guard check → quota check → persist → event.
+# Requires env:
+#   API_URL      — e.g. http://localhost:3000
+#   TEST_JWT     — a valid Clerk JWT with Owner/Editor role
+#   WORKSPACE_ID — UUID of a seeded test workspace
+#
+# Run: pnpm load:write
+# or:  API_URL=http://localhost:3000 TEST_JWT=<token> WORKSPACE_ID=<uuid> pnpm load:write
+scenarios:
+  - name: "create and read posts"
+    flow:
+      - post:
+          url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts"
+          json:
+            content: "Load test post {{ $timestamp }}"
+          capture:
+            - json: "$.id"
+              as: "postId"
+          expect:
+            - statusCode: 201
+      - get:
+          url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts/{{ postId }}"
+          ifTrue: "postId"
+          expect:
+            - statusCode: 200

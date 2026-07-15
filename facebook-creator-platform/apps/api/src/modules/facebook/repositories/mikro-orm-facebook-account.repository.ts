@@ -49,6 +49,14 @@ export class MikroOrmFacebookAccountRepository extends IFacebookAccountRepositor
   }
 
   /** @inheritdoc */
+  findAllByWorkspace(workspaceId: string): Promise<FacebookAccount[]> {
+    return this.repo.find(
+      { workspace: workspaceId, deletedAt: null },
+      { orderBy: { connectedAt: 'DESC' } },
+    );
+  }
+
+  /** @inheritdoc */
   async connectPage(workspaceId: string, data: FacebookPageConnectData): Promise<FacebookAccount> {
     const existing = await this.repo.findOne({ pageId: data.pageId });
 

@@ -144,23 +144,35 @@ describe('PostsService', () => {
   // ── listPosts ──────────────────────────────────────────────────────────────
 
   describe('listPosts', () => {
-    it('returns ok([]) when workspace has no posts', async () => {
-      vi.mocked(mockPostRepo.findAll).mockResolvedValue([]);
+    it('returns ok(page) with empty data when workspace has no posts', async () => {
+      vi.mocked(mockPostRepo.findAll).mockResolvedValue({ data: [], nextCursor: null });
 
       const result = await service.listPosts(WORKSPACE_ID);
 
       expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap()).toEqual([]);
+      const page = result._unsafeUnwrap();
+      expect(page.data).toEqual([]);
+      expect(page.nextCursor).toBeNull();
     });
 
-    it('returns ok(posts) ordered newest first', async () => {
+    it('returns ok(page) with posts and nextCursor when more pages exist', async () => {
       const posts = [makePost({ id: 'p1' }), makePost({ id: 'p2' })];
-      vi.mocked(mockPostRepo.findAll).mockResolvedValue(posts);
+      vi.mocked(mockPostRepo.findAll).mockResolvedValue({ data: posts, nextCursor: 'cursor123' });
 
-      const result = await service.listPosts(WORKSPACE_ID);
+      const result = await service.listPosts(WORKSPACE_ID, { limit: 2 });
 
       expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap()).toHaveLength(2);
+      const page = result._unsafeUnwrap();
+      expect(page.data).toHaveLength(2);
+      expect(page.nextCursor).toBe('cursor123');
+    });
+
+    it('passes query options to the repository', async () => {
+      vi.mocked(mockPostRepo.findAll).mockResolvedValue({ data: [], nextCursor: null });
+
+      await service.listPosts(WORKSPACE_ID, { limit: 10, cursor: 'abc' });
+
+      expect(mockPostRepo.findAll).toHaveBeenCalledWith(WORKSPACE_ID, { limit: 10, cursor: 'abc' });
     });
   });
 

@@ -10,8 +10,11 @@ import { Migration } from '@mikro-orm/migrations';
  * - `id` has no `DEFAULT` — the application generates UUID v7 before persist (ADR-013).
  * - `page_id` is globally unique: one Page can only be connected to one workspace.
  * - `workspace_id` is a real same-schema FK (both tables are in `core`); indexed (BR-R08).
- * - No `deleted_at` — matches the reference DDL; the T5.2 audit pass will evaluate
- *   whether soft-delete should be retrofitted.
+ * - No `deleted_at` on creation — matches the reference DDL. `deleted_at` was later
+ *   added via `Migration20260703000000_FacebookAccountSoftDelete` (T2.7) to support
+ *   deauth soft-delete; entity still does not extend `BaseEntity` (ADR-036 confirmed
+ *   in T5.2). No `@Filter` is applied; repository queries filter `{ deletedAt: null }`
+ *   explicitly (ADR-031).
  */
 export class Migration20260702000000_FacebookAccountsSchema extends Migration {
   /** Creates `core.facebook_accounts` with all constraints and indexes. */

@@ -42,6 +42,27 @@ export class FacebookService {
   ) {}
 
   /**
+   * Returns all active Facebook Pages connected to a workspace.
+   *
+   * Retrieves non-deleted `FacebookAccount` records from the repository and maps
+   * them to `ConnectedPageResponseDto`. Access tokens are **never** included (BR-F11).
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @returns `ok(pages)` — an empty array when no Pages are connected.
+   */
+  async listPages(workspaceId: string): Promise<Result<ConnectedPageResponseDto[], AppError>> {
+    const accounts = await this.facebookAccounts.findAllByWorkspace(workspaceId);
+    return ok(
+      accounts.map((a) => ({
+        id: a.id,
+        pageId: a.pageId,
+        pageName: a.pageName,
+        connectedAt: a.connectedAt,
+      })),
+    );
+  }
+
+  /**
    * Generates a Facebook OAuth authorization URL for connecting a Page to a workspace.
    *
    * The `state` token encodes `workspaceId` and is HMAC-signed; the callback

@@ -5,11 +5,83 @@
 
 ## Resume point
 
-- **Next task:** `T5.1` — MikroORM/UoW verification pass (Week 5 hardening).
+- **Next task:** none — all Week 1–5 tasks complete (T5.7 was the final task). Post-T5.7 API gap closure also complete.
 - **Branch:** `nestjs-practice`
-- **Notes:** T4.4 complete. 13 new controller spec files added to `apps/api`; 1 broken test fixed (`rabbitmq-event-bus.spec.ts` imported `FCP_EVENTS_EXCHANGE` from the wrong module after it moved to `@fcp/constants`). Total: 411/411 tests, 0 lint errors. ADRs current.
+- **Notes:** All 3 missing CR-01 endpoints implemented and tested. Tests: 425/425. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-15 — API gap closure (post-T5.7)
+
+Three endpoints specified in the CR-01 API design tab but missing from the implementation were identified and added:
+
+- **`GET /workspaces/:id/facebook/pages`**: added `IFacebookAccountRepository.findAllByWorkspace` (port + MikroORM adapter), `FacebookService.listPages`, and `GET :workspaceId/facebook/pages` to `FacebookController`. Returns `ConnectedPageResponseDto[]` sorted by `connectedAt DESC`. Access tokens excluded (BR-F11).
+- **`GET /workspaces/:id/billing/subscription`**: added `SubscriptionResponse` + `PlanSummary` wire types to `@fcp/billing-contracts`; `GET /workspaces/:id/subscription` to `services/billing BillingController`; `BillingService.findSubscription` thin delegation; `IBillingHttpClient.getSubscription` + `BillingHttpClientAdapter`; `SubscriptionResponseDto` + `GET billing/subscription` to `apps/api BillingController`. 404 → `NOT_FOUND`; 5xx → `SERVICE_UNAVAILABLE`.
+- **`GET /workspaces/:id/posts/:postId/analytics`**: added `PostMetricsResponse` wire type to `@fcp/analytics-contracts`; `PostMetricsDayDto` to `analytics.dto.ts`; `IAnalyticsClient.getPostMetrics` + adapter impl (calls `GET /posts/:postId/metrics` on analytics service, already implemented since T3.3); `GET posts/:postId/analytics` to `apps/api AnalyticsController`.
+- 11 new tests across 4 spec files. ADR-092 logged.
+- Tests: 425/425. Lint: 0 errors.
+
+### 2026-07-15 — T5.7 Buffer / final review / docs sync
+
+- Removed all deferred "T5.2 audit pass will evaluate/reconcile" comments from 2 migrations; replaced with the T5.2 decisions (ADR-036 intentional, ADR-031 explicit repo filter confirmed).
+- Replaced "For T2.6/T3.2 this is a placeholder" framing in 3 consumer JSDoc blocks with current descriptions of what each consumer does and where downstream work lives.
+- Removed "(T3.2 placeholders; full logic in T4.2/T4.3)" from `billing.module.ts` JSDoc.
+- Updated `DECISIONS.md` ADR-031 trailing sentence and changelog row 793 inline evaluation note.
+- Updated `SETUP.md` bootstrapping section: replaced "no application code yet / start T1.1" with live demo instructions (docker compose, migrations, all 7 processes, load-test commands).
+- Tests: 414/414. Lint: 0 errors.
+
+### 2026-07-15 — T5.6 Load-test fixes
+
+- **`Migration20260715000001_PerfIndexes`**: composite index `idx_invitations_workspace_email_status (workspace_id, email, status)` covers `findPendingByWorkspaceAndEmail`; partial composite index `idx_posts_ws_created_at (workspace_id, created_at DESC, id DESC) WHERE deleted_at IS NULL` covers paginated `listPosts`.
+- **Keyset pagination**: `IPostRepository.findAll` now accepts `ListPostsQuery { limit?, cursor? }` and returns `PostsPage { data, nextCursor }`. Adapter uses `LIMIT + 1` trick; cursor is `base64url(JSON({ createdAt, id }))`. Controller exposes `?limit=50&cursor=<opaque>`; response shape changed from `PostResponseDto[]` to `PostsPageDto`.
+- **`WorkspaceService.getById`**: replaced 3 serial queries (findById + findAllByUserId's 2 round-trips) with `Promise.all([findById, findByWorkspaceAndUserId])` — 2 parallel queries, both on unique indexes.
+- **Redis cache**: not added per §12 / ADR-019 — no live load-test data yet to justify.
+- ADR-091 logged.
+- Tests: 414/414. Lint: 0 errors.
+
+### 2026-07-15 — T5.5 Artillery smoke + load
+
+- **`artillery@^2.0.33`** added to root `devDependencies`; 4 npm scripts added: `load:smoke`, `load:read`, `load:write`, `load:fanout`.
+- **`test/load/read-dashboard.yml`**: ramp 10→150 rps (60s), sustain 150 rps (120s); exercises `/health`, `/api/v1/auth/me`, `/api/v1/workspaces`, posts, members; `ensure p99: 300`.
+- **`test/load/write-posts.yml`**: ramp 2→30 wps (30s), burst 30 wps (60s), cooldown 5 wps (30s); POST then GET post; `ensure p99: 500`.
+- **`test/load/publish-fanout.yml`**: seed (30s, 2/s) → wait 90s for cron → observe outcome (30s, 2/s); `ensure maxErrorRate: 1`; instructions to check RabbitMQ management UI for DLQ depth.
+- **`test/load/reports/.gitkeep`**: ensures reports directory exists; contents gitignored.
+- Actual load-test execution requires live stack. Run order: `pnpm load:smoke` (fast CI gate), then `load:read`, `load:write`, `load:fanout` for full capacity verification.
+- ADR-090 logged.
+- Tests: 411/411. Lint: 0 errors.
+
+### 2026-07-15 — T5.4 Result-pattern + FK-index pass
+
+- **Result pattern**: All domain service methods return `Result<T, AppError>`. `ClerkWebhookService.handleEvent()` (`Promise<void>`) and `DevAuthService` (`Promise<DevAuthTokenResponseDto>`) are documented exceptions — infrastructure webhook handler and dev-only utility respectively.
+- **FK indexes**: All 13 FK/logical-FK columns confirmed indexed in migration SQL. `email.email_delivery_logs.related_entity_id` intentionally unindexed: polymorphic optional context field, no access pattern queries on it, reference DDL omits the index.
+- **No code changes** — clean verification pass.
+- ADR-089 logged. ADR-087/ADR-088 renumbered (previous T5.1/T5.3 ADRs had numbers already taken in the changelog).
+- Tests: 411/411. Lint: 0 errors.
+
+### 2026-07-15 — T5.3 PII verification
+
+- **`apps/api/src/app.module.ts`** (FIXED): Added `'*.pageToken'` to Pino redact paths. The `GET /internal/facebook-accounts/:id` endpoint returns `{ id, pageToken }` where `pageToken` is the decrypted access token — this field was not covered by the previous `*.accessToken` / `*.token` paths.
+- **`services/notification/src/app.module.ts`** (FIXED): Added `redact: { paths: ['*.email', '*.fullName', '*.accessToken', '*.pageToken'] }`. The `workspace.member-invited` consumer receives `MemberInvitedPayload.email`; redaction is defence-in-depth.
+- **`services/audit/src/app.module.ts`** (FIXED): Same redact config. The wildcard consumer sees ALL events (including `MemberInvitedEvent` with `email`); `stripPii()` already strips before DB insert but Pino-level redaction prevents any accidental `logger.log({ data })` from leaking.
+- **`services/analytics/src/app.module.ts`** and **`services/search/src/app.module.ts`** (FIXED): Same redact config for consistency — these services consume post-only events with no PII today, but the config guards future event additions.
+- **`docs/DECISIONS.md`**: ADR-068 added.
+- Checked: `services/billing` (already redacts Stripe IDs) and `services/email` (already redacts `email`/`recipientEmail`) — no change needed.
+- Tests: 411/411. Lint: 0 errors.
+
+### 2026-07-15 — T5.2 Schema audit
+
+- **`docs/reference/verify-seed.sql`** (FIXED): Commented out `core.audit_logs` row in Section 1 — this table does not exist in Postgres (ADR-047; audit records live in MongoDB `audit_events`). `messaging.*` rows were already present and correct.
+- **`docs/DECISIONS.md` ADR-036** (EXPANDED): Replaced the two-line Plan/Subscription note with a full table enumerating all 12 entities that intentionally exclude `BaseEntity` (`WorkspaceMember`, `Invitation`, `FacebookAccount`, `Plan`, `Subscription`, `BillingEvent`, `PostMetrics`, `AuditEvent`, `EmailDeliveryLog`, `Notification`, `NotificationRecipient`, `WorkspaceMemberProjection`), each with a documented reason. Closes the open "T5.2 audit pass will evaluate" note from T2.2 for `FacebookAccount`.
+- No DB `DEFAULT gen_random_uuid()` on any service-owned PK column — confirmed (carry-over from T5.1).
+- All `BaseEntity` subclasses (`User`, `Workspace`, `Post`) have the full `createdAt`/`updatedAt`/`deletedAt` triplet — confirmed.
+- Tests: 411/411. Lint: 0 errors.
+
+### 2026-07-15 — T5.1 MikroORM/UoW verification pass
+
+- **All checks PASS except one**: No global ORM filter (entity-level `@Filter` on `BaseEntity` only); no TypeORM; all service-owned PKs use app-generated uuid v7 (`uuidv7()`); UoW pattern correct (`em.flush()` once per repository method; `publish.job.ts` multi-flush is intentional per-post isolation in a forked EM, ADR-054).
+- **Bug found and fixed**: `billing.subscriptions` CHECK constraint (`chk_subscriptions_status`) only listed `('trialing', 'active', 'grace_period', 'cancelled')`. T3.6 (ADR-060) added `'past_due'` to `SubscriptionStatus` in the TypeScript entity but no DB migration was written. Any write with `status = 'past_due'` would have thrown a check violation at runtime.
+- **Fix**: Created `services/billing/src/migrations/Migration20260714000001_SubscriptionPastDueStatus.ts` — drops and recreates the constraint to include `'past_due'`. Documented as ADR-067 in DECISIONS.md.
+- Tests: 411/411. Lint: 0 errors.
 
 ### 2026-07-15 — T4.4 Cross-cutting tests + docs
 

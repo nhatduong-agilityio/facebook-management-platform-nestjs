@@ -23,7 +23,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  * Global singletons registered here:
  * - **ConfigModule** — loads the root `.env` file; available to all modules via ConfigService.
  * - **LoggerModule** — Pino HTTP logger with PII redaction for `email`, `fullName`,
- *   `accessToken`, `token`, and `Authorization` headers (BR-F12).
+ *   `accessToken`, `pageToken`, `token`, and `Authorization` headers (BR-F12, T5.3).
  * - **DatabaseModule** — PostgreSQL (primary store) and MongoDB (audit store) via MikroORM.
  * - **HealthModule** — liveness probe at `GET /api/v1/health`.
  * - **IdentityModule** — Clerk JWT guard, user upsert, workspace RBAC guards.
@@ -52,6 +52,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
             '*.email',
             '*.fullName',
             '*.accessToken',
+            '*.pageToken',
             '*.token',
             'req.body.token',
           ],

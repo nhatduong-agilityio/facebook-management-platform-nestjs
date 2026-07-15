@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -18,6 +19,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
   ApiUnauthorizedResponse,
   ApiConflictResponse,
@@ -28,7 +30,13 @@ import { CurrentUser } from '../identity/decorators/current-user.decorator';
 import { Roles } from '../identity/decorators/roles.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { PostsService } from './posts.service';
-import { CreatePostDto, UpdatePostDto, PostResponseDto } from './dto/post.dto';
+import {
+  CreatePostDto,
+  ListPostsQueryDto,
+  PostResponseDto,
+  PostsPageDto,
+  UpdatePostDto,
+} from './dto/post.dto';
 import { UpdatePostStatusDto } from './dto/update-post-status.dto';
 import type { User } from '../identity/entities/user.entity';
 import type { Post as PostEntity } from './entities/post.entity';
@@ -95,21 +103,30 @@ export class PostsController {
   }
 
   /**
-   * Lists all active (non-deleted) posts for the workspace, newest first.
+   * Returns a page of active (non-deleted) posts for the workspace, newest first.
+   *
+   * Supports keyset pagination: pass `nextCursor` from the previous response
+   * as `?cursor=<value>` to advance pages. Default page size is 50.
    *
    * @param workspaceId - UUID of the owning workspace.
+   * @param query       - Validated pagination parameters (`limit`, `cursor`).
    */
   @Get()
   @UseGuards(WorkspaceRolesGuard)
   @Roles('owner', 'editor', 'viewer')
-  @ApiOperation({ summary: 'List all posts in the workspace' })
-  @ApiOkResponse({ type: [PostResponseDto] })
+  @ApiOperation({ summary: 'List posts in the workspace (paginated, newest first)' })
+  @ApiOkResponse({ type: PostsPageDto })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Page size (1–100, default 50)' })
+  @ApiQuery({ name: 'cursor', required: false, type: String, description: 'Keyset cursor from previous response' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
   @ApiForbiddenResponse({ description: 'Not a member of this workspace' })
-  async listPosts(@Param('workspaceId') workspaceId: string): Promise<PostResponseDto[]> {
-    const result = await this.postsService.listPosts(workspaceId);
+  async listPosts(
+    @Param('workspaceId') workspaceId: string,
+    @Query() query: ListPostsQueryDto,
+  ): Promise<PostsPageDto> {
+    const result = await this.postsService.listPosts(workspaceId, query);
     return result.match(
-      (posts) => posts.map(toDto),
+      (page) => ({ data: page.data.map(toDto), nextCursor: page.nextCursor }),
       (e) => { throw toHttpException(e); },
     );
   }

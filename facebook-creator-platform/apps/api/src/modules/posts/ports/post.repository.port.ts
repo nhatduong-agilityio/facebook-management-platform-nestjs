@@ -2,6 +2,43 @@ import type { Post } from '../entities/post.entity';
 import type { CreatePostData } from '../entities/post.entity';
 
 /**
+ * Opaque keyset cursor payload encoded as base64url JSON.
+ * Used to continue a `findAll` page from the last seen row.
+ */
+export interface ListPostsCursor {
+  /** ISO-8601 `createdAt` of the last row on the previous page. */
+  createdAt: string;
+  /** UUID v7 `id` of the last row — breaks ties within the same millisecond. */
+  id: string;
+}
+
+/**
+ * Query options for the paginated `findAll` method.
+ *
+ * Defaults: `limit = 50`, no cursor (returns the first page).
+ * Maximum `limit` is capped at 100 by the adapter.
+ */
+export interface ListPostsQuery {
+  /** Maximum number of posts to return. Default 50; adapter caps at 100. */
+  limit?: number;
+  /** base64url-encoded `ListPostsCursor` from the previous page response. */
+  cursor?: string;
+}
+
+/**
+ * Result of a paginated `findAll` call.
+ *
+ * `nextCursor` is `null` when there are no more pages.
+ * Pass it back as `?cursor=<value>` on the next request to get the next page.
+ */
+export interface PostsPage {
+  /** Posts for this page, ordered `createdAt DESC, id DESC`. */
+  data: Post[];
+  /** Opaque cursor for the next page, or `null` on the last page. */
+  nextCursor: string | null;
+}
+
+/**
  * Port (outbound): persistence contract for `Post` aggregates.
  *
  * All ORM details (`em.getReference`, `persist`, `flush`) are encapsulated in the
@@ -20,12 +57,16 @@ export abstract class IPostRepository {
   abstract findById(id: string, workspaceId: string): Promise<Post | null>;
 
   /**
-   * Returns all active (non-deleted) posts for a workspace, ordered by
-   * `createdAt` descending.
+   * Returns a page of active (non-deleted) posts for a workspace, ordered by
+   * `createdAt DESC, id DESC` (keyset pagination — §12).
+   *
+   * Pass `query.cursor` from the previous response's `nextCursor` to advance pages.
+   * Default page size is 50; adapter caps at 100.
    *
    * @param workspaceId - UUID of the owning workspace.
+   * @param query       - Pagination options (limit, cursor).
    */
-  abstract findAll(workspaceId: string): Promise<Post[]>;
+  abstract findAll(workspaceId: string, query?: ListPostsQuery): Promise<PostsPage>;
 
   /**
    * Counts non-deleted posts for a workspace. Used to enforce plan quota (PLAN_LIMIT_EXCEEDED).
