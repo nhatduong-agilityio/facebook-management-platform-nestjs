@@ -1,5 +1,7 @@
 config:
-  target: "{{ $processEnvironment.API_URL }}"
+  # Default: local Docker stack. Override for staging/prod:
+  #   artillery run --target https://staging.example.com test/load/read-dashboard.yml
+  target: "http://localhost:3000"
   phases:
     - duration: 60
       arrivalRate: 10
@@ -8,6 +10,13 @@ config:
     - duration: 120
       arrivalRate: 150
       name: "sustain"
+  plugins:
+    # expect plugin must be declared — without it `expect:` blocks are silently ignored.
+    expect:
+      outputFormat: prettyError
+      reportFailuresAsErrors: true
+    metrics-by-endpoint:
+      useOnlyRequestNames: true
   ensure:
     p99: 300
     maxErrorRate: 1
@@ -16,37 +25,52 @@ config:
       authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
       content-type: "application/json"
 
-# Read-heavy dashboard scenario (NFR: 150 rps p99 < 300 ms).
-# Requires env:
-#   API_URL  — e.g. http://localhost:3000
-#   TEST_JWT — a valid Clerk JWT for a seeded test user
+# Read-heavy dashboard scenario (NFR: 150 rps, p99 < 300 ms).
+# Exercises the full authenticated read path: auth → workspace list → posts → members.
 #
-# Run: pnpm load:read
-# or:  API_URL=http://localhost:3000 TEST_JWT=<token> pnpm load:read
+# Run:
+#   pnpm load:read
+# or:
+#   API_URL=http://localhost:3000 TEST_JWT=<token> \
+#     artillery run test/load/read-dashboard.yml -o test/load/reports/read.json
+#
+# Required env:
+#   API_URL  — e.g. http://localhost:3000
+#   TEST_JWT — a valid Clerk JWT for a seeded test user with at least one workspace
+
 scenarios:
   - name: "workspace dashboard reads"
     flow:
       - get:
-          url: "/health"
+          name: "GET /health"
+          url: "/api/v1/health"
           expect:
             - statusCode: 200
+
       - get:
+          name: "GET /auth/me"
           url: "/api/v1/auth/me"
           expect:
             - statusCode: 200
+
       - get:
+          name: "GET /workspaces"
           url: "/api/v1/workspaces"
           capture:
             - json: "$[0].id"
               as: "workspaceId"
           expect:
             - statusCode: 200
+
       - get:
+          name: "GET /workspaces/:id/posts"
           url: "/api/v1/workspaces/{{ workspaceId }}/posts"
           ifTrue: "workspaceId"
           expect:
             - statusCode: 200
+
       - get:
+          name: "GET /workspaces/:id/members"
           url: "/api/v1/workspaces/{{ workspaceId }}/members"
           ifTrue: "workspaceId"
           expect:

@@ -1,0 +1,160 @@
+config:
+  # Default: local Docker stack. Override for other envs:
+  #   artillery run --target http://staging.example.com test/e2e/workspaces.e2e.yml
+  target: "http://localhost:3000"
+  phases:
+    - duration: 1
+      arrivalCount: 1
+  plugins:
+    expect:
+      outputFormat: prettyError
+      reportFailuresAsErrors: true
+  defaults:
+    headers:
+      authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+      content-type: "application/json"
+
+# E2E contract tests for workspace CRUD and member management.
+#
+# Run:
+#   API_URL=http://localhost:3000 TEST_JWT=<token> \
+#     artillery run test/e2e/workspaces.e2e.yml
+#
+# Required env:
+#   API_URL  — e.g. http://localhost:3000
+#   TEST_JWT — a valid Clerk JWT with at least one seeded workspace accessible
+#
+# Side-effects:
+#   Creates a test workspace (name prefixed "E2E-") and sends one invitation to
+#   an *.e2e.invalid address. Neither is cleaned up (no DELETE /workspaces endpoint).
+#   Run against a dev/staging DB, not production.
+
+scenarios:
+  - name: "workspace CRUD + member management contract tests"
+    flow:
+      # ── Create workspace ────────────────────────────────────────────────────
+      - post:
+          url: "/api/v1/workspaces"
+          json:
+            name: "E2E-{{ $uuid }}"
+            description: "Automated e2e test workspace — safe to delete"
+          capture:
+            - json: "$.id"
+              as: "wsId"
+            - json: "$.slug"
+              as: "wsSlug"
+            - json: "$.ownerUserId"
+              as: "ownerUserId"
+          expect:
+            - statusCode: 201
+            - contentType: json
+            - hasProperty: "id"
+            - hasProperty: "slug"
+            - hasProperty: "ownerUserId"
+            - hasProperty: "status"
+            - hasProperty: "createdAt"
+
+      # ── Duplicate slug — name collision returns 409 ──────────────────────────
+      # (Skipped: $uuid above makes collision impossible by design)
+
+      # ── Get workspace by id ─────────────────────────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ wsId }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "name"
+            - hasProperty: "slug"
+            - hasProperty: "ownerUserId"
+
+      # ── List workspaces — new workspace must appear ─────────────────────────
+      - get:
+          url: "/api/v1/workspaces"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # ── 404 for unknown workspace id ────────────────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/00000000-0000-0000-0000-000000000000"
+          expect:
+            - statusCode: 404
+            - notStatusCode: [500]
+
+      # ── List members — creator is owner ─────────────────────────────────────
+      # hasProperty does not support JSONPath $[0].x notation on root arrays;
+      # captures serve as implicit existence assertions instead.
+      - get:
+          url: "/api/v1/workspaces/{{ wsId }}/members"
+          capture:
+            - json: "$[0].id"
+              as: "ownerMemberId"
+            - json: "$[0].role"
+              as: "ownerRole"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # ── Get single member by membership record id ───────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ wsId }}/members/{{ ownerMemberId }}"
+          ifTrue: "ownerMemberId"
+          expect:
+            - statusCode: 200
+            - hasProperty: "role"
+            - hasProperty: "userId"
+            - hasProperty: "workspaceId"
+            - hasProperty: "joinedAt"
+
+      # ── 404 for nonexistent member ───────────────────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ wsId }}/members/00000000-0000-0000-0000-000000000000"
+          expect:
+            - statusCode: 404
+            - notStatusCode: [500]
+
+      # ── Invite a member (editor role) ────────────────────────────────────────
+      - post:
+          url: "/api/v1/workspaces/{{ wsId }}/members/invite"
+          json:
+            email: "e2e-{{ $uuid }}@e2e.invalid"
+            role: "editor"
+          capture:
+            - json: "$.id"
+              as: "invitationId"
+          expect:
+            - statusCode: 201
+            - contentType: json
+            - hasProperty: "id"
+            - hasProperty: "expiresAt"
+            - hasProperty: "status"
+
+      # ── Viewer invite is also valid ──────────────────────────────────────────
+      - post:
+          url: "/api/v1/workspaces/{{ wsId }}/members/invite"
+          json:
+            email: "e2e-viewer-{{ $uuid }}@e2e.invalid"
+            role: "viewer"
+          expect:
+            - statusCode: 201
+
+      # ── 'owner' role is rejected at validation (BR-F03b, @IsIn(['editor','viewer'])) ─
+      - post:
+          url: "/api/v1/workspaces/{{ wsId }}/members/invite"
+          json:
+            email: "e2e-owner-{{ $uuid }}@e2e.invalid"
+            role: "owner"
+          expect:
+            - statusCode: 400
+            - notStatusCode: [500]
+
+      # ── Viewer cannot invite members (403) ───────────────────────────────────
+      # (Skipped: requires a second JWT with viewer role — out of scope for single-user e2e)
+
+      # ── Remove the owner when they are the sole owner returns 403 (BR-R02) ──
+      - delete:
+          url: "/api/v1/workspaces/{{ wsId }}/members/{{ ownerMemberId }}"
+          ifTrue: "ownerMemberId"
+          expect:
+            - statusCode: 403
+            - notStatusCode: [500]

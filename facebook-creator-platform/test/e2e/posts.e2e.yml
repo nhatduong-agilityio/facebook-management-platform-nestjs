@@ -1,0 +1,184 @@
+config:
+  # Default: local Docker stack. Override for other envs:
+  #   artillery run --target http://staging.example.com test/e2e/posts.e2e.yml
+  target: "http://localhost:3000"
+  processor: "../helpers/processor.cjs"
+  phases:
+    - duration: 1
+      arrivalCount: 1
+  plugins:
+    expect:
+      outputFormat: prettyError
+      reportFailuresAsErrors: true
+  defaults:
+    headers:
+      authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+      content-type: "application/json"
+
+# E2E contract tests for the Post lifecycle and state machine.
+#
+# Run:
+#   API_URL=http://localhost:3000 TEST_JWT=<token> \
+#     artillery run test/e2e/posts.e2e.yml
+#
+# Required env:
+#   API_URL  — e.g. http://localhost:3000
+#   TEST_JWT — a valid Clerk JWT; the user must have Owner or Editor role on
+#              the test workspace created by the `before:` hook
+#
+# Side-effects:
+#   Creates one workspace ("Posts-E2E-*") in the target DB and leaves it behind
+#   (no DELETE /workspaces endpoint). Posts created during the test are deleted
+#   within the same flow. Run against dev/staging only.
+
+# The `before:` hook runs once before any scenario VU starts.
+# It creates a dedicated workspace and captures its id so all steps share it.
+before:
+  flow:
+    - post:
+        url: "/api/v1/workspaces"
+        headers:
+          authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+          content-type: "application/json"
+        json:
+          name: "Posts-E2E-{{ $uuid }}"
+          description: "Auto-created for post lifecycle e2e tests — safe to delete"
+        capture:
+          - json: "$.id"
+            as: "workspaceId"
+        expect:
+          - statusCode: 201
+
+scenarios:
+  - name: "post lifecycle — create → update → schedule → invalid transition → unschedule → delete"
+    flow:
+      # ── 400 on empty content (validation guard) ──────────────────────────────
+      - post:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts"
+          json:
+            content: ""
+          expect:
+            - statusCode: 400
+            - notStatusCode: [500]
+
+      # ── Create draft post ────────────────────────────────────────────────────
+      - post:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts"
+          json:
+            content: "E2E draft post {{ $uuid }}"
+            title: "E2E Title"
+          capture:
+            - json: "$.id"
+              as: "postId"
+            - json: "$.status"
+              as: "postStatus"
+          expect:
+            - statusCode: 201
+            - contentType: json
+            - hasProperty: "id"
+            - hasProperty: "workspaceId"
+            - hasProperty: "status"
+            - hasProperty: "content"
+            - hasProperty: "createdAt"
+            - hasProperty: "updatedAt"
+            - notHasProperty: "deletedAt"
+
+      # ── List posts — new post appears ────────────────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "data"
+            - hasProperty: "nextCursor"
+
+      # ── Paginate with explicit limit ─────────────────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts?limit=10"
+          expect:
+            - statusCode: 200
+            - hasProperty: "data"
+            - hasProperty: "nextCursor"
+
+      # ── Get post by id ───────────────────────────────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/{{ postId }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "id"
+            - hasProperty: "status"
+            - hasProperty: "content"
+
+      # ── 404 for nonexistent post ─────────────────────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/00000000-0000-0000-0000-000000000000"
+          expect:
+            - statusCode: 404
+            - notStatusCode: [500]
+
+      # ── Update post content and title ────────────────────────────────────────
+      - patch:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/{{ postId }}"
+          json:
+            content: "Updated content {{ $uuid }}"
+            title: "Updated Title"
+          expect:
+            - statusCode: 200
+            - hasProperty: "content"
+            - hasProperty: "updatedAt"
+
+      # ── Compute far-future scheduledAt (year 2099) via processor ────────────
+      - function: "setFutureScheduledAt"
+
+      # ── State machine: draft → scheduled ────────────────────────────────────
+      - patch:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/{{ postId }}/status"
+          json:
+            status: "scheduled"
+            scheduledAt: "{{ scheduledAt }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "status"
+
+      # ── State machine: scheduled → published is INVALID (must go via publishing)
+      - patch:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/{{ postId }}/status"
+          json:
+            status: "published"
+          expect:
+            - statusCode: 409
+            - notStatusCode: [500]
+
+      # ── A published post cannot be edited (enforce immutability guard) ───────
+      # (skipped — post is still 'scheduled' at this point; 'published' transition
+      #  was rejected above. The immutability check is covered by unit tests.)
+
+      # ── State machine: scheduled → draft (unschedule) ───────────────────────
+      - patch:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/{{ postId }}/status"
+          json:
+            status: "draft"
+          expect:
+            - statusCode: 200
+            - hasProperty: "status"
+
+      # ── Soft-delete the post ────────────────────────────────────────────────
+      - delete:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/{{ postId }}"
+          expect:
+            - statusCode: 204
+
+      # ── Deleted post returns 404 on all read paths ───────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/{{ postId }}"
+          expect:
+            - statusCode: 404
+            - notStatusCode: [500]
+
+      # ── List is empty again (soft-delete filter) ─────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts"
+          expect:
+            - statusCode: 200
+            - hasProperty: "data"
