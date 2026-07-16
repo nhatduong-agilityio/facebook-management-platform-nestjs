@@ -13,7 +13,11 @@ do not silently diverge.
 ## Stack — use these, verify versions in `docs/DECISIONS.md`
 - Runtime: **Node 25**, **pnpm 10** (workspace). Never use npm/yarn here.
 - Framework: **NestJS 11**. ORM: **MikroORM 7** (Unit of Work + Identity Map) — **never TypeORM**.
-- Data: **PostgreSQL 16** (per-service schemas), **MongoDB** (audit, schemaless), **Redis** (cache only), **RabbitMQ** (event bus).
+- Data: **PostgreSQL 16** (per-service schemas), **MongoDB** (audit, schemaless), **Redis** (cache only), **RabbitMQ** (async event bus).
+- IPC — Three-Transport Model (ADR-094, `docs/CODING-STANDARDS.md` §15):
+  - **HTTP**: external clients + inbound webhooks (Stripe → Billing, Facebook → apps/api) only.
+  - **TCP `@MessagePattern`**: all internal synchronous RPC (`apps/api` → services).
+  - **RabbitMQ `@EventPattern`**: all async fire-and-forget events between services.
 - Auth: **Clerk** (JWT at gateway). Payments: **Stripe** (state machine).
 - Search: **Algolia**. Errors: **neverthrow** (Result pattern). Tests: **Vitest** + **Artillery**.
 
@@ -30,6 +34,7 @@ non-obvious. Full rules and canonical examples in `docs/CODING-STANDARDS.md` §9
 5. **Cross-schema references** are plain `uuid` columns with **no FK constraint** (BR-R06); integrity is enforced via domain events. **Every FK (real + logical) has a btree index** (R8).
 6. **One `em.flush()` per request = one transaction.** Collect domain events, persist, flush, then publish **after** commit.
 7. Audit trail is **not** a Postgres table — it lives in the **Audit Service (MongoDB)**, fed by events. Exposed read-only via `apps/api` (Owner role).
+8. **Three-Transport Model**: `apps/api` → internal services uses **TCP** (`ClientProxy.send()` + `@MessagePattern`) for sync queries; **RabbitMQ** (`emit()` + `@EventPattern`) for async events; **HTTP** only for external clients and inbound webhooks. **Never** add a new `IHttpClient` call from `apps/api` to an internal service — use TCP. See `docs/CODING-STANDARDS.md` §15 for the canonical pattern.
 
 ## Build order — foundation first
 The conventions above are **Week 1 foundation**, not late polish. MikroORM (UoW),

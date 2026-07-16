@@ -198,6 +198,438 @@ For blocked tasks always append an inline note on the same line:
 
 ---
 
+## Post-T5.7 — Quality & Hardening (19 issues)
+
+> All Week 1–5 tasks are complete. This section tracks production-readiness gaps
+> identified after T5.7 final review. Work in order: Critical → High → Medium → Low.
+> Each task follows the same ritual: `/start-task <id>` → code → tests →
+> `pnpm lint && pnpm test` → update PROGRESS.md → `/finish-task`.
+
+### Critical — Fix Before Any Production Deployment
+
+- [ ] **C-1 Outbox recovery job — pending/failed rows never retried** (~3h)
+  - `RabbitMqEventBus.publish()` writes a `pending` row then emits. If the process crashes
+    between `em.flush()` and `publish()`, the event is permanently lost. No recovery path
+    exists for `failed` rows either.
+  - Build: `OutboxRelayJob` in `apps/api/src/infrastructure/rabbitmq/jobs/outbox-relay.job.ts`;
+    `@Cron(EVERY_30_SECONDS)`; queries `processing_status IN ('pending','failed') AND created_at
+    < now() - interval '60 seconds'`; re-publishes via `IEventBus`; marks `processed` on success.
+    Must use raw SQL (same pattern as `PostgresMessagingLogRepository`) — never ORM UoW for infra
+    logging. Inject `MikroORM` (not `EntityManager`) and fork per run (ADR-030, ADR-054).
+  - Migration: add `retry_count integer NOT NULL DEFAULT 0` and `last_retry_at timestamptz` to
+    `messaging.event_message_logs`; follow naming `Migration20260XXX_OutboxRetryColumns.ts`.
+  - Rules: `CLAUDE.md` §6 (relay job re-publishes already-committed rows ✓), §3 (fork EM);
+    `docs/CODING-STANDARDS.md` §9 (JSDoc on job class + `run()`).
+  - DoD: job publishes `pending` rows; `failed` rows incremented on error; migration runs cleanly;
+    `pnpm lint && pnpm test` green; ADR appended to `docs/DECISIONS.md`.
+
+- [ ] **C-2 Fix empty `facebookAccountId` in `PostPublishedEvent`** (~1h)
+  - `post.facebookAccount?.id ?? ''` in `PostsService.transitionStatus` falls back to `''` when
+    the `Ref<FacebookAccount>` is not populated. `services/analytics` uses this ID to resolve the
+    page token; an empty string causes silent analytics sync failure.
+  - Fix: add `populate: ['facebookAccount']` to the `findById` call used for status-transition
+    fetch, OR assert the ref is loaded and return `err(INTERNAL)` if missing.
+  - Rules: `CLAUDE.md` §1 (missing FK is an explicit error, not `''`); §5 (cross-schema logical FK
+    must be valid when post is in `publishing` state); BR-F11 (only the FK id in the event,
+    never the token value).
+  - DoD: `PostPublishedEvent.facebookAccountId` is never `''` for a post with a connected page;
+    unit test asserts the error path when account ref is absent; `pnpm test` green.
+
+- [ ] **C-3 Graceful shutdown — `app.enableShutdownHooks()` missing from `main.ts`** (~30 min)
+  - Without `enableShutdownHooks()`, a `SIGTERM` (k8s pod termination, `docker stop`) cuts
+    in-flight HTTP requests and RabbitMQ consumers do not drain, causing message loss.
+  - Fix: add `app.enableShutdownHooks()` in `apps/api/src/main.ts` after `NestFactory.create`
+    and before `app.startAllMicroservices()`. No new dependency needed — built into NestJS.
+  - Rules: verify `pnpm start:dev` still boots cleanly; `docs/CODING-STANDARDS.md` §9 (update
+    JSDoc on `bootstrap()` to mention graceful shutdown).
+  - DoD: `enableShutdownHooks()` present; dev server starts cleanly; health check spec passes.
+
+### High — Fix Before Production Traffic
+
+- [ ] **H-4 Rate limiting — no protection on any endpoint** (~2h)
+  - No rate limiting exists. The invite endpoint can be abused to send unlimited emails. Auth and
+    webhook endpoints are also unprotected against burst abuse.
+  - Run `pnpm view @nestjs/throttler version` → pin → `pnpm add @nestjs/throttler`.
+    Add `ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }])` to `AppModule` global imports +
+    global `ThrottlerGuard`. Override per-route: invite → 5/min/IP; webhooks → exempt or higher
+    limit (HMAC-verified); `DevAuthModule` token endpoint → 10/min.
+  - Rules: `CLAUDE.md` (pnpm only, record version); `docs/DECISIONS.md` (ADR: invite limit
+    rationale); `docs/CODING-STANDARDS.md` §9 (JSDoc on any new decorators/guards).
+  - DoD: throttler wired globally; invite limited to 5/min/IP; `pnpm lint && pnpm test` green;
+    ADR in `docs/DECISIONS.md`.
+
+- [ ] **H-5 CORS configuration missing from `main.ts`** (~30 min)
+  - `app.enableCors()` is absent. All browser cross-origin requests from the web dashboard are
+    blocked. Swagger UI at `/api/docs` also fails from a different origin.
+  - Fix: add `app.enableCors({ origin: ..., credentials: true, methods: [...] })` in `main.ts`
+    reading `ALLOWED_ORIGINS` from `ConfigService`. Add `ALLOWED_ORIGINS=http://localhost:4000`
+    to `.env.example`. No new dependency needed.
+  - Rules: `CLAUDE.md` guardrails (only CORS in this change); `docs/DECISIONS.md` (ADR: allowed
+    origins, credentials: true rationale); BR-F12 (`Authorization` already redacted by Pino).
+  - DoD: CORS enabled; `.env.example` updated; `pnpm test` green; ADR appended.
+
+- [ ] **H-6 `FacebookTokenExpiringEvent` emitted but never consumed for auto-refresh** (~3h)
+  - `FacebookTokenExpiryScheduler` emits `facebook.token_expiring` (routing key). No consumer in
+    `apps/api` triggers a token refresh. Token expiry silently breaks publishing.
+  - Build: `FacebookTokenExpiryConsumer` in
+    `apps/api/src/modules/facebook/consumers/facebook-token-expiry.consumer.ts`; extend
+    `IdempotentConsumer`; `@Controller()` + `@EventPattern('facebook.token_expiring')`; call
+    `FacebookService.refreshAccountToken(workspaceId, accountId)` inside `withDedup`; return
+    `'nack'` on `NOT_FOUND` (permanent); throw on network error (transient → requeue). Register in
+    `FacebookModule.controllers`.
+  - Rules: `CLAUDE.md` §6 (`refreshAccountToken` handles decrypt→refresh→re-encrypt after flush);
+    BR-F11 (no plaintext token returned from `refreshAccountToken`);
+    `docs/CODING-STANDARDS.md` §9 (JSDoc on consumer class and handler).
+  - DoD: consumer registered in `FacebookModule`; spec covers success, dedup, transient error;
+    `pnpm test` green.
+
+- [ ] **H-7 Health check is process-only — no dependency probes** (~2h)
+  - `GET /api/v1/health` returns `{ status: 'ok' }` if the NestJS process starts. No Postgres,
+    Redis, or RabbitMQ probe. Container orchestrators route traffic to unhealthy instances.
+  - Run `pnpm view @nestjs/terminus version` → pin → `pnpm add @nestjs/terminus`. Update
+    `HealthModule` / `HealthController` to use `HealthCheckService`, a Postgres probe (MikroORM or
+    raw ping), `MemoryHealthIndicator`, and a custom Redis ping. Response shape must stay
+    backward-compatible: `{ status: 'ok' | 'error', details: {...} }`. Update existing spec to
+    mock new indicators.
+  - Rules: `CLAUDE.md` (pnpm + pin + ADR); `docs/CODING-STANDARDS.md` §9 (JSDoc on controller
+    and indicators).
+  - DoD: endpoint probes Postgres + Redis; returns 503 on dependency failure; `pnpm test` green;
+    ADR in `docs/DECISIONS.md`.
+
+- [ ] **H-8 Internal routes have no network isolation — only shared secret header** (~1h)
+  - `/internal/*` endpoints are protected only by `x-internal-secret`. If `apps/api` is
+    internet-accessible these endpoints are reachable from the public internet. No ingress rule
+    blocks public access.
+  - Required: record in `docs/DECISIONS.md` — "Internal routes (`/internal/*`) must be blocked at
+    the ingress/LB from public traffic; `x-internal-secret` is secondary defence only." Optional
+    code hardening: add CIDR whitelist check in `InternalSecretGuard`.
+  - Rules: `CLAUDE.md` guardrails (do not refactor outside scope); `docs/CODING-STANDARDS.md` §9
+    (update `InternalSecretGuard` JSDoc to explain dual-layer model); `docs/DECISIONS.md` (ADR).
+  - DoD: ADR in `docs/DECISIONS.md`; `InternalSecretGuard` JSDoc updated; `pnpm lint` clean.
+
+### Medium — Fix Before Scale Validation
+
+- [ ] **M-9 No correlation ID / distributed trace across HTTP requests and events** (~3h)
+  - When a `PostCreatedEvent` fails in `services/search` three hops from the HTTP request, there
+    is no shared ID to correlate log entries across services and the event bus.
+  - Build: add `traceId: string` (UUID v7) to the `DomainEvent` abstract class in
+    `event-bus.port.ts`. Add a NestJS middleware that generates a `requestId` and assigns it to
+    the Pino logger context (`logger.assign({ requestId })`). Pass `requestId` as `traceId` when
+    constructing domain events in service methods. Consumers log `traceId` on every handler.
+    Do NOT add OpenTelemetry SDK without measuring overhead — record decision in `docs/DECISIONS.md`.
+  - Rules: `CLAUDE.md` §2 (UUID v7 for `traceId`); §1 (middleware must not throw for domain
+    errors); `docs/CODING-STANDARDS.md` §9 (JSDoc on updated `DomainEvent` abstract class).
+  - DoD: `DomainEvent.traceId` populated in all event emissions; Pino logs include `requestId`
+    on HTTP path; all event spec mocks updated; `pnpm test` green.
+
+- [ ] **M-10 Pagination missing from `listMembers` and `listForUser`** (~3h)
+  - `WorkspaceService.listMembers` and `WorkspaceService.listForUser` return all records in one
+    query, inconsistent with the paginated posts list (T5.6). An agency with 200 members returns
+    the full set unbounded.
+  - Build: keyset cursor pagination (same cursor: `base64url(JSON({ createdAt, id }))`) on
+    `IWorkspaceMemberRepository.findAllByWorkspaceId` and `IWorkspaceRepository.findAllByUserId`.
+    Update `WorkspaceController` to accept `?limit=&cursor=` query params. Add
+    `ListWorkspaceMembersQueryDto` + `WorkspaceMembersPageDto` (matching the `PostsPageDto` shape).
+    Verify endpoint URL against `docs/reference/fcp-api-documentation.docx`.
+  - Rules: `CLAUDE.md` §1 (pagination returns `Result<Page, AppError>`); §2 (UUID v7 as cursor
+    component); `docs/CODING-STANDARDS.md` §9 (JSDoc on new DTOs + updated port methods).
+  - DoD: `GET /workspaces/:id/members` paginated; response shape matches `PostsPageDto`; `pnpm test`
+    green.
+
+- [ ] **M-11 Missing query indexes for quota count and publish cron** (~1h)
+  - `postRepo.countByWorkspace(workspaceId)` runs on every `createPost` without a partial index on
+    `workspace_id WHERE deleted_at IS NULL`. `PublishJob` queries `WHERE status='scheduled' AND
+    scheduledAt <= now()` without a composite index.
+  - Migration `Migration20260XXX_PerfIndexesV2.ts`:
+    ```sql
+    CREATE INDEX idx_posts_workspace_active ON core.posts (workspace_id)
+      WHERE deleted_at IS NULL;
+    CREATE INDEX idx_posts_scheduled_due ON core.posts (status, scheduled_at)
+      WHERE status = 'scheduled' AND deleted_at IS NULL;
+    ```
+    Check `Migration20260715000001_PerfIndexes.ts` first to avoid duplicate indexes.
+  - Rules: `CLAUDE.md` (`pnpm mikro-orm migration:create` then edit; `migration:up` to apply);
+    `docs/reference/fcp-ddl.sql` (schema reference); `docs/CODING-STANDARDS.md` §5 / R8
+    (every FK and query-pattern column indexed).
+  - DoD: migration runs cleanly; `EXPLAIN ANALYZE` on both queries confirms index scan.
+
+- [ ] **M-12 Invitation acceptance endpoint is internal-only — needs a public route** (~2h)
+  - `WorkspaceService.acceptInvitation()` is implemented (T2.8) but the only HTTP surface is
+    `InternalInvitationController`. Invitation acceptance must be triggered by an invited user
+    clicking an email link — requiring a **public** authenticated endpoint.
+  - Build: `POST /workspaces/:workspaceId/invitations/:token/accept` in `WorkspaceController`;
+    body `{ token: string }`; `ClerkAuthGuard` only (no `WorkspaceRolesGuard` — user not yet a
+    member; token is the credential); calls `WorkspaceService.acceptInvitation(...)`; returns 201
+    with `WorkspaceMemberDto`. Verify URL matches `docs/reference/fcp-api-documentation.docx`.
+  - Rules: `CLAUDE.md` §1 (Result pattern); §7 (`MemberJoinedEvent` already emitted by service);
+    BR-F03 (expiry validation already in service); `docs/CODING-STANDARDS.md` §9 (JSDoc on
+    new controller method).
+  - DoD: endpoint reachable at documented URL; expired token → 400; already-accepted → 409;
+    `pnpm test` green with new spec.
+
+- [ ] **M-13 `scheduledAt` not validated as strict ISO 8601 UTC at DTO layer** (~1h)
+  - `scheduledAt` validates as a future datetime but accepts `2026-08-01T10:00:00` (no timezone
+    offset), which is silently interpreted as server local time instead of UTC.
+  - Fix: add `@IsISO8601({ strict: true })` to `scheduledAt` in `CreatePostDto` and
+    `UpdatePostStatusDto`. Update `@ApiProperty` description to require timezone offset.
+    Add unit test asserting `2026-08-01T10:00:00` (no offset) → 400 and
+    `2026-08-01T10:00:00.000Z` → passes.
+  - Rules: `docs/reference/fcp-api-documentation.docx` general info ("Timestamps: ISO 8601 UTC");
+    BR-F06 (`scheduledAt` must be future); `CLAUDE.md` §1 (VALIDATION_ERROR → 400);
+    `docs/CODING-STANDARDS.md` §9 (JSDoc on `scheduledAt` in DTOs).
+  - DoD: missing timezone offset rejected with 400; unit test green; `pnpm test` green.
+
+- [ ] **M-14 No explicit timeout config or fail-open fallback on downstream HTTP** (~3h)
+  - `FetchHttpClientAdapter` uses `AbortSignal.timeout(5000)` (ADR-065). Verify all adapter paths
+    are covered. Add configurable per-path timeouts and a fail-open fallback for
+    `BillingQuotaAdapter` — billing outage must not block post creation entirely.
+  - Fix: expose `timeoutMs` via `HTTP_CLIENT_TIMEOUT_MS` in `ConfigService` (read in adapter
+    constructor; default 3000ms reads, 5000ms writes). In `BillingQuotaAdapter.getPostLimit`:
+    catch `DownstreamServiceError(503)` and return `ok(FREE_PLAN_LIMIT)` with a warning log —
+    hardcoded constant, NOT a Redis cache (safe before T5.5 results). Add `HTTP_CLIENT_TIMEOUT_MS`
+    to `.env.example`.
+  - Rules: `CLAUDE.md` §1 (timeout → `err(AppError.serviceUnavailable(...))`, not unhandled throw);
+    `CLAUDE.md` guardrails (fail-open limit is a constant — not Redis cache before T5.5);
+    `docs/DECISIONS.md` (ADR: timeout values, fail-open quota strategy);
+    `docs/CODING-STANDARDS.md` §9 (JSDoc on updated `FetchHttpClientAdapter`).
+  - DoD: timeout configurable; `BillingQuotaAdapter` returns `FREE_PLAN_LIMIT` on 503; unit test
+    covers fail-open path; `pnpm test` green; ADR appended.
+
+### Low — Polish & Documentation
+
+- [ ] **L-15 Swagger missing `@ApiBadRequestResponse` on `PATCH /posts/:id/status`** (~30 min)
+  - `PATCH /posts/:id/status` can return 400 (`VALIDATION_ERROR`) when `scheduledAt` is missing or
+    in the past. Only `@ApiConflictResponse` is documented; the 400 path is invisible in Swagger UI.
+  - Fix: add `@ApiBadRequestResponse({ description: 'scheduledAt missing or not a future datetime
+    (BR-F06, VALIDATION_ERROR)' })` to `PostsController.transitionStatus`. Check `createPost` too —
+    `PLAN_LIMIT_EXCEEDED` → 409 description should mention the code explicitly.
+  - Rules: `docs/reference/fcp-api-documentation.docx` (all error responses documented in Swagger);
+    `docs/CODING-STANDARDS.md` §9 (Swagger decorators are part of exported-code docs). No new tests.
+  - DoD: Swagger UI shows 400 on `PATCH /posts/:id/status`; `pnpm lint` clean.
+
+- [ ] **L-16 API versioning strategy not defined or documented** (~30 min)
+  - Routes use `api/v1` prefix. No policy exists for introducing `v2` endpoints. Without a defined
+    strategy, the first breaking change forces full controller duplication.
+  - Append ADR to `docs/DECISIONS.md` defining: (1) additive changes are non-breaking — no version
+    bump; (2) breaking changes require `v2` via NestJS `@Version('2')` on specific controller
+    methods only, not a full duplicate module; (3) `v1` supported N months after `v2` launch.
+    No code changes needed at this stage.
+  - Rules: `CLAUDE.md` ("when you make a notable choice, append a one-line ADR");
+    `docs/reference/fcp-api-documentation.docx` (API version is `v1` — upgrade path needed);
+    `docs/DECISIONS.md` (mandatory location).
+  - DoD: ADR in `docs/DECISIONS.md` with the versioning policy; no code change needed.
+
+- [ ] **L-17 Workspace soft-delete policy undefined** (~30 min)
+  - `Workspace` has `deletedAt` (from `BaseEntity`) but no delete endpoint and no retention job.
+    It is unclear if this is permanently out-of-scope or deferred.
+  - Choose: Option A — permanently out-of-scope (record in ADR). Option B — deferred, with
+    cascade domain events + 90-day retention job (record ADR + add placeholder task in TASKS.md
+    with full scope: endpoint, cascade events, retention job, e2e test).
+  - Rules: `CLAUDE.md` §3 (soft delete only; hard purge via retention jobs); §7 (audit trail —
+    `WorkspaceDeletedEvent` needed if Option B); BR-R02 (sole-owner edge case when workspace deleted);
+    `docs/DECISIONS.md` (mandatory ADR for either choice).
+  - DoD: ADR in `docs/DECISIONS.md`; if Option B, placeholder task appended to TASKS.md; no
+    code change needed for Option A.
+
+- [ ] **L-18 `PublishFallbackPollJob` threshold undocumented** (~30 min)
+  - The threshold (how long to wait in `publishing` before polling Facebook to confirm) is not
+    documented. Too short risks a race with the webhook consumer; too long leaves users seeing
+    stale `publishing` status.
+  - Read `apps/api/src/modules/posts/jobs/publish-fallback-poll.job.ts`. Document in the job's
+    JSDoc: the threshold value, why it was chosen, the poll mechanism, and how the state machine
+    guard prevents a double-transition race with the webhook consumer. Record the threshold in
+    `docs/DECISIONS.md`. Verify the job uses a forked EM (ADR-030/054).
+  - Rules: `docs/CODING-STANDARDS.md` §9 (the WHY of the threshold is exactly the non-obvious
+    constraint that belongs in a comment); `CLAUDE.md` ("when you make a notable choice, append ADR").
+  - DoD: JSDoc on `PublishFallbackPollJob` class + `run()` explains threshold and race handling;
+    ADR in `docs/DECISIONS.md`; `pnpm lint` clean.
+
+- [ ] **L-19 `DevAuthModule` token compatibility with `ClerkAuthGuard` unverified** (~1h)
+  - `ClerkAuthGuard` calls `verifyToken(token, { secretKey: CLERK_SECRET_KEY })`. For a
+    `DevAuth`-issued token to pass, it must be a real Clerk JWT. This is unverified.
+  - Verify: read `dev-auth.service.ts` + `dev-auth.controller.ts`. If `DevAuthModule` creates a
+    custom JWT (not via Clerk SDK), the guard will reject it in any real dev environment.
+  - If fix needed — Option A: use Clerk SDK to mint a real session token for a seeded test user.
+    Option B: `ClerkAuthGuard` dev bypass — non-production accepts tokens signed with
+    `DEV_JWT_SECRET` without calling Clerk. The bypass must be zero-footprint in production
+    (conditionally compiled, same pattern as `DevAuthModule` DI exclusion on `NODE_ENV=production`).
+  - Rules: security — bypass must not exist at all in production builds; `docs/DECISIONS.md`
+    (ADR: chosen approach + security rationale); `docs/CODING-STANDARDS.md` §9 (JSDoc on new
+    guards or bypass logic).
+  - DoD: finding documented in `docs/DECISIONS.md`; if fix needed, implemented with spec;
+    `pnpm test` green.
+
+---
+
+## Three-Transport Migration (TM.1 – TM.12)
+
+> Migrates all internal sync `apps/api → service` communication from HTTP to TCP
+> `@MessagePattern` (ADR-094). Async RabbitMQ events are unchanged.
+> Run tasks in order: TM.1 (foundation) → TM.2/3 (billing) → TM.4/5 (analytics) →
+> TM.6/7 (search) → TM.8/9 (notification) → TM.10/11 (audit) → TM.12 (cleanup).
+>
+> Each pair is: (even) service adds `@MessagePattern`, (odd) `apps/api` swaps adapter to TCP.
+> Migrate and test one service pair before moving to the next.
+>
+> **Reference:** ADR-094 in `docs/DECISIONS.md` · Canonical patterns in `docs/CODING-STANDARDS.md` §15.
+
+- [ ] **TM.1 Foundation — ADR + TCP env vars + `docker-compose` TCP ports** (~1h)
+  - Record ADR-094 in `docs/DECISIONS.md` ✅ (already done).
+  - Add TCP port env vars to `.env.example`:
+    ```
+    BILLING_TCP_PORT=4001   BILLING_TCP_HOST=localhost
+    ANALYTICS_TCP_PORT=4002 ANALYTICS_TCP_HOST=localhost
+    AUDIT_TCP_PORT=4003     AUDIT_TCP_HOST=localhost
+    SEARCH_TCP_PORT=4004    SEARCH_TCP_HOST=localhost
+    NOTIFICATION_TCP_PORT=4005 NOTIFICATION_TCP_HOST=localhost
+    ```
+  - In `docker-compose.yml`: expose each TCP port on the service container (e.g.
+    `billing: ports: ["4001:4001"]`). Services on the same Docker network can communicate
+    on any port; exposure is needed for host-to-container TCP (local dev without Docker).
+  - No new package needed — `@nestjs/microservices` and `Transport.TCP` are already in all
+    packages from TR.1.
+  - No shared `libs/tcp-options/` factory needed — TCP options are two fields (`host`, `port`),
+    unlike RMQ which has 8+ fields. Inline in each `main.ts`.
+  - Rules: `CLAUDE.md` §8 (Three-Transport Model); `docs/CODING-STANDARDS.md` §15 (TCP patterns).
+  - DoD: `.env.example` has all 10 TCP vars; `docker-compose.yml` exposes ports 4001–4005; `pnpm lint` clean.
+
+- [ ] **TM.2 `services/billing` — add TCP `@MessagePattern` handlers** (~2h)
+  - Add `app.connectMicroservice({ transport: Transport.TCP, options: { host: '0.0.0.0', port: BILLING_TCP_PORT } })`
+    in `main.ts` alongside the existing RMQ transport (ADR-084 hybrid bootstrap pattern).
+  - Create `apps/api/src/modules/billing/billing.message-controller.ts` with:
+    - `@MessagePattern('billing.get-quota')` → `BillingService.getPostLimit(workspaceId)` → `{ limit }`
+    - `@MessagePattern('billing.get-subscription')` → `BillingService.findSubscription(workspaceId)` → `SubscriptionResponse`
+    - `@MessagePattern('billing.checkout')` → `BillingService.createCheckoutSession(workspaceId, planCode)` → `CheckoutResponse`
+    - Each handler: `result.match(ok → return plain object, err → throw new RpcException({ code, message }))`
+  - Register in `BillingModule.controllers[]`. Keep HTTP server (Stripe webhook, redirect controller).
+  - Rules: `docs/CODING-STANDARDS.md` §15 (handler shape); `CLAUDE.md` §1 (Result pattern);
+    `docs/DECISIONS.md` ADR-094.
+  - DoD: `BillingMessageController` registered; all 3 patterns respond correctly; spec covers ok + RpcException
+    paths for each; `pnpm test` green in `services/billing`.
+
+- [ ] **TM.3 `apps/api` → billing TCP adapter** (~2h)
+  - Create `apps/api/src/modules/billing/adapters/billing-tcp.adapter.ts` implementing `IBillingClient`
+    (same port as old `BillingHttpClientAdapter`). Inject `@Inject(BILLING_TCP_CLIENT) ClientProxy`.
+    Each method: `firstValueFrom(client.send('billing.*', dto).pipe(timeout(3_000)))` → map result;
+    catch `RpcException` → `new AppError(...)`; other errors → `AppError.serviceUnavailable('billing')`.
+  - Add `ClientsModule.registerAsync([{ name: BILLING_TCP_CLIENT, Transport.TCP, host, port }])` in
+    `BillingModule`. Provider binding: `{ provide: IBillingClient, useClass: BillingTcpAdapter }`.
+  - Update `BillingQuotaAdapter` to call the same `IBillingClient` port (no change needed if it
+    already uses the port, or fold into `BillingTcpAdapter`).
+  - Remove `FetchHttpClientAdapter` + `IHttpClient` binding from `BillingModule` (no longer needed
+    for billing). Keep `BILLING_SERVICE_URL` only for `BillingRedirectController` (Stripe browser
+    redirect; not a service-to-service call).
+  - Rules: `docs/CODING-STANDARDS.md` §15 (adapter shape); `CLAUDE.md` §1 (Result pattern);
+    ADR-080 (`ClientsModule` in same module as adapter).
+  - DoD: `BillingTcpAdapter` wired; `BillingModule` has no `FetchHttpClientAdapter`; billing
+    controller specs pass with mocked `IBillingClient`; `pnpm test` green in `apps/api`.
+
+- [ ] **TM.4 `services/analytics` — add TCP `@MessagePattern` handlers** (~2h)
+  - Add TCP transport in `main.ts` (alongside existing RMQ). Port: `ANALYTICS_TCP_PORT`.
+  - Create `analytics.message-controller.ts` with:
+    - `@MessagePattern('analytics.workspace-metrics')` → `AnalyticsService.getWorkspaceMetrics(workspaceId)`
+    - `@MessagePattern('analytics.post-metrics')` → `AnalyticsService.getPostMetrics(postId)`
+  - Register in `AnalyticsModule.controllers[]`. Keep `@EventPattern('posts.published')` consumer.
+  - HTTP server: can be removed (no external clients) — change `app.listen(port)` to TCP-only hybrid
+    OR keep for health check / ops. Decision to document in DoD.
+  - Rules: `docs/CODING-STANDARDS.md` §15; ADR-094.
+  - DoD: message controller registered; spec covers ok + RpcException; `pnpm test` green in
+    `services/analytics`.
+
+- [ ] **TM.5 `apps/api` → analytics TCP adapter** (~1h)
+  - Create `analytics-tcp.adapter.ts` implementing `IAnalyticsClient`. Two methods:
+    `getWorkspaceMetrics(workspaceId)` and `getPostMetrics(postId)` — both `client.send(...).pipe(timeout(3_000))`.
+  - Add `ANALYTICS_TCP_CLIENT` + `ClientsModule.registerAsync` in `AnalyticsModule`.
+  - Swap provider binding from `AnalyticsHttpClientAdapter` to `AnalyticsTcpAdapter`.
+  - Remove `AnalyticsHttpClientAdapter` and its `IHttpClient` dependency from `AnalyticsModule`.
+  - Rules: `docs/CODING-STANDARDS.md` §15; ADR-080.
+  - DoD: analytics controller specs pass with mocked `IAnalyticsClient`; `pnpm test` green in `apps/api`.
+
+- [ ] **TM.6 `services/search` — replace HTTP with TCP `@MessagePattern`** (~2h)
+  - Add TCP transport in `main.ts`. Port: `SEARCH_TCP_PORT`.
+  - Create `search.message-controller.ts` with `@MessagePattern('search.query')` →
+    `SearchService.search(workspaceId, query)` → `SearchResultDto[]`.
+  - Register in `SearchModule.controllers[]` alongside 5 `@EventPattern` consumers.
+  - Remove HTTP server entirely — `services/search` has no external clients or webhooks.
+    Change bootstrap from `NestFactory.create + app.listen` to TCP+RMQ hybrid without HTTP:
+    the `app.listen()` call can be omitted if no HTTP port is needed. Document the decision.
+  - Remove `SearchController` (existing HTTP GET /search) — no external HTTP needed.
+  - Rules: `docs/CODING-STANDARDS.md` §15; ADR-094; `pnpm lint` (no unused imports).
+  - DoD: search query responds via TCP; no HTTP server started; 5 RMQ consumers still active;
+    `pnpm test` green in `services/search`.
+
+- [ ] **TM.7 `apps/api` → search TCP adapter** (~1h)
+  - Create `search-tcp.adapter.ts` implementing `ISearchClient`.
+  - Add `SEARCH_TCP_CLIENT` + `ClientsModule.registerAsync` in `SearchModule`.
+  - Swap provider binding from `SearchHttpClientAdapter` to `SearchTcpAdapter`.
+  - Remove `SearchHttpClientAdapter` and `IHttpClient` from `SearchModule`.
+  - Rules: `docs/CODING-STANDARDS.md` §15; ADR-080.
+  - DoD: search controller spec passes with mocked `ISearchClient`; `pnpm test` green in `apps/api`.
+
+- [ ] **TM.8 `services/notification` — add TCP `@MessagePattern` handlers** (~2h)
+  - Add TCP transport in `main.ts`. Port: `NOTIFICATION_TCP_PORT`.
+  - Create `notification.message-controller.ts` with:
+    - `@MessagePattern('notification.list')` → `NotificationService.getNotifications(workspaceId, userId)`
+    - `@MessagePattern('notification.mark-read')` → `NotificationService.markRead(notificationId)` — BR-F08
+      (read_status one-way; handler returns `'nack'` / `RpcException` on revert attempt)
+  - Register in `NotificationModule.controllers[]` alongside all 11 `@EventPattern` consumers.
+  - Remove HTTP server (no external clients). `WorkspaceMemberReconciler.onModuleInit` still calls
+    apps/api's `/internal/workspaces/:id/members` via HTTP — this is the reverse direction and stays HTTP.
+  - Rules: `docs/CODING-STANDARDS.md` §15; BR-F08 (one-way read status); ADR-094.
+  - DoD: both patterns respond via TCP; 11 RMQ consumers still active; spec covers ok + RpcException
+    + BR-F08 revert attempt → RpcException; `pnpm test` green in `services/notification`.
+
+- [ ] **TM.9 `apps/api` → notification TCP adapter** (~1h)
+  - Create `notification-tcp.adapter.ts` implementing `INotificationClient`.
+  - Add `NOTIFICATION_TCP_CLIENT` + `ClientsModule.registerAsync` in `NotificationModule`.
+  - Swap from `NotificationHttpClientAdapter` to `NotificationTcpAdapter`.
+  - Remove `NotificationHttpClientAdapter` and `IHttpClient` from `NotificationModule`.
+  - Rules: `docs/CODING-STANDARDS.md` §15; ADR-080.
+  - DoD: notification controller spec passes; `pnpm test` green in `apps/api`.
+
+- [ ] **TM.10 `services/audit` — add TCP `@MessagePattern` handlers** (~2h)
+  - Add TCP transport in `main.ts`. Port: `AUDIT_TCP_PORT`.
+  - Create `audit.message-controller.ts` with:
+    - `@MessagePattern('audit.get-logs')` → `AuditService.getWorkspaceAuditLogs(workspaceId, cursor, limit)`
+    - `@MessagePattern('audit.get-log')` → `AuditService.getAuditEvent(auditId)`
+  - Register in `AuditModule.controllers[]` alongside `@EventPattern('#')` wildcard consumer.
+  - Remove HTTP server (no external clients). MongoDB connection is internal — no change.
+  - Rules: `docs/CODING-STANDARDS.md` §15; ADR-094; `CLAUDE.md` §7 (audit read-only via apps/api).
+  - DoD: both patterns respond via TCP; wildcard RMQ consumer still active; spec covers ok +
+    RpcException + NOT_FOUND path; `pnpm test` green in `services/audit`.
+
+- [ ] **TM.11 `apps/api` → audit TCP adapter** (~1h)
+  - Create `audit-tcp.adapter.ts` implementing `IAuditClient`.
+  - Add `AUDIT_TCP_CLIENT` + `ClientsModule.registerAsync` in `AuditModule`.
+  - Swap from `AuditHttpClientAdapter` to `AuditTcpAdapter`.
+  - Remove `AuditHttpClientAdapter` and `IHttpClient` from `AuditModule`.
+  - Rules: `docs/CODING-STANDARDS.md` §15; ADR-080.
+  - DoD: audit controller spec passes; `pnpm test` green in `apps/api`.
+
+- [ ] **TM.12 Cleanup + full test pass** (~2h)
+  - Remove `FetchHttpClientAdapter` and `IHttpClient` from `apps/api` entirely — after TM.3/5/7/9/11
+    no `apps/api` module uses them for outbound calls. (Services' internal `InternalApiHttpAdapter`
+    files are separate — they are not `apps/api`'s `FetchHttpClientAdapter`.)
+  - Remove `*_SERVICE_URL` env vars from `apps/api`'s usage for services that migrated to TCP
+    (`ANALYTICS_SERVICE_URL`, `SEARCH_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`, `AUDIT_SERVICE_URL`).
+    Keep `BILLING_SERVICE_URL` only if referenced by `BillingRedirectController` (Stripe browser
+    redirect — that is a URL template, not an internal HTTP call).
+  - Update `apps/api/src/infrastructure/` comment in §10 (CODING-STANDARDS.md is already updated).
+  - Remove `common/http/fetch-http-client.adapter.ts` and `common/http/http-client.port.ts` from
+    `apps/api` if no other modules reference them. If `DownstreamServiceError` is still needed
+    by some path, keep the error class but delete the adapter.
+  - Run `pnpm -r lint && pnpm -r test` across all 8 packages.
+  - Run `pnpm load:smoke` against a live stack to confirm no regressions.
+  - Update `docs/PROGRESS.md` to note Three-Transport Migration complete.
+  - Rules: `CLAUDE.md` guardrails (do not delete if still referenced); `docs/CODING-STANDARDS.md`
+    §15; ADR-094.
+  - DoD: `grep -r 'FetchHttpClientAdapter\|IHttpClient' apps/api/src` returns zero results
+    (or only the class definition files if retained for future use); all `*_SERVICE_URL` internal
+    vars removed from `apps/api` env usage; `pnpm -r test` green across all packages;
+    `pnpm load:smoke` passes.
+
+---
+
 ## Adding a task
 
 Append under the right week with: a one-line scope, the relevant business
