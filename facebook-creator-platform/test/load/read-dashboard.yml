@@ -10,6 +10,10 @@ config:
     - duration: 120
       arrivalRate: 150
       name: "sustain"
+    - duration: 30
+      arrivalRate: 600
+      name: "burst"
+      # NFR: system must handle burst ~600 req/sec (ESTIMATIONS § Capacity, Read Throughput)
   plugins:
     # expect plugin must be declared — without it `expect:` blocks are silently ignored.
     expect:

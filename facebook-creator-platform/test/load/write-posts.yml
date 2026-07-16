@@ -2,6 +2,7 @@ config:
   # Default: local Docker stack. Override for staging/prod:
   #   artillery run --target https://staging.example.com test/load/write-posts.yml
   target: "http://localhost:3000"
+  processor: "../helpers/processor.cjs"
   phases:
     - duration: 30
       arrivalRate: 2
@@ -30,7 +31,8 @@ config:
 
 # Write-path scenario (NFR: burst ~30 wps, p99 < 500 ms).
 # Exercises the full create-post path: guard check → quota check → persist → event.
-# Each VU creates a post then immediately reads it back to confirm consistency.
+# Each VU creates a post, reads it back, then transitions it to `scheduled` — covering
+# the heavier event-emitting PATCH /status write path (Post publish transitions ~5,000/day).
 #
 # Run:
 #   pnpm load:write
@@ -61,5 +63,17 @@ scenarios:
           name: "GET /workspaces/:id/posts/:postId"
           url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts/{{ postId }}"
           ifTrue: "postId"
+          expect:
+            - statusCode: 200
+
+      - function: "setFutureScheduledAt"
+
+      - patch:
+          name: "PATCH /posts/:id/status (→ scheduled)"
+          url: "/api/v1/workspaces/{{ $processEnvironment.WORKSPACE_ID }}/posts/{{ postId }}/status"
+          ifTrue: "postId"
+          json:
+            status: "scheduled"
+            scheduledAt: "{{ scheduledAt }}"
           expect:
             - statusCode: 200

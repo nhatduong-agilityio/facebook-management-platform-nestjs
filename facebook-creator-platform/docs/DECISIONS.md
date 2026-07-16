@@ -768,6 +768,20 @@ await app.listen(port);
 
 ---
 
+## Test tooling (added 2026-07-15)
+| Package | Version | Purpose |
+|---|---|---|
+| dotenv-cli | ^11.0.0 | Load `.env` before Artillery scripts — pnpm scripts do not auto-source `.env`; `ARTILLERY_CLOUD_API_KEY` and `TEST_JWT` must be in process env for `artillery --record` and test JWT authentication |
+
+> **ADR-093 `dotenv-cli` as the `.env` loader for Artillery scripts.**
+> pnpm scripts execute in a subprocess that inherits the parent shell's environment but does NOT
+> auto-source `.env`. `ARTILLERY_CLOUD_API_KEY` (for Artillery Cloud recording) and `TEST_JWT` /
+> `WORKSPACE_ID` (for e2e test authentication) live in `.env` and would otherwise be absent.
+> `dotenv --` prefix on all 7 Artillery scripts sources `.env` before the `artillery run` call.
+> Alternative considered: `export ARTILLERY_CLOUD_API_KEY=...` in `.zshrc` — rejected because it
+> requires per-developer shell setup and the key would differ between environments.
+> `dotenv-cli` is a root devDependency only — no service package depends on it.
+
 ## Change log
 | Date | Decision |
 |---|---|
