@@ -21,9 +21,13 @@ import { AppModule } from './app.module';
  * - **`rawBody: true`** — NestJS stores the unmodified request buffer on `req.rawBody`
  *   before JSON parsing so `ClerkWebhookController` can pass it to svix for HMAC
  *   signature verification (a re-serialised JSON object would fail the check).
+ * - **Graceful shutdown** via `enableShutdownHooks()` — SIGTERM triggers NestJS
+ *   lifecycle hooks so RabbitMQ consumer channels drain before the process exits.
  */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
+
+  app.enableShutdownHooks();
 
   app.useLogger(app.get(PinoLogger));
 
