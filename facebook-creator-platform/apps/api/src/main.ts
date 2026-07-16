@@ -23,11 +23,29 @@ import { AppModule } from './app.module';
  *   signature verification (a re-serialised JSON object would fail the check).
  * - **Graceful shutdown** via `enableShutdownHooks()` — SIGTERM triggers NestJS
  *   lifecycle hooks so RabbitMQ consumer channels drain before the process exits.
+ * - **CORS** — `ALLOWED_ORIGINS` (comma-separated) controls which browser origins may
+ *   call the API. `credentials: true` allows the `Authorization` header cross-origin.
  */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
 
   app.enableShutdownHooks();
+
+  const configService = app.get(ConfigService);
+
+  const origins = configService.get<string>('ALLOWED_ORIGINS');
+
+  if (origins) {
+    app.enableCors({
+      origin: origins
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+      credentials: true,
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    });
+  }
 
   app.useLogger(app.get(PinoLogger));
 
@@ -48,7 +66,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
-  const configService = app.get(ConfigService);
   app.connectMicroservice(getRmqOptions('api_queue', configService));
   app.connectMicroservice(getDlqRmqOptions('dlq.logger', configService));
   await app.startAllMicroservices();

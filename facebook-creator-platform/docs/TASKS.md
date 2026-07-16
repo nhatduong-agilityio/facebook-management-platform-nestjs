@@ -258,7 +258,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: throttler wired globally; invite limited to 5/min/IP; `pnpm lint && pnpm test` green;
     ADR in `docs/DECISIONS.md`.
 
-- [ ] **H-5 CORS configuration missing from `main.ts`** (~30 min)
+- [x] **H-5 CORS configuration missing from `main.ts`** (~30 min)
   - `app.enableCors()` is absent. All browser cross-origin requests from the web dashboard are
     blocked. Swagger UI at `/api/docs` also fails from a different origin.
   - Fix: add `app.enableCors({ origin: ..., credentials: true, methods: [...] })` in `main.ts`

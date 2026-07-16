@@ -782,6 +782,17 @@ await app.listen(port);
 > requires per-developer shell setup and the key would differ between environments.
 > `dotenv-cli` is a root devDependency only — no service package depends on it.
 
+## ADR-097 — CORS: ALLOWED_ORIGINS env var, credentials: true (2026-07-16)
+
+`app.enableCors()` reads `ALLOWED_ORIGINS` (comma-separated) from `ConfigService`,
+defaulting to `http://localhost:4000` for local dev. `credentials: true` is required
+so the web dashboard can include `Authorization: Bearer` in cross-origin requests — the
+header is already redacted by Pino (BR-F12). Methods include `OPTIONS` to serve preflight.
+`allowedHeaders` is restricted to `['Content-Type', 'Authorization']` to minimise
+the exposed surface. No new dependency — `enableCors` is built into `@nestjs/core`.
+
+---
+
 ## ADR-096 — Rate limiting: @nestjs/throttler@6.5.0, global 100/min, invite 5/min (2026-07-16)
 
 ### Package
@@ -939,6 +950,7 @@ Migration tasks: TM.1–TM.12 in `docs/TASKS.md`.
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-16 | **ADR-097 CORS (H-5).** `app.enableCors` with `ALLOWED_ORIGINS` env var (comma-separated, default `http://localhost:4000`); `credentials: true`; `OPTIONS` included for preflight; `allowedHeaders` restricted to `Content-Type` + `Authorization`. |
 | 2026-07-16 | **ADR-096 Rate limiting (H-4).** `@nestjs/throttler@^6.5.0`; global 100 req/60 s/IP via `APP_GUARD`; invite override 5/min; dev-auth token 10/min; Facebook + Clerk webhooks exempt via `@SkipThrottle()` (HMAC-verified). |
 | 2026-07-16 | **ADR-095 Outbox relay job (C-1).** `OutboxRelayJob` cron every 30 s; queries `pending`/`failed` rows older than 60 s; re-emits via `ClientProxy`; `markProcessed` on success, `incrementRetry` on error (per-row isolation). Migration adds `last_retry_at timestamptz` (`retry_count` already existed). |
 | 2026-07-16 | **ADR-094 Three-Transport Model adopted.** HTTP for external/webhooks only; TCP `@MessagePattern` for all internal sync RPC (`apps/api → services`); RabbitMQ `@EventPattern` for async events. Migration tasks TM.1–TM.12 added to TASKS.md. CLAUDE.md + CODING-STANDARDS.md §15 updated. |
