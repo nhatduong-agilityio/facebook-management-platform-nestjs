@@ -5,11 +5,29 @@
 
 ## Resume point
 
-- **Next task:** H-6 — `FacebookTokenExpiringEvent` emitted but never consumed for auto-refresh
+- **Next task:** H-8 — Internal route network isolation (ADR + guard JSDoc)
 - **Branch:** `nestjs-practice`
-- **Notes:** H-5 complete. Tests: 430/430. Lint: 0 errors. Continue with H-6.
+- **Notes:** H-7 complete. Tests: 322/322 (apps/api). Lint: 0 errors. Continue with H-8.
 
 ## Log
+
+### 2026-07-16 — H-7 Health check dependency probes
+
+- **`apps/api/package.json`**: added `@nestjs/terminus@^11.1.1`.
+- **`apps/api/src/health/indicators/redis.health-indicator.ts`** (new): `RedisHealthIndicator` using terminus v11 `HealthIndicatorService` API (not deprecated base class); sends `PING`, asserts `PONG`; returns `.down({ message })` for unexpected responses or errors.
+- **`apps/api/src/health/health.controller.ts`** (updated): now injects `HealthCheckService`, `MikroOrmHealthIndicator`, `RedisHealthIndicator`, `MemoryHealthIndicator`; `@HealthCheck()` decorator; probes Postgres (`pingCheck`), Redis (`isHealthy`), heap (`checkHeap` at 300 MB). Updated JSDoc.
+- **`apps/api/src/health/health.module.ts`** (updated): imports `TerminusModule`; provides `RedisHealthIndicator`.
+- **`apps/api/src/health/health.controller.spec.ts`** (updated): mocks all four dependencies; tests all-healthy, three probe delegation tests, and unhealthy propagation.
+- **`apps/api/src/health/indicators/redis.health-indicator.spec.ts`** (new): tests PONG success, non-PONG down, and ping-throws down.
+- ADR-098 logged in `docs/DECISIONS.md`.
+- Tests: 322/322. Lint: 0 errors.
+
+### 2026-07-16 — H-6 `FacebookTokenExpiryConsumer`
+
+- **`apps/api/src/modules/facebook/consumers/facebook-token-expiry.consumer.ts`** (new): `FacebookTokenExpiryConsumer` extends `IdempotentConsumer`, binds `@EventPattern('facebook.token_expiring')`. Inside `withDedup`, calls `FacebookService.refreshAccountToken(workspaceId, accountId)`. Returns `'nack'` on `NOT_FOUND` (permanent failure → DLX); throws on any other `err` or rejection (transient → requeue). Token never present in payload (BR-F11).
+- **`apps/api/src/modules/facebook/consumers/facebook-token-expiry.consumer.spec.ts`** (new): 5 tests — duplicate ack, success ack, NOT_FOUND permanent nack, transient throw nack+requeue, unexpected err nack+requeue.
+- **`apps/api/src/modules/facebook/facebook.module.ts`**: added `FacebookTokenExpiryConsumer` to `controllers[]`.
+- Tests: 315/315. Lint: 0 errors.
 
 ### 2026-07-16 — H-5 CORS configuration
 

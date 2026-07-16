@@ -782,6 +782,17 @@ await app.listen(port);
 > requires per-developer shell setup and the key would differ between environments.
 > `dotenv-cli` is a root devDependency only — no service package depends on it.
 
+## ADR-098 — Health probes: @nestjs/terminus@11.1.1, MikroOrm + Redis + heap (2026-07-16)
+
+`@nestjs/terminus@11.1.1` added to `apps/api`. `HealthModule` imports `TerminusModule`
+(which auto-provides `HealthCheckService`, `MikroOrmHealthIndicator`, `MemoryHealthIndicator`,
+and `HealthIndicatorService`). A custom `RedisHealthIndicator` uses the terminus v11
+functional `HealthIndicatorService` API (not the deprecated `HealthIndicator` base class)
+to send `PING` and assert `PONG`. `HealthController.check()` runs all three probes via
+`HealthCheckService.check([...])` decorated with `@HealthCheck()`, which returns HTTP 503
+automatically when any probe returns `status: 'down'`. Heap threshold set to 300 MB.
+Response shape is a superset of the previous `{ status: 'ok' }` — backward-compatible.
+
 ## ADR-097 — CORS: ALLOWED_ORIGINS env var, credentials: true (2026-07-16)
 
 `app.enableCors()` reads `ALLOWED_ORIGINS` (comma-separated) from `ConfigService`,
@@ -950,6 +961,7 @@ Migration tasks: TM.1–TM.12 in `docs/TASKS.md`.
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-16 | **ADR-098 Health probes (H-7).** `@nestjs/terminus@11.1.1`; `MikroOrmHealthIndicator.pingCheck`, custom `RedisHealthIndicator` (PING/PONG), `MemoryHealthIndicator.checkHeap` at 300 MB; HTTP 503 on any failure; new v11 `HealthIndicatorService` API used (no deprecated `HealthIndicator` base class). |
 | 2026-07-16 | **ADR-097 CORS (H-5).** `app.enableCors` with `ALLOWED_ORIGINS` env var (comma-separated, default `http://localhost:4000`); `credentials: true`; `OPTIONS` included for preflight; `allowedHeaders` restricted to `Content-Type` + `Authorization`. |
 | 2026-07-16 | **ADR-096 Rate limiting (H-4).** `@nestjs/throttler@^6.5.0`; global 100 req/60 s/IP via `APP_GUARD`; invite override 5/min; dev-auth token 10/min; Facebook + Clerk webhooks exempt via `@SkipThrottle()` (HMAC-verified). |
 | 2026-07-16 | **ADR-095 Outbox relay job (C-1).** `OutboxRelayJob` cron every 30 s; queries `pending`/`failed` rows older than 60 s; re-emits via `ClientProxy`; `markProcessed` on success, `incrementRetry` on error (per-row isolation). Migration adds `last_retry_at timestamptz` (`retry_count` already existed). |
