@@ -379,7 +379,8 @@ services/<name>/                 # each is a full NestJS app (own package.json, 
     repositories/
     migrations/
     <name>.service.ts
-    <name>.controller.ts         # internal HTTP endpoints called by apps/api
+    <name>.message-controller.ts  # TCP @MessagePattern handlers (internal RPC from apps/api)
+    <name>.controller.ts          # HTTP @Controller — only if service has external clients/webhooks
     <name>.service.spec.ts
   mikro-orm.config.ts
   package.json                   # @fcp/<name>
@@ -387,22 +388,23 @@ services/<name>/                 # each is a full NestJS app (own package.json, 
   vitest.config.ts
 ```
 
-**Service roster (per ERD):**
-| Service | Schema | Listens for (RabbitMQ) | Exposes HTTP to apps/api |
-|---|---|---|---|
-| `services/billing` | `billing` | stripe webhooks (direct) | `POST /checkout`, `GET /workspaces/:id/quota` |
-| `services/analytics` | `analytics` | `posts.published` | `GET /workspaces/:id/metrics`, `GET /posts/:id/metrics` |
-| `services/notification` | `notification` | `workspace.*`, `posts.*`, `billing.*` | `GET /notifications`, `PATCH /:id/read` |
-| `services/email` | `email` | `workspace.member-invited`, `posts.published`, `billing.*` | none (fire-and-forget) |
-| `services/search` | none (Algolia) | `posts.created`, `posts.published` | search passthrough (optional) |
-| `services/audit` | MongoDB | every event | `GET /workspaces/:id/audit-logs` |
+**Service roster — Three-Transport Model (ADR-094):**
 
-**Inter-service communication rules:**
-- **Sync HTTP**: operations that need immediate response (checkout, quota check, search query, read notification list).
-  `apps/api` calls `services/<name>` via a typed HTTP client. No service calls another service directly.
-- **Async RabbitMQ**: state changes and data propagation (Stripe webhook result, subscription events, notifications, analytics, email, audit).
-  Services publish to `fcp.events`; other services consume. `apps/api` is also a consumer for events it cares about.
-- **Stripe webhooks**: sent directly to `services/billing` (not proxied through `apps/api`).
+| Service | External HTTP | TCP `@MessagePattern` | RabbitMQ `@EventPattern` |
+|---|---|---|---|
+| `services/billing` | ✅ Stripe webhook, Stripe redirect | `billing.get-quota`, `billing.get-subscription`, `billing.checkout` | ✅ publishes `billing.*` events |
+| `services/analytics` | ❌ (ops only, optional) | `analytics.workspace-metrics`, `analytics.post-metrics` | ✅ consumes `posts.published` |
+| `services/notification` | ❌ | `notification.list`, `notification.mark-read` | ✅ consumes 11 events |
+| `services/email` | ❌ | ❌ (fire-and-forget, no sync query needed) | ✅ consumes 5 events |
+| `services/search` | ❌ | `search.query` | ✅ consumes 5 events |
+| `services/audit` | ❌ (ops only, optional) | `audit.get-logs`, `audit.get-log` | ✅ consumes `#` (all events) |
+
+**Inter-service communication rules — Three-Transport Model:**
+- **HTTP**: inbound webhooks from external systems (Stripe → Billing, Facebook → apps/api) and public API for browser clients. `apps/api` does **not** call any internal service over HTTP.
+- **TCP `ClientProxy.send()` + `@MessagePattern`**: all synchronous internal RPC from `apps/api` to services (quota, subscription, search, notification list, audit logs, metrics). Use `firstValueFrom(client.send(...).pipe(timeout(3_000)))`. See §15.
+- **RabbitMQ `ClientProxy.emit()` + `@EventPattern`**: all async events (post lifecycle, billing state changes, membership). Fire-and-forget; at-least-once; idempotent consumers.
+- **Reverse calls (services → apps/api)**: services that call `apps/api` for PII resolution (`/internal/facebook-accounts/:id`, `/internal/users/:id`, `/internal/workspaces/:id`) **stay HTTP** with `InternalSecretGuard`. Low-frequency data-resolution — not performance-critical RPC.
+- **No service calls another service directly.** Async fan-out via RabbitMQ only. Sync RPC originates from `apps/api` only.
 
 - Files: `kebab-case`. Classes: `PascalCase`. Vars/functions: `camelCase`.
 - One exported class per file where practical.
@@ -636,3 +638,202 @@ export class WorkspaceService {
 - **Unit tests** mock the port, not the implementation:
   `const mockRepo = { findById: vi.fn(), save: vi.fn() }`.
   No `vi.mock('stripe')`, no `vi.mock('@clerk/backend')` in service specs.
+
+---
+
+## 15. TCP `@MessagePattern` — internal synchronous RPC
+
+All synchronous `apps/api → service` calls use NestJS TCP transport
+(`ClientProxy.send()` + `@MessagePattern`). No HTTP controller is needed in a
+service for internal data queries. See ADR-094 in `docs/DECISIONS.md`.
+
+### MessagePattern naming convention
+
+`'<service>.<action>'` — lowercase, dot-separated:
+
+| Service | Patterns |
+|---|---|
+| billing | `billing.get-quota` · `billing.get-subscription` · `billing.checkout` |
+| analytics | `analytics.workspace-metrics` · `analytics.post-metrics` |
+| search | `search.query` |
+| notification | `notification.list` · `notification.mark-read` |
+| audit | `audit.get-logs` · `audit.get-log` |
+
+### Service side — `@MessagePattern` handler
+
+```ts
+// services/billing/src/billing.message-controller.ts
+import { Controller } from '@nestjs/common';
+import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
+
+/**
+ * TCP RPC handlers for synchronous queries from apps/api.
+ * Domain errors propagated as RpcException so callers can map them
+ * back to AppError without parsing raw Error messages.
+ */
+@Controller()
+export class BillingMessageController {
+  constructor(private readonly billing: BillingService) {}
+
+  /**
+   * Returns the post quota limit for a workspace's active plan.
+   * @param dto.workspaceId - UUID of the workspace.
+   */
+  @MessagePattern('billing.get-quota')
+  async getQuota(@Payload() dto: { workspaceId: string }) {
+    const result = await this.billing.getPostLimit(dto.workspaceId);
+    return result.match(
+      (limit) => ({ limit }),
+      (e) => { throw new RpcException({ code: e.code, message: e.message }); },
+    );
+  }
+}
+```
+
+Rules:
+- `result.match()` — `ok` path returns a plain object; `err` path throws `RpcException`.
+- Throw `new RpcException({ code, message })` — **never** `HttpException`.
+- Payload is `@Payload() dto` — **no `@Body()`, no `@Param()`** (not HTTP).
+- Register in the service module's `controllers[]` array alongside `@EventPattern` consumers.
+
+### apps/api side — `ClientProxy.send()` adapter
+
+```ts
+// apps/api/src/modules/billing/adapters/billing-tcp.adapter.ts
+import { Inject, Injectable } from '@nestjs/common';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
+import { firstValueFrom, timeout } from 'rxjs';
+import { Result, ok, err } from 'neverthrow';
+import { AppError, AppErrorCode } from '../../common/errors/app-error';
+
+export const BILLING_TCP_CLIENT = 'BILLING_TCP_CLIENT';
+
+/**
+ * Adapter: translates IBillingClient port calls into TCP RPC.
+ * Maps RpcException back to AppError so the service layer stays transport-agnostic.
+ */
+@Injectable()
+export class BillingTcpAdapter implements IBillingClient {
+  constructor(@Inject(BILLING_TCP_CLIENT) private readonly client: ClientProxy) {}
+
+  /**
+   * Fetches the post-creation quota limit for a workspace.
+   * @param workspaceId - UUID of the workspace.
+   * @returns ok(limit) or err(AppError) mapped from the service's RpcException.
+   */
+  async getPostLimit(workspaceId: string): Promise<Result<number, AppError>> {
+    try {
+      const { limit } = await firstValueFrom(
+        this.client
+          .send<{ limit: number }>('billing.get-quota', { workspaceId })
+          .pipe(timeout(3_000)),
+      );
+      return ok(limit);
+    } catch (e) {
+      if (e instanceof RpcException) {
+        const { code, message } = e.getError() as { code: string; message: string };
+        return err(new AppError(code as AppErrorCode, message));
+      }
+      return err(AppError.serviceUnavailable('billing'));
+    }
+  }
+}
+```
+
+Rules:
+- **Always** `firstValueFrom(client.send(...).pipe(timeout(3_000)))` — never subscribe directly.
+- `timeout(3_000)` is mandatory — prevents a hanging request if the service restarts.
+- `RpcException` → cast `.getError()` to `{ code, message }` → `new AppError(...)`.
+- Unknown errors (connection refused, timeout) → `AppError.serviceUnavailable('service-name')`.
+- The adapter implements the **same abstract port** as the old HTTP adapter. Swapping HTTP→TCP is a provider binding change only; the service layer is untouched.
+
+### apps/api side — `ClientsModule` registration (in the owning module)
+
+```ts
+// In BillingModule (or whichever module owns the adapter):
+ClientsModule.registerAsync([{
+  name: BILLING_TCP_CLIENT,
+  useFactory: (config: ConfigService) => ({
+    transport: Transport.TCP,
+    options: {
+      host: config.get('BILLING_TCP_HOST', 'localhost'),
+      port: config.get<number>('BILLING_TCP_PORT', 4001),
+    },
+  }),
+  inject: [ConfigService],
+}]),
+```
+
+`ClientsModule.registerAsync` must be in the **same module** as the adapter that injects the
+token (ADR-080). Provider binding:
+```ts
+{ provide: IBillingClient, useClass: BillingTcpAdapter }
+```
+
+### Service bootstrap — add TCP transport (hybrid bootstrap, ADR-084)
+
+```ts
+// In service main.ts — add alongside existing RMQ connectMicroservice:
+const configService = app.get(ConfigService);
+app.connectMicroservice<MicroserviceOptions>({
+  transport: Transport.TCP,
+  options: { host: '0.0.0.0', port: configService.get<number>('BILLING_TCP_PORT', 4001) },
+});
+app.connectMicroservice(getRmqOptions('billing_queue', configService)); // existing
+await app.startAllMicroservices(); // must precede app.listen() — ADR-084
+await app.listen(configService.get('BILLING_PORT', 3001));
+```
+
+### TCP port env vars (add to `.env.example` and `docker-compose.yml`)
+
+```
+BILLING_TCP_PORT=4001
+ANALYTICS_TCP_PORT=4002
+AUDIT_TCP_PORT=4003
+SEARCH_TCP_PORT=4004
+NOTIFICATION_TCP_PORT=4005
+
+# TCP hosts default to localhost for local dev; override in docker-compose or k8s
+BILLING_TCP_HOST=localhost
+ANALYTICS_TCP_HOST=localhost
+AUDIT_TCP_HOST=localhost
+SEARCH_TCP_HOST=localhost
+NOTIFICATION_TCP_HOST=localhost
+```
+
+### Unit-testing a `@MessagePattern` handler
+
+```ts
+describe('BillingMessageController', () => {
+  it('returns { limit } on ok result', async () => {
+    const billing = { getPostLimit: vi.fn().mockResolvedValue(ok(100)) };
+    const ctrl = new BillingMessageController(billing as any);
+    expect(await ctrl.getQuota({ workspaceId: 'ws-1' })).toEqual({ limit: 100 });
+  });
+
+  it('throws RpcException on err result', async () => {
+    const billing = { getPostLimit: vi.fn().mockResolvedValue(err(AppError.notFound('Plan'))) };
+    const ctrl = new BillingMessageController(billing as any);
+    await expect(ctrl.getQuota({ workspaceId: 'ws-1' })).rejects.toBeInstanceOf(RpcException);
+  });
+});
+```
+
+### Unit-testing a TCP adapter in apps/api
+
+```ts
+describe('BillingTcpAdapter', () => {
+  it('returns ok(limit) when ClientProxy resolves', async () => {
+    const client = { send: vi.fn().mockReturnValue(of({ limit: 50 })) };
+    const adapter = new BillingTcpAdapter(client as any);
+    expect(await adapter.getPostLimit('ws-1')).toEqual(ok(50));
+  });
+
+  it('returns err(SERVICE_UNAVAILABLE) on connection timeout', async () => {
+    const client = { send: vi.fn().mockReturnValue(throwError(() => new Error('timeout'))) };
+    const adapter = new BillingTcpAdapter(client as any);
+    const result = await adapter.getPostLimit('ws-1');
+    expect(result._unsafeUnwrapErr().code).toBe('SERVICE_UNAVAILABLE');
+  });
+});
+```

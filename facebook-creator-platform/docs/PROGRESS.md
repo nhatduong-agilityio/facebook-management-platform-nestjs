@@ -5,9 +5,11 @@
 
 ## Resume point
 
-- **Next task:** none — all Week 1–5 tasks complete (T5.7 was the final task). Post-T5.7 API gap closure also complete.
+- **Next task:** C-1 — Outbox recovery job (first task in Post-T5.7 Quality & Hardening section)
 - **Branch:** `nestjs-practice`
 - **Notes:** All 3 missing CR-01 endpoints implemented and tested. Tests: 425/425. Lint: 0 errors.
+  19 post-T5.7 hardening tasks added to TASKS.md (C-1 → C-3 Critical, H-4 → H-8 High,
+  M-9 → M-14 Medium, L-15 → L-19 Low). Start with C-1; do not skip ahead.
 
 ## Log
 

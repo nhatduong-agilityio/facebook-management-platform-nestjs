@@ -782,9 +782,100 @@ await app.listen(port);
 > requires per-developer shell setup and the key would differ between environments.
 > `dotenv-cli` is a root devDependency only — no service package depends on it.
 
+## ADR-094 — Three-Transport Model: HTTP + TCP + RabbitMQ (2026-07-16)
+
+### Context
+
+After T5.7 completion, all inter-service communication from `apps/api` to internal services
+used **HTTP** (`IHttpClient` / `FetchHttpClientAdapter`). While this worked correctly, it
+couples transport and business logic: every service needed an Express HTTP server, REST controllers,
+URL routing, and JSON serialization overhead for calls that are purely internal.
+
+NestJS's official Hybrid Microservices documentation recommends using TCP `@MessagePattern` /
+`ClientProxy.send()` for synchronous internal RPC between services in the same cluster, reserving
+HTTP for external clients and webhooks. The TR.1–TR.11 migration already moved async events to
+`@nestjs/microservices` Transport.RMQ — this ADR extends that to sync queries via Transport.TCP.
+
+### Decision
+
+Adopt the **Three-Transport Model** as the canonical inter-service communication architecture:
+
+| Transport | Direction | Use case |
+|---|---|---|
+| **HTTP** | External → service | Public API (browser clients), inbound webhooks (Stripe → Billing, Facebook → apps/api) |
+| **TCP `@MessagePattern`** | `apps/api` → service | Synchronous internal RPC: quota check, metrics query, search query, notification list, audit log read |
+| **RabbitMQ `@EventPattern`** | service → many services | Async fan-out events: post lifecycle, billing state changes, membership events |
+
+### Service transport matrix
+
+| Service | External HTTP | TCP patterns | RMQ events |
+|---|---|---|---|
+| `services/billing` | Stripe webhook, redirect | `billing.get-quota`, `billing.get-subscription`, `billing.checkout` | publishes `billing.*` |
+| `services/analytics` | ❌ | `analytics.workspace-metrics`, `analytics.post-metrics` | consumes `posts.published` |
+| `services/notification` | ❌ | `notification.list`, `notification.mark-read` | consumes 11 events |
+| `services/email` | ❌ | ❌ (fire-and-forget, no sync query) | consumes 5 events |
+| `services/search` | ❌ | `search.query` | consumes 5 events |
+| `services/audit` | ❌ | `audit.get-logs`, `audit.get-log` | consumes `#` (all events) |
+
+### Exception — reverse calls (services → apps/api)
+
+`services/analytics`, `services/email`, and `services/notification` call `apps/api`'s `/internal/*`
+endpoints for PII resolution (page tokens, user emails, workspace membership). These **stay HTTP**
+with `InternalSecretGuard`. Reasons: (1) they are low-frequency one-time-per-event calls, not
+hot-path RPC; (2) moving them to TCP would require apps/api to become a TCP server in addition to
+its existing HTTP + RMQ transports; (3) the `InternalSecretGuard` + private network boundary is
+sufficient security for data resolution calls.
+
+### What changes in `apps/api`
+
+- `IHttpClient` / `FetchHttpClientAdapter` are **removed** from the internal service adapter path.
+  (They remain available if a future external-facing HTTP proxy is needed, but no such caller exists
+  after migration.)
+- Each internal service gets: a `*TcpAdapter` implementing the existing abstract port + a
+  `ClientsModule.registerAsync` registration with `Transport.TCP`.
+- Provider bindings in modules swap from `{ provide: IPort, useClass: HttpAdapter }` to
+  `{ provide: IPort, useClass: TcpAdapter }` — service layer is unchanged.
+
+### What changes in each service
+
+- Each service adds one `app.connectMicroservice({ transport: Transport.TCP, options: { port } })`
+  call in `main.ts` (alongside the existing RMQ `connectMicroservice`).
+- A new `<name>.message-controller.ts` (`@Controller()` with `@MessagePattern` handlers) is added
+  and registered in the service module's `controllers[]`.
+- Services that had no external clients (analytics, search, notification, audit) can have their
+  HTTP server removed — their `main.ts` changes from `NestFactory.create + app.listen` to
+  pure microservice or TCP-only hybrid.
+
+### TCP port allocation
+
+```
+Billing:      TCP 4001  (HTTP stays on BILLING_PORT, default 3001)
+Analytics:    TCP 4002  (HTTP removed — was ANALYTICS_PORT 3002)
+Audit:        TCP 4003  (HTTP removed — was AUDIT_PORT 3003)
+Search:       TCP 4004  (HTTP removed — was SEARCH_PORT 3004)
+Notification: TCP 4005  (HTTP removed — was NOTIFICATION_PORT 3005)
+Email:        no TCP    (fire-and-forget, no sync query needed)
+```
+
+### Canonical patterns
+
+Service handler and adapter patterns documented in `docs/CODING-STANDARDS.md` §15.
+Migration tasks: TM.1–TM.12 in `docs/TASKS.md`.
+
+### Known limitations
+
+- TCP transport in `@nestjs/microservices` has no built-in connection pooling per client. NestJS
+  `ClientProxy` lazily connects; a service restart causes a brief period where `send()` throws
+  until reconnection. Mitigated by the `timeout(3_000)` pipe + `serviceUnavailable` fallback in
+  each adapter.
+- No load balancing across multiple service replicas with vanilla TCP transport. Mitigation:
+  use a reverse proxy or service mesh in production (Envoy, Linkerd) if horizontal scaling is needed.
+  Acceptable for current training project scale.
+
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-16 | **ADR-094 Three-Transport Model adopted.** HTTP for external/webhooks only; TCP `@MessagePattern` for all internal sync RPC (`apps/api → services`); RabbitMQ `@EventPattern` for async events. Migration tasks TM.1–TM.12 added to TASKS.md. CLAUDE.md + CODING-STANDARDS.md §15 updated. |
 | 2026-07-14 | **ADR-086 Redis injection token standardised to Symbol.** All 4 services (`notification`, `search`, `analytics`, `email`) now export `IOREDIS_CLIENT = Symbol('IOREDIS_CLIENT')` from a per-service `redis.constants.ts`; all 22 consumer constructors use `@Inject(IOREDIS_CLIENT)`. Eliminates class-as-token fragility (package renames break injection silently). Matches `apps/api` pattern (ADR-063). |
 | 2026-07-14 | **TR.10 complete. ADR-085:** Full migration ADR written; `@golevelup → @nestjs/microservices` across 8 packages documented; known limitations (no publisher-confirms, no topology assertion at boot) recorded; 345/345 tests, lint clean. |
 | 2026-07-14 | **TR.9 complete.** `services/notification` hybrid bootstrap (ADR-084); `NotificationMessagingModule` deleted; 11 consumers use `@EventPattern` + `channel.ack/nack`; 3 projection consumers gained `MikroORM` + `RequestContext.create` (their repository injects `EntityManager` directly). 40/40 notification tests, lint clean. |
