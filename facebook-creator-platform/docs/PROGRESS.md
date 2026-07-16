@@ -5,11 +5,18 @@
 
 ## Resume point
 
-- **Next task:** H-5 — CORS configuration missing from `main.ts`
+- **Next task:** H-6 — `FacebookTokenExpiringEvent` emitted but never consumed for auto-refresh
 - **Branch:** `nestjs-practice`
-- **Notes:** H-4 complete. Tests: 430/430. Lint: 0 errors. Continue with H-5.
+- **Notes:** H-5 complete. Tests: 430/430. Lint: 0 errors. Continue with H-6.
 
 ## Log
+
+### 2026-07-16 — H-5 CORS configuration
+
+- **`apps/api/src/main.ts`**: moved `configService` acquisition before middleware setup; added `app.enableCors({ origin: allowedOrigins, credentials: true, methods: [...], allowedHeaders: [...] })` immediately after `enableShutdownHooks`. `allowedOrigins` is split from `ALLOWED_ORIGINS` env var (comma-separated, default `http://localhost:4000`). Updated `bootstrap()` JSDoc.
+- **`.env.example`**: added `ALLOWED_ORIGINS=http://localhost:4000` with comment under new `# --- App ---` section.
+- ADR-097 logged in `docs/DECISIONS.md`.
+- Tests: 430/430. Lint: 0 errors.
 
 ### 2026-07-16 — H-4 Rate limiting
 
