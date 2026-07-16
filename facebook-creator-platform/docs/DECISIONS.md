@@ -782,6 +782,48 @@ await app.listen(port);
 > requires per-developer shell setup and the key would differ between environments.
 > `dotenv-cli` is a root devDependency only — no service package depends on it.
 
+## ADR-095 — Outbox relay job: 30 s cron, 60 s age guard, per-row isolation (2026-07-16)
+
+### Context
+
+`RabbitMqEventBus.publish()` writes a `pending` row to `messaging.event_message_logs`
+before calling `ClientProxy.emit`. If the process crashes between `em.flush()` and the
+emit, the row stays `pending` forever. Rows that fail to emit are marked `failed` but
+have no retry path.
+
+### Decision
+
+`OutboxRelayJob` (`apps/api/src/infrastructure/rabbitmq/jobs/outbox-relay.job.ts`) runs
+every 30 seconds (`@Cron('*/30 * * * * *')`). It:
+
+1. Queries rows with `processing_status IN ('pending', 'failed')` **and**
+   `created_at < now() - 60 seconds`. The age guard prevents racing an in-flight
+   publisher whose `markProcessed` call has not returned yet.
+2. Re-emits each row's stored payload directly via `ClientProxy.emit(routingKey, payload)`.
+   The stored payload is used verbatim — no `DomainEvent` reconstruction needed.
+3. Calls `markProcessed(eventId)` on success.
+4. On broker error: calls `incrementRetry(eventId)` (increments `retry_count`, sets
+   `last_retry_at = now()`) and logs the failure, then **continues** to the next row.
+   Per-row error isolation ensures one stuck event does not block others.
+
+A new migration (`Migration20260716000001_OutboxRetryColumns`) adds `last_retry_at timestamptz`
+to `messaging.event_message_logs`. (`retry_count` already existed from the initial schema.)
+
+### Why `ClientProxy` directly, not `IEventBus`
+
+`IEventBus.publish(event: DomainEvent)` spreads the `DomainEvent` object into a new payload.
+The relay job works with raw stored payloads, not `DomainEvent` instances — using `IEventBus`
+would lose the original payload fields. Injecting `ClientProxy` via `@Inject(FCP_EVENT_BUS)`
+is the same token used by `RabbitMqEventBus` and avoids reconstructing domain objects from DB rows.
+
+### No retry cap in C-1
+
+A maximum `retry_count` ceiling is not enforced in this task. Rows that repeatedly fail
+will keep being retried until the broker recovers. A future task can add a cap that moves
+exhausted rows to `dlq` status and lets `DlqConsumer` record them in `dead_letter_messages`.
+
+---
+
 ## ADR-094 — Three-Transport Model: HTTP + TCP + RabbitMQ (2026-07-16)
 
 ### Context
@@ -875,6 +917,7 @@ Migration tasks: TM.1–TM.12 in `docs/TASKS.md`.
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-16 | **ADR-095 Outbox relay job (C-1).** `OutboxRelayJob` cron every 30 s; queries `pending`/`failed` rows older than 60 s; re-emits via `ClientProxy`; `markProcessed` on success, `incrementRetry` on error (per-row isolation). Migration adds `last_retry_at timestamptz` (`retry_count` already existed). |
 | 2026-07-16 | **ADR-094 Three-Transport Model adopted.** HTTP for external/webhooks only; TCP `@MessagePattern` for all internal sync RPC (`apps/api → services`); RabbitMQ `@EventPattern` for async events. Migration tasks TM.1–TM.12 added to TASKS.md. CLAUDE.md + CODING-STANDARDS.md §15 updated. |
 | 2026-07-14 | **ADR-086 Redis injection token standardised to Symbol.** All 4 services (`notification`, `search`, `analytics`, `email`) now export `IOREDIS_CLIENT = Symbol('IOREDIS_CLIENT')` from a per-service `redis.constants.ts`; all 22 consumer constructors use `@Inject(IOREDIS_CLIENT)`. Eliminates class-as-token fragility (package renames break injection silently). Matches `apps/api` pattern (ADR-063). |
 | 2026-07-14 | **TR.10 complete. ADR-085:** Full migration ADR written; `@golevelup → @nestjs/microservices` across 8 packages documented; known limitations (no publisher-confirms, no topology assertion at boot) recorded; 345/345 tests, lint clean. |

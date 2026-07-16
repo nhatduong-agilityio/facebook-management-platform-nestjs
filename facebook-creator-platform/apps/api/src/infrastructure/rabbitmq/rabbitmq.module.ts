@@ -8,6 +8,7 @@ import { IMessagingLogRepository } from '../../common/events/messaging-log.port'
 import { FCP_EVENT_BUS, RabbitMqEventBus } from '../../common/events/rabbitmq-event-bus';
 import { PostgresMessagingLogRepository } from './messaging-log.repository';
 import { DlqConsumer } from './consumers/dlq.consumer';
+import { OutboxRelayJob } from './jobs/outbox-relay.job';
 
 /**
  * Global infrastructure module that wires the RabbitMQ publisher, ioredis client,
@@ -61,6 +62,7 @@ import { DlqConsumer } from './consumers/dlq.consumer';
       provide: IEventBus,
       useClass: RabbitMqEventBus,
     },
+    OutboxRelayJob,
   ],
   exports: [IEventBus, IMessagingLogRepository, IOREDIS_CLIENT],
 })

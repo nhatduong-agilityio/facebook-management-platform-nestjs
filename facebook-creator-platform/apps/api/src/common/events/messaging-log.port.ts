@@ -1,4 +1,19 @@
 /**
+ * A row returned by `IMessagingLogRepository.findPendingForRelay`.
+ * Contains the minimum fields needed by the outbox relay job to re-emit an event.
+ */
+export interface PendingLogRow {
+  /** UUID v7 of the domain event — used to mark processed or increment retry. */
+  event_id: string;
+  /** AMQP routing key the event was originally published with. */
+  routing_key: string;
+  /** Full serialised event payload stored when the row was first inserted. */
+  payload: Record<string, unknown>;
+  /** Number of relay attempts made so far. */
+  retry_count: number;
+}
+
+/**
  * Port: persistence contract for the messaging infrastructure observability log.
  *
  * The event bus publisher calls this before and after every `amqp.publish` call so
@@ -66,4 +81,23 @@ export abstract class IMessagingLogRepository {
     errorMessage: string,
     retryCount: number,
   ): Promise<void>;
+
+  /**
+   * Returns rows eligible for outbox relay: those whose `processing_status` is
+   * `'pending'` or `'failed'` and whose `created_at` is older than `olderThanSeconds`.
+   *
+   * The age guard prevents the relay job from racing the in-flight publisher: a row
+   * created in the last 60 seconds may still have its `markProcessed` call in flight.
+   *
+   * @param olderThanSeconds - Minimum age in seconds a row must be before it is retried.
+   */
+  abstract findPendingForRelay(olderThanSeconds: number): Promise<PendingLogRow[]>;
+
+  /**
+   * Increments `retry_count` by 1 and sets `last_retry_at = now()` for the given row.
+   * Called by the outbox relay job when a re-emit attempt fails.
+   *
+   * @param eventId - UUID v7 of the event whose retry count should be incremented.
+   */
+  abstract incrementRetry(eventId: string): Promise<void>;
 }

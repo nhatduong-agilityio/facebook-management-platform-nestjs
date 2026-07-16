@@ -207,7 +207,7 @@ For blocked tasks always append an inline note on the same line:
 
 ### Critical — Fix Before Any Production Deployment
 
-- [ ] **C-1 Outbox recovery job — pending/failed rows never retried** (~3h)
+- [x] **C-1 Outbox recovery job — pending/failed rows never retried** (~3h)
   - `RabbitMqEventBus.publish()` writes a `pending` row then emits. If the process crashes
     between `em.flush()` and `publish()`, the event is permanently lost. No recovery path
     exists for `failed` rows either.
