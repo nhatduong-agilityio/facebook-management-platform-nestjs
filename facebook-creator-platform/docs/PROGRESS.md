@@ -5,13 +5,23 @@
 
 ## Resume point
 
-- **Next task:** C-1 — Outbox recovery job (first task in Post-T5.7 Quality & Hardening section)
+- **Next task:** C-2 — Fix empty `facebookAccountId` in `PostPublishedEvent`
 - **Branch:** `nestjs-practice`
-- **Notes:** All 3 missing CR-01 endpoints implemented and tested. Tests: 425/425. Lint: 0 errors.
-  19 post-T5.7 hardening tasks added to TASKS.md (C-1 → C-3 Critical, H-4 → H-8 High,
-  M-9 → M-14 Medium, L-15 → L-19 Low). Start with C-1; do not skip ahead.
+- **Notes:** C-1 complete. Tests: 429/429. Lint: 0 errors. Migration adds `last_retry_at` column.
+  Continue with C-2; do not skip ahead.
 
 ## Log
+
+### 2026-07-16 — C-1 Outbox recovery job
+
+- **`apps/api/src/migrations/Migration20260716000001_OutboxRetryColumns.ts`** (new): adds `last_retry_at timestamptz` to `messaging.event_message_logs`. (`retry_count` already existed from the initial schema — only this column was missing.)
+- **`apps/api/src/common/events/messaging-log.port.ts`** (extended): added `PendingLogRow` interface + `findPendingForRelay(olderThanSeconds)` and `incrementRetry(eventId)` abstract methods.
+- **`apps/api/src/infrastructure/rabbitmq/messaging-log.repository.ts`** (extended): implemented both new methods via raw SQL — no ORM UoW, `getConnection().execute()` only (infra log pattern).
+- **`apps/api/src/infrastructure/rabbitmq/jobs/outbox-relay.job.ts`** (new): `OutboxRelayJob` — `@Cron('*/30 * * * * *')`; queries `pending`/`failed` rows older than 60 s; re-emits each stored payload via `@Inject(FCP_EVENT_BUS) ClientProxy`; `markProcessed` on success; `incrementRetry` + log on broker error; per-row isolation (one row failure does not abort others).
+- **`apps/api/src/infrastructure/rabbitmq/rabbitmq.module.ts`** (updated): registered `OutboxRelayJob` in `providers[]`.
+- **`apps/api/src/infrastructure/rabbitmq/jobs/outbox-relay.job.spec.ts`** (new): 4 tests — empty rows (no-op), successful relay (markProcessed), broker error (incrementRetry), two-row isolation (first ok, second fails independently).
+- ADR-095 logged in `docs/DECISIONS.md`.
+- Tests: 429/429. Lint: 0 errors.
 
 ### 2026-07-15 — API gap closure (post-T5.7)
 

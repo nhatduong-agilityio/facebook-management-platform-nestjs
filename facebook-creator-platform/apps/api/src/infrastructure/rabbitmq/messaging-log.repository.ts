@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { MikroORM } from '@mikro-orm/core';
-import { IMessagingLogRepository } from '../../common/events/messaging-log.port';
+import { IMessagingLogRepository, PendingLogRow } from '../../common/events/messaging-log.port';
 
 /**
  * Postgres adapter for `IMessagingLogRepository`.
@@ -78,6 +78,30 @@ export class PostgresMessagingLogRepository extends IMessagingLogRepository {
        VALUES (?, ?, ?)
        ON CONFLICT (event_id) DO NOTHING`,
       [eventId, errorMessage, retryCount],
+    );
+  }
+
+  /** @inheritdoc */
+  async findPendingForRelay(olderThanSeconds: number): Promise<PendingLogRow[]> {
+    const rows = await this.orm.em.getConnection().execute<PendingLogRow[]>(
+      `SELECT event_id, routing_key, payload, retry_count
+         FROM messaging.event_message_logs
+        WHERE processing_status IN ('pending', 'failed')
+          AND created_at < now() - (? * interval '1 second')
+        ORDER BY created_at ASC`,
+      [olderThanSeconds],
+    );
+    return rows;
+  }
+
+  /** @inheritdoc */
+  async incrementRetry(eventId: string): Promise<void> {
+    await this.orm.em.getConnection().execute(
+      `UPDATE messaging.event_message_logs
+          SET retry_count = retry_count + 1,
+              last_retry_at = now()
+        WHERE event_id = ?`,
+      [eventId],
     );
   }
 }
