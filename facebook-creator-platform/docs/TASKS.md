@@ -223,7 +223,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: job publishes `pending` rows; `failed` rows incremented on error; migration runs cleanly;
     `pnpm lint && pnpm test` green; ADR appended to `docs/DECISIONS.md`.
 
-- [ ] **C-2 Fix empty `facebookAccountId` in `PostPublishedEvent`** (~1h)
+- [x] **C-2 Fix empty `facebookAccountId` in `PostPublishedEvent`** (~1h)
   - `post.facebookAccount?.id ?? ''` in `PostsService.transitionStatus` falls back to `''` when
     the `Ref<FacebookAccount>` is not populated. `services/analytics` uses this ID to resolve the
     page token; an empty string causes silent analytics sync failure.
@@ -235,7 +235,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: `PostPublishedEvent.facebookAccountId` is never `''` for a post with a connected page;
     unit test asserts the error path when account ref is absent; `pnpm test` green.
 
-- [ ] **C-3 Graceful shutdown — `app.enableShutdownHooks()` missing from `main.ts`** (~30 min)
+- [x] **C-3 Graceful shutdown — `app.enableShutdownHooks()` missing from `main.ts`** (~30 min)
   - Without `enableShutdownHooks()`, a `SIGTERM` (k8s pod termination, `docker stop`) cuts
     in-flight HTTP requests and RabbitMQ consumers do not drain, causing message loss.
   - Fix: add `app.enableShutdownHooks()` in `apps/api/src/main.ts` after `NestFactory.create`

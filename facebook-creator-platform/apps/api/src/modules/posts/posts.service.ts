@@ -339,13 +339,21 @@ export class PostsService {
     await this.postRepo.save(post);
 
     if (dto.status === 'published' && post.facebookGraphPostId) {
+      const accountId = post.facebookAccount?.id;
+      if (!accountId) {
+        return err(
+          AppError.internal(
+            'Post has no linked FacebookAccount; cannot emit PostPublishedEvent',
+            { postId },
+          ),
+        );
+      }
       await this.eventBus.publish(
         new PostPublishedEvent(
           post.id,
           workspaceId,
           post.facebookGraphPostId,
-          // Ref<T> always exposes the PK — no population needed
-          post.facebookAccount?.id ?? '',
+          accountId,
           post.createdByUserId,
         ),
       );

@@ -368,6 +368,8 @@ describe('PostsService', () => {
     it('publishing → published: sets publishedAt and emits PostPublishedEvent after flush', async () => {
       const callOrder: string[] = [];
       const post = makePost({ status: 'publishing', facebookGraphPostId: GRAPH_POST_ID });
+      // facebookAccount must be present — its id is passed to PostPublishedEvent
+      (post as unknown as Record<string, unknown>).facebookAccount = { id: PAGE_ACCOUNT_ID };
       vi.mocked(mockPostRepo.findById).mockResolvedValue(post);
       vi.mocked(mockPostRepo.save).mockImplementation(async () => { callOrder.push('flush'); });
       vi.mocked(mockEventBus.publish).mockImplementation(async () => { callOrder.push('event'); });
@@ -380,6 +382,21 @@ describe('PostsService', () => {
       expect(post.publishedAt).toBeInstanceOf(Date);
       expect(mockEventBus.publish).toHaveBeenCalledOnce();
       expect(callOrder).toEqual(['flush', 'event']);
+    });
+
+    it('publishing → published: returns err(INTERNAL) when facebookAccount is absent', async () => {
+      const post = makePost({ status: 'publishing', facebookGraphPostId: GRAPH_POST_ID });
+      // facebookAccount intentionally not set — simulates a post with no linked Page
+      vi.mocked(mockPostRepo.findById).mockResolvedValue(post);
+      vi.mocked(mockPostRepo.save).mockResolvedValue(undefined);
+
+      const result = await service.transitionStatus(WORKSPACE_ID, POST_ID, {
+        status: 'published',
+      });
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('INTERNAL');
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
     });
 
     it('publishing → failed: stores lastError on the post', async () => {

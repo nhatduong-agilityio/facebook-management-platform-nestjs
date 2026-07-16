@@ -5,12 +5,22 @@
 
 ## Resume point
 
-- **Next task:** C-2 — Fix empty `facebookAccountId` in `PostPublishedEvent`
+- **Next task:** H-4 — Rate limiting (no protection on any endpoint)
 - **Branch:** `nestjs-practice`
-- **Notes:** C-1 complete. Tests: 429/429. Lint: 0 errors. Migration adds `last_retry_at` column.
-  Continue with C-2; do not skip ahead.
+- **Notes:** All 3 Critical tasks done (C-1, C-2, C-3). Tests: 430/430. Lint: 0 errors. Continue with H-4.
 
 ## Log
+
+### 2026-07-16 — C-3 Graceful shutdown
+
+- **`apps/api/src/main.ts`** (updated): Added `app.enableShutdownHooks()` immediately after `NestFactory.create`. Updated `bootstrap()` JSDoc to document the graceful-shutdown behaviour. No new dependency — built into `@nestjs/core`.
+- Tests: 430/430. Lint: 0 errors.
+
+### 2026-07-16 — C-2 Fix empty `facebookAccountId` in `PostPublishedEvent`
+
+- **`apps/api/src/modules/posts/posts.service.ts`** (fixed): In the `→ published` branch of `transitionStatus`, extracted `accountId = post.facebookAccount?.id`. If `accountId` is falsy, returns `err(AppError.internal(...))` instead of passing `''` to `PostPublishedEvent`. Removed the misleading `// Ref<T> always exposes the PK — no population needed` comment that had masked the null case.
+- **`apps/api/src/modules/posts/posts.service.spec.ts`** (updated): Added `facebookAccount: { id: PAGE_ACCOUNT_ID }` stub to the existing `publishing → published` test so it continues to pass after the guard. Added new test `'publishing → published: returns err(INTERNAL) when facebookAccount is absent'` — confirms the error path and that `eventBus.publish` is not called.
+- Tests: 430/430. Lint: 0 errors.
 
 ### 2026-07-16 — C-1 Outbox recovery job
 
