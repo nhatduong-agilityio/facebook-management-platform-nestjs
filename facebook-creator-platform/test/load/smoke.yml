@@ -15,7 +15,7 @@ config:
     metrics-by-endpoint:
       useOnlyRequestNames: true
   ensure:
-    p99: 500
+    p99: 300
     maxErrorRate: 1
   defaults:
     headers:
@@ -34,7 +34,7 @@ config:
 #   API_URL  — e.g. http://localhost:3000
 #   TEST_JWT — a valid Clerk JWT for a seeded test user
 #
-# NFR:  p99 < 500 ms, error rate < 1 %
+# NFR:  p99 < 300 ms (read paths), error rate < 1 %
 
 scenarios:
   - name: "health + core reads"
@@ -50,8 +50,9 @@ scenarios:
       - get:
           name: "GET /auth/me"
           url: "/api/v1/auth/me"
+          # Requires TEST_JWT to be set; 401 here means the env is misconfigured
           expect:
-            - statusCode: [200, 401]
+            - statusCode: 200
 
       - get:
           name: "GET /workspaces"

@@ -6,7 +6,11 @@ config:
   phases:
     - duration: 30
       arrivalRate: 2
-      name: "seed"
+      rampTo: 10
+      name: "ramp"
+    - duration: 60
+      arrivalRate: 10
+      name: "burst"
   plugins:
     # expect plugin must be declared — without it `expect:` blocks are silently ignored.
     expect:
@@ -22,6 +26,8 @@ config:
       content-type: "application/json"
 
 # Publish fan-out scenario (NFR: burst publish, all consumers keep up, no DLQ growth).
+# Ramps to 10 concurrent publishers (≈ 50 consumer deliveries/sec across 5 services)
+# to produce meaningful fan-out pressure without overwhelming a local Docker stack.
 #
 # Each virtual user:
 #   1. Creates a draft post.

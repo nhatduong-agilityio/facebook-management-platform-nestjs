@@ -6,7 +6,9 @@ build/
 *.pem
 **/secrets/**
 coverage/
-test/load/reports/
+# Artillery report output — keep directories (via .gitkeep) but ignore generated files
+test/**/reports/*.json
+test/**/reports/*.html
 .DS_Store
 *.log
 .idea/
