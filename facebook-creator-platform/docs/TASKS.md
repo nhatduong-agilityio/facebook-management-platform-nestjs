@@ -268,7 +268,7 @@ For blocked tasks always append an inline note on the same line:
     origins, credentials: true rationale); BR-F12 (`Authorization` already redacted by Pino).
   - DoD: CORS enabled; `.env.example` updated; `pnpm test` green; ADR appended.
 
-- [ ] **H-6 `FacebookTokenExpiringEvent` emitted but never consumed for auto-refresh** (~3h)
+- [x] **H-6 `FacebookTokenExpiringEvent` emitted but never consumed for auto-refresh** (~3h)
   - `FacebookTokenExpiryScheduler` emits `facebook.token_expiring` (routing key). No consumer in
     `apps/api` triggers a token refresh. Token expiry silently breaks publishing.
   - Build: `FacebookTokenExpiryConsumer` in
@@ -283,7 +283,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: consumer registered in `FacebookModule`; spec covers success, dedup, transient error;
     `pnpm test` green.
 
-- [ ] **H-7 Health check is process-only — no dependency probes** (~2h)
+- [x] **H-7 Health check is process-only — no dependency probes** (~2h)
   - `GET /api/v1/health` returns `{ status: 'ok' }` if the NestJS process starts. No Postgres,
     Redis, or RabbitMQ probe. Container orchestrators route traffic to unhealthy instances.
   - Run `pnpm view @nestjs/terminus version` → pin → `pnpm add @nestjs/terminus`. Update
