@@ -5,11 +5,22 @@
 
 ## Resume point
 
-- **Next task:** H-4 — Rate limiting (no protection on any endpoint)
+- **Next task:** H-5 — CORS configuration missing from `main.ts`
 - **Branch:** `nestjs-practice`
-- **Notes:** All 3 Critical tasks done (C-1, C-2, C-3). Tests: 430/430. Lint: 0 errors. Continue with H-4.
+- **Notes:** H-4 complete. Tests: 430/430. Lint: 0 errors. Continue with H-5.
 
 ## Log
+
+### 2026-07-16 — H-4 Rate limiting
+
+- **`apps/api/package.json`**: added `@nestjs/throttler@^6.5.0`.
+- **`apps/api/src/app.module.ts`**: added `ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }])` to imports; `{ provide: APP_GUARD, useClass: ThrottlerGuard }` to providers. Updated JSDoc.
+- **`workspace.controller.ts`**: `@Throttle({ default: { ttl: 60_000, limit: 5 } })` on `inviteMember`; JSDoc updated.
+- **`dev-auth.controller.ts`**: `@Throttle({ default: { ttl: 60_000, limit: 10 } })` on `token`; JSDoc updated.
+- **`facebook-webhook.controller.ts`**: `@SkipThrottle()` on controller class; JSDoc updated with rationale.
+- **`clerk-webhook.controller.ts`**: `@SkipThrottle()` on controller class; JSDoc updated with rationale.
+- ADR-096 logged in `docs/DECISIONS.md`.
+- Tests: 430/430. Lint: 0 errors.
 
 ### 2026-07-16 — C-3 Graceful shutdown
 

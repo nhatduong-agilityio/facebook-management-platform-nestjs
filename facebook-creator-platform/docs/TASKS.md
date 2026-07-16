@@ -246,7 +246,7 @@ For blocked tasks always append an inline note on the same line:
 
 ### High — Fix Before Production Traffic
 
-- [ ] **H-4 Rate limiting — no protection on any endpoint** (~2h)
+- [x] **H-4 Rate limiting — no protection on any endpoint** (~2h)
   - No rate limiting exists. The invite endpoint can be abused to send unlimited emails. Auth and
     webhook endpoints are also unprotected against burst abuse.
   - Run `pnpm view @nestjs/throttler version` → pin → `pnpm add @nestjs/throttler`.
