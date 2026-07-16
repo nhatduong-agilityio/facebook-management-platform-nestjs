@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Headers, HttpCode, Post, Query, Req } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import {
@@ -21,9 +22,14 @@ import { FacebookService, type FacebookWebhookPayload } from './facebook.service
  * - `POST` (events, T2.7): `X-Hub-Signature-256` HMAC-SHA256 verified with
  *   `FACEBOOK_APP_SECRET` before any payload is processed.
  *
+ * `@SkipThrottle()` — Facebook's delivery IPs span a large CIDR range and may
+ * change; IP-based throttling would block legitimate retries. HMAC verification
+ * is the authentication mechanism here.
+ *
  * Register `http://localhost:3000/api/v1/webhooks/facebook` as the Callback URL
  * in the Facebook App Dashboard → Webhooks, and set a matching `FACEBOOK_WEBHOOK_VERIFY_TOKEN`.
  */
+@SkipThrottle()
 @ApiTags('facebook')
 @Controller('webhooks/facebook')
 export class FacebookWebhookController {

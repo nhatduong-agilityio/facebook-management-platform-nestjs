@@ -1,5 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { DevAuthService } from './dev-auth.service';
 import { DevAuthTokenDto, DevAuthTokenResponseDto } from './dto/dev-auth-token.dto';
 
@@ -21,9 +22,11 @@ export class DevAuthController {
    * - **Session exists** → `{ accessToken }` — set as Bearer token and test immediately.
    * - **No session** → `{ loginUrl }` — open in a browser, Clerk creates a session,
    *   then call this endpoint again to receive `accessToken`.
+   * Rate-limited to 10 requests / 60 s / IP (dev only, but still bounded).
    *
    * @param dto - User identifier and optional JWT template slug.
    */
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('token')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

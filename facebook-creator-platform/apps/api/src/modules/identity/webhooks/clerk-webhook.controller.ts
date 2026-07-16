@@ -7,6 +7,7 @@ import {
   Post,
   Req,
 } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { RawBodyRequest } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -21,7 +22,11 @@ import { ClerkWebhookService, type ClerkWebhookHeaders } from './clerk-webhook.s
  *
  * The route is intentionally unprotected (no `ClerkAuthGuard`) — Clerk
  * authenticates via a Standard Webhooks HMAC signature, not a Bearer JWT.
+ *
+ * `@SkipThrottle()` — Clerk's delivery IPs are not fixed; IP-based throttling
+ * would block legitimate retries. Svix HMAC verification is the auth mechanism.
  */
+@SkipThrottle()
 @ApiTags('webhooks')
 @Controller('webhooks/clerk')
 export class ClerkWebhookController {

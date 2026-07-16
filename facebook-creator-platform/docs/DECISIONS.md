@@ -782,6 +782,28 @@ await app.listen(port);
 > requires per-developer shell setup and the key would differ between environments.
 > `dotenv-cli` is a root devDependency only — no service package depends on it.
 
+## ADR-096 — Rate limiting: @nestjs/throttler@6.5.0, global 100/min, invite 5/min (2026-07-16)
+
+### Package
+
+`@nestjs/throttler@^6.5.0` (latest at time of task). Registered as `APP_GUARD`
+so every HTTP route is covered without opt-in per controller.
+
+### Limits
+
+| Scope | Limit | Rationale |
+|---|---|---|
+| Global default | 100 req / 60 s / IP | Baseline DDoS buffer on all endpoints |
+| `POST :workspaceId/members/invite` | 5 req / 60 s / IP | Each call sends a transactional email; 5/min prevents spam abuse |
+| `POST /dev-auth/token` | 10 req / 60 s / IP | Dev-only; token generation calls Clerk API; modest guard |
+| Facebook + Clerk webhooks | `@SkipThrottle()` | Delivery IPs are not fixed; HMAC/Svix signature is the auth mechanism — IP throttling would block legitimate platform retries |
+
+### TTL unit
+
+`@nestjs/throttler` v5+ uses **milliseconds** for `ttl`. All limits above use `ttl: 60_000`.
+
+---
+
 ## ADR-095 — Outbox relay job: 30 s cron, 60 s age guard, per-row isolation (2026-07-16)
 
 ### Context
@@ -917,6 +939,7 @@ Migration tasks: TM.1–TM.12 in `docs/TASKS.md`.
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-16 | **ADR-096 Rate limiting (H-4).** `@nestjs/throttler@^6.5.0`; global 100 req/60 s/IP via `APP_GUARD`; invite override 5/min; dev-auth token 10/min; Facebook + Clerk webhooks exempt via `@SkipThrottle()` (HMAC-verified). |
 | 2026-07-16 | **ADR-095 Outbox relay job (C-1).** `OutboxRelayJob` cron every 30 s; queries `pending`/`failed` rows older than 60 s; re-emits via `ClientProxy`; `markProcessed` on success, `incrementRetry` on error (per-row isolation). Migration adds `last_retry_at timestamptz` (`retry_count` already existed). |
 | 2026-07-16 | **ADR-094 Three-Transport Model adopted.** HTTP for external/webhooks only; TCP `@MessagePattern` for all internal sync RPC (`apps/api → services`); RabbitMQ `@EventPattern` for async events. Migration tasks TM.1–TM.12 added to TASKS.md. CLAUDE.md + CODING-STANDARDS.md §15 updated. |
 | 2026-07-14 | **ADR-086 Redis injection token standardised to Symbol.** All 4 services (`notification`, `search`, `analytics`, `email`) now export `IOREDIS_CLIENT = Symbol('IOREDIS_CLIENT')` from a per-service `redis.constants.ts`; all 22 consumer constructors use `@Inject(IOREDIS_CLIENT)`. Eliminates class-as-token fragility (package renames break injection silently). Matches `apps/api` pattern (ADR-063). |

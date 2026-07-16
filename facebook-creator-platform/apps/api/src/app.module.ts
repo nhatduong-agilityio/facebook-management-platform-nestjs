@@ -1,7 +1,9 @@
 import { join } from 'node:path';
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
@@ -21,6 +23,8 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  * Root application module. Composes all feature and infrastructure modules.
  *
  * Global singletons registered here:
+ * - **ThrottlerModule** — IP-based rate limiting (global default: 100 req / 60 s).
+ *   Override per-route with `@Throttle`; exempt HMAC-verified webhooks with `@SkipThrottle`.
  * - **ConfigModule** — loads the root `.env` file; available to all modules via ConfigService.
  * - **LoggerModule** — Pino HTTP logger with PII redaction for `email`, `fullName`,
  *   `accessToken`, `pageToken`, `token`, and `Authorization` headers (BR-F12, T5.3).
@@ -40,6 +44,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
  */
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [join(process.cwd(), '../../.env')],
@@ -78,5 +83,6 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     RabbitmqModule,
     ...(process.env.NODE_ENV !== 'production' ? [DevAuthModule] : []),
   ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

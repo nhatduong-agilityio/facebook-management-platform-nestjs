@@ -10,6 +10,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -162,11 +163,13 @@ export class WorkspaceController {
    *
    * Requires Owner or Editor role (`WorkspaceRolesGuard` reads `:workspaceId`).
    * Returns 409 when a pending invitation for the same email already exists.
+   * Rate-limited to 5 requests / 60 s / IP to prevent email-send abuse.
    *
    * @param workspaceId - UUID of the target workspace.
    * @param dto         - Email and role for the invitation.
    * @param user        - Authenticated user issuing the invitation.
    */
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post(':workspaceId/members/invite')
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(WorkspaceRolesGuard)
