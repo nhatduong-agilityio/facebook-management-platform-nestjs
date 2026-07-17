@@ -12,7 +12,7 @@ import { InternalApiAdapter } from './adapters/internal-api.adapter';
 import { NotificationOrchestrator } from './notification-orchestrator';
 import { WorkspaceMemberReconciler } from './reconciliation/workspace-member.reconciler';
 import { NotificationService } from './notification.service';
-import { NotificationController } from './notification.controller';
+import { NotificationMessageController } from './notification.message-controller';
 
 /* Projection consumers */
 import { MemberInvitedConsumer } from './consumers/member-invited.consumer';
@@ -36,17 +36,26 @@ import { FacebookTokenExpiringConsumer } from './consumers/facebook-token-expiri
  * - MikroORM entity features for the `notification` schema.
  * - Port → adapter bindings for repository, Slack, and internal API.
  * - `NotificationOrchestrator` — fan-out + channel routing.
- * - `WorkspaceMemberReconciler` — cold-start projection sync (ADR-059).
+ * - `WorkspaceMemberReconciler` — cold-start projection sync via HTTP to `apps/api`
+ *   (`GET /internal/workspaces/:id/members` — reverse direction, stays HTTP per ADR-094).
+ * - `NotificationMessageController` — TCP `@MessagePattern` handlers for `apps/api`.
  * - All 4 projection consumers + 7 notification consumers in `controllers[]`
  *   as required by `@nestjs/microservices` for `@EventPattern` handler discovery.
- * - `NotificationService` + `NotificationController` for the HTTP read API.
+ *
+ * No HTTP server — `services/notification` has no external clients or webhooks.
+ * `apps/api` reaches it via TCP `@MessagePattern` (ADR-094).
+ *
+ * Port bindings:
+ * - `INotificationRepository` → `MikroOrmNotificationRepository`
+ * - `ISlackProvider`          → `SlackWebhookProvider`
+ * - `IInternalApiClient`      → `InternalApiAdapter`
  */
 @Module({
   imports: [
     MikroOrmModule.forFeature([Notification, NotificationRecipient, WorkspaceMemberProjection]),
   ],
   controllers: [
-    NotificationController,
+    NotificationMessageController,
     /* Projection consumers */
     MemberInvitedConsumer,
     MemberJoinedConsumer,
