@@ -507,7 +507,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: `BillingMessageController` registered; all 3 patterns respond correctly; spec covers ok + RpcException
     paths for each; `pnpm test` green in `services/billing`.
 
-- [ ] **TM.3 `apps/api` → billing TCP adapter** (~2h)
+- [x] **TM.3 `apps/api` → billing TCP adapter** (~2h)
   - Create `apps/api/src/modules/billing/adapters/billing-tcp.adapter.ts` implementing `IBillingClient`
     (same port as old `BillingHttpClientAdapter`). Inject `@Inject(BILLING_TCP_CLIENT) ClientProxy`.
     Each method: `firstValueFrom(client.send('billing.*', dto).pipe(timeout(3_000)))` → map result;
