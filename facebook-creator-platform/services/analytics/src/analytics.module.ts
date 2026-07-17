@@ -10,6 +10,7 @@ import { FacebookInsightsAdapter } from './adapters/facebook-insights.adapter';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsController } from './analytics.controller';
 import { PostPublishedConsumer } from './analytics.consumer';
+import { AnalyticsMessageController } from './analytics.message-controller';
 
 /**
  * Core analytics module.
@@ -18,7 +19,8 @@ import { PostPublishedConsumer } from './analytics.consumer';
  * - `PostPublishedConsumer` — RMQ consumer (`@EventPattern('posts.published')`)
  *   that drives the metrics upsert flow. Listed in `controllers` as required by
  *   `@nestjs/microservices` for `@EventPattern` handler discovery.
- * - `AnalyticsController` — HTTP read endpoints called by `apps/api` (T3.5).
+ * - `AnalyticsController` — HTTP read endpoints (kept for health check / Swagger; TM.12 will decide final port strategy).
+ * - `AnalyticsMessageController` — TCP `@MessagePattern` handlers for `apps/api` (ADR-094).
  *
  * Port bindings:
  * - `IPostMetricsRepository`    → `MikroOrmPostMetricsRepository`
@@ -27,7 +29,7 @@ import { PostPublishedConsumer } from './analytics.consumer';
  */
 @Module({
   imports: [MikroOrmModule.forFeature([PostMetrics])],
-  controllers: [PostPublishedConsumer, AnalyticsController],
+  controllers: [PostPublishedConsumer, AnalyticsController, AnalyticsMessageController],
   providers: [
     AnalyticsService,
     { provide: IPostMetricsRepository, useClass: MikroOrmPostMetricsRepository },
