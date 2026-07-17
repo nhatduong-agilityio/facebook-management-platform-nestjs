@@ -5,9 +5,30 @@
 
 ## Resume point
 
-- **Next task:** TM.12 — Cleanup + full test pass
+- **Next task:** W-1 — Workspace soft-delete (deferred; see TASKS.md)
 - **Branch:** `nestjs-practice`
-- **Notes:** TM.11 complete. 362 apps/api tests green (8 new). 16 audit tests green (7 new). Lint: 0 errors.
+- **Notes:** **Three-Transport Migration (TM.1–TM.12) complete.** 362 apps/api + 91 services tests green. Lint: 0 errors. `grep -r 'FetchHttpClientAdapter\|IHttpClient\|SERVICE_URL' apps/api/src` → 0 results. Port consolidation done (analytics/audit/search/notification TCP on 300X, not 400X).
+
+## Log
+
+### 2026-07-17 — TM.12 Cleanup + full test pass — **Three-Transport Migration complete**
+
+- **`apps/api/src/common/errors/downstream-service.error.ts`** (new): `DownstreamServiceError` extracted from `http-client.port.ts` here. Same class, same contract, no logic change.
+- **Deleted** 6 dead files from `apps/api`:
+  - `common/http/http-client.port.ts` (`IHttpClient` abstract class + `DownstreamServiceError`)
+  - `common/http/fetch-http-client.adapter.ts` (native-fetch `IHttpClient` impl)
+  - `modules/analytics/adapters/analytics-http-client.adapter.ts`
+  - `modules/billing/adapters/billing-http-client.adapter.ts`
+  - `modules/notification/adapters/notification-http-client.adapter.ts`
+  - `modules/search/adapters/search-http-client.adapter.ts`
+- **Updated 22 files** import `DownstreamServiceError` from `common/errors/downstream-service.error` (all TCP adapters + specs, controllers + specs, `billing-quota.adapter`).
+- **`docker-compose.yml`**: Removed `*_SERVICE_URL` lines from `api:` env; added `*_TCP_HOST`/`*_TCP_PORT` vars using Docker service names (e.g. `ANALYTICS_TCP_HOST: analytics`); removed 4002–4005 port mappings from analytics/audit/search/notification.
+- **`.env.example`**: Removed all `*_SERVICE_URL` lines; removed duplicate SEARCH section; collapsed `ANALYTICS_TCP_PORT=3002` (was 4002) etc.; added `billing` dual-port comment.
+- **Port consolidation (ADR-108)**: analytics/audit/search/notification are pure-TCP — TCP now listens on `*_PORT` (3002–3005). `apps/api` defaults updated to match. `billing` stays dual-port (HTTP :3001 for Stripe + TCP :4001).
+  - `services/analytics/src/main.ts`, `services/audit/src/main.ts`, `services/search/src/main.ts`, `services/notification/src/main.ts`: changed TCP bind to `ANALYTICS_PORT` / `AUDIT_PORT` / `SEARCH_PORT` / `NOTIFICATION_PORT`.
+  - `apps/api` module defaults: `ANALYTICS_TCP_PORT=3002`, `AUDIT_TCP_PORT=3003`, `SEARCH_TCP_PORT=3004`, `NOTIFICATION_TCP_PORT=3005`.
+- **DoD verified**: `grep -r 'FetchHttpClientAdapter\|IHttpClient' apps/api/src` → 0; `grep -r 'SERVICE_URL' apps/api/src` → 0; no 4002–4005 ports in `docker-compose.yml`.
+- Tests: 362 apps/api + 16 audit + 13 analytics + 17 search + 45 notification + 33 billing + 20 email = **506 total passed**. Lint: 0 errors.
 
 ## Log
 

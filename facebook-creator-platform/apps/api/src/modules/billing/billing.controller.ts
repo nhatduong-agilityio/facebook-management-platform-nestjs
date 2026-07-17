@@ -15,7 +15,7 @@ import { WorkspaceRolesGuard } from '../identity/guards/roles.guard';
 import { Roles } from '../identity/decorators/roles.decorator';
 import { AppError } from '../../common/errors/app-error';
 import { toHttpException } from '../../common/http/to-http-exception';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import type { CheckoutResponse } from '@fcp/billing-contracts';
 import { IBillingHttpClient } from './ports/billing-http.client.port';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';

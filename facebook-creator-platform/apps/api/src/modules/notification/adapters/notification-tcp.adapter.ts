@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { INotificationClient } from '../ports/notification.client.port';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 import type { NotificationResponseDto } from '../dto/notification.dto';
 
 /** DI token for the notification TCP `ClientProxy`. */

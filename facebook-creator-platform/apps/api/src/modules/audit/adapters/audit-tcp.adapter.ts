@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { IAuditClient } from '../ports/audit-http.client.port';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 import type { AuditLogResponseDto } from '../dto/audit-log.dto';
 
 /** DI token for the audit TCP `ClientProxy`. */

@@ -3,7 +3,7 @@ import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import type { CheckoutRequest, CheckoutResponse, SubscriptionResponse } from '@fcp/billing-contracts';
 import { IBillingHttpClient } from '../ports/billing-http.client.port';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 
 /** DI token for the billing TCP `ClientProxy`. */
 export const BILLING_TCP_CLIENT = 'BILLING_TCP_CLIENT';

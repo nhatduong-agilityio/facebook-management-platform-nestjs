@@ -14,7 +14,7 @@ import { WorkspaceRolesGuard } from '../identity/guards/roles.guard';
 import { Roles } from '../identity/decorators/roles.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { AppError } from '../../common/errors/app-error';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import { IAnalyticsClient } from './ports/analytics-http.client.port';
 import { MetricsSummaryDto, PostMetricsDayDto } from './dto/analytics.dto';
 

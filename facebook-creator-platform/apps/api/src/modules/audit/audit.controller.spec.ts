@@ -2,7 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuditController } from './audit.controller';
 import { IAuditClient } from './ports/audit-http.client.port';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import type { AuditLogResponseDto } from './dto/audit-log.dto';
 
 const makeEvent = (overrides: Partial<AuditLogResponseDto> = {}): AuditLogResponseDto => ({

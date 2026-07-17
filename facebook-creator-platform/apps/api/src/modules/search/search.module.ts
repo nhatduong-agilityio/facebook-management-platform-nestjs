@@ -33,7 +33,7 @@ import { SearchController } from './search.controller';
           transport: Transport.TCP,
           options: {
             host: config.get<string>('SEARCH_TCP_HOST', 'localhost'),
-            port: config.get<number>('SEARCH_TCP_PORT', 4004),
+            port: config.get<number>('SEARCH_TCP_PORT', 3004),
           },
         }),
       },

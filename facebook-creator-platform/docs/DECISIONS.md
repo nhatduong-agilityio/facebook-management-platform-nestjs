@@ -1063,9 +1063,48 @@ A new migration is the correct approach.
 
 ---
 
+## ADR-108 — TM.12: IHttpClient removal and port consolidation for pure-TCP services (2026-07-17)
+
+**Context:** After TM.3–TM.11, all five internal services are called via TCP. No `apps/api`
+module binds `IHttpClient` or `FetchHttpClientAdapter` anymore. Four services (analytics,
+audit, search, notification) have no HTTP server at all — they were running two ports
+(300X HTTP + 400X TCP) with only the TCP port in use.
+
+**Decisions:**
+
+1. **Remove `IHttpClient` and `FetchHttpClientAdapter`** from `apps/api` entirely — deleted
+   `common/http/http-client.port.ts` and `common/http/fetch-http-client.adapter.ts`.
+   `DownstreamServiceError` extracted to `common/errors/downstream-service.error.ts` (still
+   used by all TCP adapters and controllers for error mapping).
+
+2. **Delete 4 orphaned HTTP adapters**: `analytics-http-client.adapter.ts`,
+   `billing-http-client.adapter.ts`, `notification-http-client.adapter.ts`,
+   `search-http-client.adapter.ts` — none referenced by any module after TM.3–TM.11.
+
+3. **Remove `*_SERVICE_URL` env vars** from `apps/api`: `ANALYTICS_SERVICE_URL`,
+   `AUDIT_SERVICE_URL`, `SEARCH_SERVICE_URL`, `NOTIFICATION_SERVICE_URL`, `BILLING_SERVICE_URL`
+   all removed from `docker-compose.yml` (api environment) and `.env.example`.
+
+4. **Port consolidation** for pure-TCP services (analytics/audit/search/notification):
+   - Services bind TCP on `ANALYTICS_PORT`/`AUDIT_PORT`/`SEARCH_PORT`/`NOTIFICATION_PORT`
+     (3002/3003/3004/3005) — the separate `*_TCP_PORT` vars (4002–4005) are gone.
+   - `docker-compose.yml`: removed `4002:4002`–`4005:4005` port mappings and
+     `*_TCP_PORT`/`*_TCP_HOST` env vars from service containers; added explicit TCP vars
+     to `api:` container using Docker service names as hosts.
+   - `apps/api` TCP client defaults updated: `ANALYTICS_TCP_PORT=3002` etc.
+   - `billing` is **excluded** — it retains dual ports (HTTP :3001 for Stripe inbound
+     webhooks + TCP :4001 for RPC from `apps/api`).
+
+**Result:** `grep -r 'FetchHttpClientAdapter\|IHttpClient' apps/api/src` → 0 results;
+`grep -r 'SERVICE_URL' apps/api/src` → 0 results; `docker-compose.yml` has 8 fewer
+port mappings and 8 fewer redundant env vars.
+
+---
+
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-17 | **ADR-108 TM.12: `IHttpClient`/`FetchHttpClientAdapter` removed from `apps/api`; `DownstreamServiceError` moved to `common/errors/`; port consolidation for pure-TCP services (analytics/audit/search/notification collapse 400X → 300X).** |
 | 2026-07-17 | **ADR-102 Partial indexes for quota count and publish cron (M-11).** `idx_posts_workspace_active (workspace_id) WHERE deleted_at IS NULL`; `idx_posts_scheduled_due (status, scheduled_at) WHERE status='scheduled' AND deleted_at IS NULL`. Migration `Migration20260717000001_PerfIndexesV2`. |
 | 2026-07-17 | **ADR-101 Member list cursor uses `joinedAt` not `createdAt` (M-10).** `WorkspaceMember` does not extend `BaseEntity` (no `deletedAt` — hard-deleted); `joinedAt` is the creation timestamp. Members cursor: `base64url(JSON({ joinedAt, id }))` ASC. Workspaces cursor: `base64url(JSON({ createdAt, id }))` DESC, matching posts. |
 | 2026-07-17 | **ADR-100 requestId/traceId propagation (M-9).** `AsyncLocalStorage` + `genReqId: () => uuidv7()` in pino-http; `RequestIdMiddleware` stores `req.id` in `TraceContextService`; `RabbitMqEventBus` stamps `event.traceId` from ALS. No OTEL SDK — overhead unmeasured before T5.5. |

@@ -23,7 +23,7 @@ import { WorkspaceRolesGuard } from '../identity/guards/roles.guard';
 import { Roles } from '../identity/decorators/roles.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { AppError } from '../../common/errors/app-error';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import { IAuditClient } from './ports/audit-http.client.port';
 import { AuditLogResponseDto } from './dto/audit-log.dto';
 

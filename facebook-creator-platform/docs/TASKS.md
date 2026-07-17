@@ -606,7 +606,7 @@ For blocked tasks always append an inline note on the same line:
   - Rules: `docs/CODING-STANDARDS.md` §15; ADR-080.
   - DoD: audit controller spec passes; `pnpm test` green in `apps/api`.
 
-- [ ] **TM.12 Cleanup + full test pass** (~2h)
+- [x] **TM.12 Cleanup + full test pass** (~2h)
   - Remove `FetchHttpClientAdapter` and `IHttpClient` from `apps/api` entirely — after TM.3/5/7/9/11
     no `apps/api` module uses them for outbound calls. (Services' internal `InternalApiHttpAdapter`
     files are separate — they are not `apps/api`'s `FetchHttpClientAdapter`.)

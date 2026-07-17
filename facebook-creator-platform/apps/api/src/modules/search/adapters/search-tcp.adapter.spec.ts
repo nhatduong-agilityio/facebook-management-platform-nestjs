@@ -3,7 +3,7 @@ import { of, throwError } from 'rxjs';
 import { RpcException } from '@nestjs/microservices';
 import type { ClientProxy } from '@nestjs/microservices';
 import { SearchTcpAdapter } from './search-tcp.adapter';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 import type { SearchResultDto } from '../dto/search-result.dto';
 
 const makeResult = (): SearchResultDto => ({

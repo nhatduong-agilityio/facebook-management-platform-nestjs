@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BillingController } from './billing.controller';
 import { IBillingHttpClient } from './ports/billing-http.client.port';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import type { CheckoutResponse, SubscriptionResponse } from '@fcp/billing-contracts';
 
 const makeSubscriptionResponse = (): SubscriptionResponse => ({

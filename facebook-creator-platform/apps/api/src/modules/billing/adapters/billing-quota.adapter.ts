@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IPostQuotaProvider } from '../../posts/ports/post-quota.provider.port';
 import { IBillingHttpClient } from '../ports/billing-http.client.port';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 
 /**
  * Free-plan post limit returned when the billing service is unreachable.
