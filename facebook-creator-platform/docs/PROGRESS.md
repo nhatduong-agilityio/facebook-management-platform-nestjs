@@ -5,11 +5,19 @@
 
 ## Resume point
 
-- **Next task:** TM.1 — Three-Transport Migration foundation (TCP client factory in `apps/api`)
+- **Next task:** TM.2 — `services/billing` add TCP `@MessagePattern` handlers
 - **Branch:** `nestjs-practice`
-- **Notes:** L-19 complete. All post-T5.7 quality hardening tasks (M-9 through L-19) are done. 1 file changed (DECISIONS.md — ADR-107), no code changes, 0 new packages. 331 tests green. Lint: 0 errors.
+- **Notes:** TM.1 complete. 2 files changed (.env.example — 10 TCP vars; docker-compose.yml — ports 4001–4005 + TCP env per service). No new packages. 331 tests green. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-17 — TM.1 Three-Transport Migration foundation
+
+- **`.env.example`**: Added `# --- TCP (internal RPC) ---` section with 10 vars: `{BILLING,ANALYTICS,AUDIT,SEARCH,NOTIFICATION}_TCP_{HOST,PORT}`. Host = `localhost` for dev; services listen on `0.0.0.0` inside Docker.
+- **`docker-compose.yml`**: Each of the 5 app services now exposes its TCP port (`4001`–`4005`) alongside the existing HTTP port, and carries `*_TCP_PORT` + `*_TCP_HOST: '0.0.0.0'` in `environment:`.
+- ADR-094 was already present — no new ADR needed.
+- No new packages, no TypeScript changes.
+- Tests: 331 passed (unchanged). Lint: 0 errors.
 
 ### 2026-07-17 — L-19 `DevAuthModule` token compatibility verified
 
