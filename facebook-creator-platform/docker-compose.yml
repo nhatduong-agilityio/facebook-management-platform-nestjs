@@ -99,8 +99,11 @@ services:
     command: node services/billing/dist/main.js
     ports:
       - '3001:3001'
+      - '4001:4001'
     environment:
       BILLING_PORT: '3001'
+      BILLING_TCP_PORT: '4001'
+      BILLING_TCP_HOST: '0.0.0.0'
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
@@ -120,8 +123,11 @@ services:
     command: node services/analytics/dist/main.js
     ports:
       - '3002:3002'
+      - '4002:4002'
     environment:
       ANALYTICS_PORT: '3002'
+      ANALYTICS_TCP_PORT: '4002'
+      ANALYTICS_TCP_HOST: '0.0.0.0'
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
@@ -141,8 +147,11 @@ services:
     command: node services/audit/dist/main.js
     ports:
       - '3003:3003'
+      - '4003:4003'
     environment:
       AUDIT_PORT: '3003'
+      AUDIT_TCP_PORT: '4003'
+      AUDIT_TCP_HOST: '0.0.0.0'
       MONGODB_URI: mongodb://mongodb:27017/fcp_audit
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
@@ -162,8 +171,11 @@ services:
     command: node services/search/dist/main.js
     ports:
       - '3004:3004'
+      - '4004:4004'
     environment:
       SEARCH_PORT: '3004'
+      SEARCH_TCP_PORT: '4004'
+      SEARCH_TCP_HOST: '0.0.0.0'
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
@@ -183,8 +195,11 @@ services:
     command: node services/notification/dist/main.js
     ports:
       - '3005:3005'
+      - '4005:4005'
     environment:
       NOTIFICATION_PORT: '3005'
+      NOTIFICATION_TCP_PORT: '4005'
+      NOTIFICATION_TCP_HOST: '0.0.0.0'
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672

@@ -473,7 +473,7 @@ For blocked tasks always append an inline note on the same line:
 >
 > **Reference:** ADR-094 in `docs/DECISIONS.md` · Canonical patterns in `docs/CODING-STANDARDS.md` §15.
 
-- [ ] **TM.1 Foundation — ADR + TCP env vars + `docker-compose` TCP ports** (~1h)
+- [x] **TM.1 Foundation — ADR + TCP env vars + `docker-compose` TCP ports** (~1h)
   - Record ADR-094 in `docs/DECISIONS.md` ✅ (already done).
   - Add TCP port env vars to `.env.example`:
     ```
@@ -618,6 +618,16 @@ For blocked tasks always append an inline note on the same line:
   - Remove `common/http/fetch-http-client.adapter.ts` and `common/http/http-client.port.ts` from
     `apps/api` if no other modules reference them. If `DownstreamServiceError` is still needed
     by some path, keep the error class but delete the adapter.
+  - **Port consolidation decision (TM.1 note):** `billing` must keep HTTP (Stripe webhooks are
+    external inbound — not replaceable with TCP). For `analytics`, `audit`, `search`, and
+    `notification`: after this migration they receive zero HTTP from `apps/api`. Evaluate
+    dropping the HTTP listener from each of those four services entirely and reusing their
+    existing 300X port as the TCP port (e.g. `analytics` TCP on `:3002`, not `:4002`). If
+    adopted: remove the 4002–4005 port mappings from `docker-compose.yml` and the matching
+    `*_TCP_HOST`/`*_TCP_PORT` vars from `.env.example`; update each service's `main.ts` to
+    listen on `ANALYTICS_PORT` (etc.) as TCP only; record the decision in ADR-094 addendum.
+    If HTTP is still needed (health endpoint, Swagger, future public API), keep the dual-port
+    layout and document why.
   - Run `pnpm -r lint && pnpm -r test` across all 8 packages.
   - Run `pnpm load:smoke` against a live stack to confirm no regressions.
   - Update `docs/PROGRESS.md` to note Three-Transport Migration complete.
