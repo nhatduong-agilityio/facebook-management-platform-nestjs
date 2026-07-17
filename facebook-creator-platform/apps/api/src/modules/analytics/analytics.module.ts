@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 import { IdentityModule } from '../identity/identity.module';
-import { IHttpClient } from '../../common/http/http-client.port';
-import { FetchHttpClientAdapter } from '../../common/http/fetch-http-client.adapter';
 import { IAnalyticsClient } from './ports/analytics-http.client.port';
-import { AnalyticsHttpClientAdapter } from './adapters/analytics-http-client.adapter';
+import { AnalyticsTcpAdapter, ANALYTICS_TCP_CLIENT } from './adapters/analytics-tcp.adapter';
 import { AnalyticsController } from './analytics.controller';
 
 /**
@@ -11,20 +11,39 @@ import { AnalyticsController } from './analytics.controller';
  *
  * Owns NO entities or migrations — all metric data lives in `services/analytics` (Postgres `analytics` schema).
  * Responsibilities:
- * 1. Expose `GET /workspaces/:id/analytics` with Clerk JWT auth + Owner-only workspace role guard.
- * 2. Forward requests to `services/analytics` via `IAnalyticsClient` → `AnalyticsHttpClientAdapter`
- *    (backed by `IHttpClient` → `FetchHttpClientAdapter` with 5s timeout).
+ * 1. Expose `GET /workspaces/:id/analytics` and `GET /workspaces/:id/posts/:postId/analytics`
+ *    with Clerk JWT auth + Owner-only workspace role guard.
+ * 2. Forward requests to `services/analytics` via `IAnalyticsClient` → `AnalyticsTcpAdapter`
+ *    (NestJS TCP transport, ADR-094).
+ *
+ * Communication:
+ * - Sync TCP (`ANALYTICS_TCP_CLIENT`) to `services/analytics` for metric reads.
  *
  * Port bindings:
- * - `IHttpClient`      → `FetchHttpClientAdapter`      (native fetch, 5 s timeout)
- * - `IAnalyticsClient` → `AnalyticsHttpClientAdapter`  (maps raw service shape → `MetricsSummaryDto`)
+ * - `IAnalyticsClient` → `AnalyticsTcpAdapter` (TCP RPC, replaces HTTP adapter — ADR-094)
  */
 @Module({
-  imports: [IdentityModule],
+  imports: [
+    IdentityModule,
+    ClientsModule.registerAsync([
+      {
+        name: ANALYTICS_TCP_CLIENT,
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.TCP,
+          options: {
+            host: config.get<string>('ANALYTICS_TCP_HOST', 'localhost'),
+            port: config.get<number>('ANALYTICS_TCP_PORT', 4002),
+          },
+        }),
+      },
+    ]),
+  ],
   controllers: [AnalyticsController],
   providers: [
-    { provide: IHttpClient, useClass: FetchHttpClientAdapter },
-    { provide: IAnalyticsClient, useClass: AnalyticsHttpClientAdapter },
+    AnalyticsTcpAdapter,
+    { provide: IAnalyticsClient, useClass: AnalyticsTcpAdapter },
   ],
 })
 export class AnalyticsModule {}

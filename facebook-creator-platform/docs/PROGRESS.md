@@ -5,11 +5,26 @@
 
 ## Resume point
 
-- **Next task:** TM.4 — `services/analytics` add TCP `@MessagePattern` handlers
+- **Next task:** TM.6 — `services/search` replace HTTP with TCP `@MessagePattern`
 - **Branch:** `nestjs-practice`
-- **Notes:** TM.3 complete. 3 files changed (billing-tcp.adapter.ts new; billing-tcp.adapter.spec.ts new — 7 tests; billing.module.ts — swapped to TCP + ClientsModule.registerAsync; BillingHttpClientAdapter removed from module). 338 apps/api tests green. Lint: 0 errors.
+- **Notes:** TM.4 + TM.5 complete. 345 apps/api tests green (7 new in TM.5). 13 analytics tests green (4 new in TM.4). Lint: 0 errors.
 
 ## Log
+
+### 2026-07-17 — TM.5 `apps/api` → analytics TCP adapter
+
+- **`apps/api/src/modules/analytics/adapters/analytics-tcp.adapter.ts`** (new): Extends `IAnalyticsClient`. Injects `ANALYTICS_TCP_CLIENT` `ClientProxy`. `getWorkspaceMetrics` calls pattern `analytics.workspace-metrics`; `getPostMetrics` calls `analytics.post-metrics`. Both use `firstValueFrom(client.send(...).pipe(timeout(3_000)))`. Error mapping: any `RpcException` → `DownstreamServiceError(500, 'analytics')`, timeout/connection → `DownstreamServiceError(503, 'analytics')`. Preserves the `DownstreamServiceError` contract so `AnalyticsController` is unchanged.
+- **`apps/api/src/modules/analytics/adapters/analytics-tcp.adapter.spec.ts`** (new): 7 tests — ok + RpcException(500) + connection-failure(503) for `getWorkspaceMetrics`; ok + empty array + RpcException(500) + timeout(503) for `getPostMetrics`. Uses `of()` / `throwError()` from rxjs to mock `ClientProxy.send()`.
+- **`apps/api/src/modules/analytics/analytics.module.ts`**: Replaced `AnalyticsHttpClientAdapter` + `IHttpClient` + `FetchHttpClientAdapter` with `AnalyticsTcpAdapter`; added `ClientsModule.registerAsync` (Transport.TCP, reads `ANALYTICS_TCP_HOST`/`ANALYTICS_TCP_PORT` from config, defaults `localhost:4002`); updated module JSDoc.
+- Tests: 345 apps/api passed (7 new). Lint: 0 errors.
+
+### 2026-07-17 — TM.4 `services/analytics` — TCP `@MessagePattern` handlers
+
+- **`services/analytics/src/analytics.message-controller.ts`** (new): 2 `@MessagePattern` handlers — `analytics.workspace-metrics` → `AnalyticsService.getWorkspaceMetrics(workspaceId)`, `analytics.post-metrics` → `AnalyticsService.getPostMetrics(postId)`. Both catch and re-throw as `RpcException({ code: 'INTERNAL', message })`.
+- **`services/analytics/src/analytics.message-controller.spec.ts`** (new): 4 tests — ok + RpcException path for each handler.
+- **`services/analytics/src/analytics.module.ts`**: Added `AnalyticsMessageController` to `controllers[]`.
+- **`services/analytics/src/main.ts`**: Added TCP transport (`ANALYTICS_TCP_PORT`, default 4002) alongside existing RMQ; HTTP server kept (health / Swagger — TM.12 decides final port strategy).
+- Tests: 13 analytics passed (4 new). Lint: 0 errors.
 
 ### 2026-07-17 — TM.3 `apps/api` → billing TCP adapter
 

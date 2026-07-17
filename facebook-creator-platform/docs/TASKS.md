@@ -524,7 +524,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: `BillingTcpAdapter` wired; `BillingModule` has no `FetchHttpClientAdapter`; billing
     controller specs pass with mocked `IBillingClient`; `pnpm test` green in `apps/api`.
 
-- [ ] **TM.4 `services/analytics` — add TCP `@MessagePattern` handlers** (~2h)
+- [x] **TM.4 `services/analytics` — add TCP `@MessagePattern` handlers** (~2h)
   - Add TCP transport in `main.ts` (alongside existing RMQ). Port: `ANALYTICS_TCP_PORT`.
   - Create `analytics.message-controller.ts` with:
     - `@MessagePattern('analytics.workspace-metrics')` → `AnalyticsService.getWorkspaceMetrics(workspaceId)`
@@ -536,7 +536,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: message controller registered; spec covers ok + RpcException; `pnpm test` green in
     `services/analytics`.
 
-- [ ] **TM.5 `apps/api` → analytics TCP adapter** (~1h)
+- [x] **TM.5 `apps/api` → analytics TCP adapter** (~1h)
   - Create `analytics-tcp.adapter.ts` implementing `IAnalyticsClient`. Two methods:
     `getWorkspaceMetrics(workspaceId)` and `getPostMetrics(postId)` — both `client.send(...).pipe(timeout(3_000))`.
   - Add `ANALYTICS_TCP_CLIENT` + `ClientsModule.registerAsync` in `AnalyticsModule`.
