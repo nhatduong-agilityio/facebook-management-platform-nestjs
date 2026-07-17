@@ -1,5 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
 import type { InvitationStatus } from '../entities/invitation.entity';
 import type { WorkspaceRole } from '../../identity/types/workspace-role.type';
 
@@ -58,6 +59,54 @@ export class ChangeRoleDto {
   @IsString()
   @IsIn(['owner', 'editor', 'viewer'])
   role!: WorkspaceRole;
+}
+
+/**
+ * Query parameters for `GET /workspaces/:id/members`.
+ *
+ * Supports keyset pagination: pass `nextCursor` from the previous response as
+ * `cursor` to advance to the next page.
+ */
+export class ListWorkspaceMembersQueryDto {
+  /**
+   * Maximum number of members to return (1–100). Defaults to 50.
+   * The adapter enforces an absolute cap of 100.
+   */
+  @ApiPropertyOptional({ description: 'Page size (1–100, default 50)', minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  /**
+   * Opaque pagination cursor from the previous page's `nextCursor` field.
+   * Omit to start from the first page.
+   */
+  @ApiPropertyOptional({ description: 'Keyset pagination cursor from a previous response' })
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+}
+
+/**
+ * Paginated response for `GET /workspaces/:id/members`.
+ *
+ * Pass `nextCursor` as `?cursor=<value>` on the next request to get the next page.
+ * `nextCursor` is `null` when there are no further pages.
+ */
+export class WorkspaceMembersPageDto {
+  /** Members on this page, ordered by join date ascending. */
+  @ApiProperty({ type: [WorkspaceMemberResponseDto] })
+  data!: WorkspaceMemberResponseDto[];
+
+  /**
+   * Opaque cursor for the next page.
+   * Pass as `?cursor=<value>` to continue. `null` means this is the last page.
+   */
+  @ApiProperty({ nullable: true, type: String })
+  nextCursor!: string | null;
 }
 
 /**

@@ -85,21 +85,33 @@ describe('WorkspaceController', () => {
   });
 
   describe('list', () => {
-    it('returns all workspaces for the user', async () => {
-      vi.mocked(service.listForUser).mockResolvedValue(ok([makeWorkspace()]));
+    it('returns a paginated page of workspaces for the user', async () => {
+      vi.mocked(service.listForUser).mockResolvedValue(ok({ data: [makeWorkspace()], nextCursor: null }));
 
-      const result = await controller.list(mockUser);
+      const result = await controller.list(mockUser, {});
 
-      expect(result).toHaveLength(1);
-      expect(result[0].slug).toBe('acme');
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].slug).toBe('acme');
+      expect(result.nextCursor).toBeNull();
     });
 
-    it('returns an empty array when the user has no workspaces', async () => {
-      vi.mocked(service.listForUser).mockResolvedValue(ok([]));
+    it('returns an empty page when the user has no workspaces', async () => {
+      vi.mocked(service.listForUser).mockResolvedValue(ok({ data: [], nextCursor: null }));
 
-      const result = await controller.list(mockUser);
+      const result = await controller.list(mockUser, {});
 
-      expect(result).toHaveLength(0);
+      expect(result.data).toHaveLength(0);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('forwards nextCursor when more pages exist', async () => {
+      vi.mocked(service.listForUser).mockResolvedValue(
+        ok({ data: [makeWorkspace()], nextCursor: 'cursor-abc' }),
+      );
+
+      const result = await controller.list(mockUser, { limit: 1 });
+
+      expect(result.nextCursor).toBe('cursor-abc');
     });
   });
 
@@ -122,13 +134,24 @@ describe('WorkspaceController', () => {
   });
 
   describe('listMembers', () => {
-    it('returns the member list', async () => {
-      vi.mocked(service.listMembers).mockResolvedValue(ok([makeMember()]));
+    it('returns a paginated page of members', async () => {
+      vi.mocked(service.listMembers).mockResolvedValue(ok({ data: [makeMember()], nextCursor: null }));
 
-      const result = await controller.listMembers('ws-1');
+      const result = await controller.listMembers('ws-1', {});
 
-      expect(result).toHaveLength(1);
-      expect(result[0].role).toBe('owner');
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].role).toBe('owner');
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('forwards nextCursor when more pages exist', async () => {
+      vi.mocked(service.listMembers).mockResolvedValue(
+        ok({ data: [makeMember()], nextCursor: 'cursor-xyz' }),
+      );
+
+      const result = await controller.listMembers('ws-1', { limit: 1 });
+
+      expect(result.nextCursor).toBe('cursor-xyz');
     });
   });
 

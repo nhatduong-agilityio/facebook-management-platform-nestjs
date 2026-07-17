@@ -322,7 +322,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: `DomainEvent.traceId` populated in all event emissions; Pino logs include `requestId`
     on HTTP path; all event spec mocks updated; `pnpm test` green.
 
-- [ ] **M-10 Pagination missing from `listMembers` and `listForUser`** (~3h)
+- [x] **M-10 Pagination missing from `listMembers` and `listForUser`** (~3h)
   - `WorkspaceService.listMembers` and `WorkspaceService.listForUser` return all records in one
     query, inconsistent with the paginated posts list (T5.6). An agency with 200 members returns
     the full set unbounded.

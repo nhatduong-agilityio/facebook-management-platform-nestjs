@@ -5,11 +5,25 @@
 
 ## Resume point
 
-- **Next task:** M-10 — Pagination missing from `listMembers` and `listForUser`
+- **Next task:** M-11 — Missing query indexes for quota count and publish cron
 - **Branch:** `nestjs-practice`
-- **Notes:** M-9 complete. 18 file touches: 3 new trace files, 5 logic changes, 5 consumer updates, 5 spec updates. 322 tests green. Lint: 0 errors. Continue with M-10 (next in priority order).
+- **Notes:** M-10 complete. 10 file changes, 0 new packages. 324 tests green. Lint: 0 errors. Continue with M-11 (next in priority order).
 
 ## Log
+
+### 2026-07-17 — M-10 Pagination for `listMembers` and `listForUser`
+
+- **`workspace-member.repository.port.ts`**: Added `ListMembersCursor`, `ListMembersQuery`, `MembersPage` interfaces; updated `findAllByWorkspaceId` signature to return `MembersPage`.
+- **`workspace.repository.port.ts`**: Added `ListWorkspacesCursor`, `ListWorkspacesQuery`, `WorkspacesPage` interfaces; updated `findAllByUserId` signature to return `WorkspacesPage`.
+- **`invite-member.dto.ts`**: Added `ListWorkspaceMembersQueryDto` + `WorkspaceMembersPageDto` (matching `PostsPageDto` shape).
+- **`workspace.dto.ts`**: Added `ListWorkspacesQueryDto` + `WorkspacesPageDto`.
+- **`mikro-orm-workspace-member.repository.ts`**: Implemented keyset pagination in `findAllByWorkspaceId` — `$or [joinedAt > cursor] OR [joinedAt = cursor AND id > cursor]`, `ASC`, `limit + 1` probe.
+- **`mikro-orm-workspace.repository.ts`**: Implemented keyset pagination in `findAllByUserId` — two-step ID resolve + cursor on workspace query, `createdAt DESC`.
+- **`workspace.service.ts`**: Threaded `ListMembersQuery` / `ListWorkspacesQuery` through `listMembers` + `listForUser`; updated return types to `MembersPage` / `WorkspacesPage`.
+- **`workspace.controller.ts`**: Both `listMembers` and `list` now accept `@Query()` and return page DTOs with `nextCursor`; Swagger updated.
+- **`workspace.service.spec.ts`** + **`workspace.controller.spec.ts`**: Updated mock returns and assertions; added 2 new controller tests (nextCursor forwarding).
+- **`docs/DECISIONS.md`**: ADR-101 — `joinedAt` cursor for members.
+- Tests: 324 passed. Lint: 0 errors.
 
 ### 2026-07-17 — M-9 Correlation ID / distributed trace
 

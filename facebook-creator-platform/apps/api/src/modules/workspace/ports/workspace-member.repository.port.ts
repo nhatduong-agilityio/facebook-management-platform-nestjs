@@ -1,6 +1,42 @@
 import type { WorkspaceMember } from '../entities/workspace-member.entity';
 
 /**
+ * Opaque keyset cursor payload for member list pagination.
+ * Encoded as `base64url(JSON({ joinedAt, id }))`.
+ */
+export interface ListMembersCursor {
+  /** ISO-8601 `joinedAt` of the last row on the previous page. */
+  joinedAt: string;
+  /** UUID v7 `id` — breaks ties within the same millisecond. */
+  id: string;
+}
+
+/**
+ * Query options for the paginated `findAllByWorkspaceId` method.
+ *
+ * Defaults: `limit = 50`, no cursor (returns the first page).
+ * Maximum `limit` is capped at 100 by the adapter.
+ */
+export interface ListMembersQuery {
+  /** Maximum number of members to return. Default 50; adapter caps at 100. */
+  limit?: number;
+  /** base64url-encoded `ListMembersCursor` from the previous page response. */
+  cursor?: string;
+}
+
+/**
+ * Result of a paginated `findAllByWorkspaceId` call.
+ *
+ * `nextCursor` is `null` when there are no more pages.
+ */
+export interface MembersPage {
+  /** Members for this page, ordered `joinedAt ASC, id ASC`. */
+  data: WorkspaceMember[];
+  /** Opaque cursor for the next page, or `null` on the last page. */
+  nextCursor: string | null;
+}
+
+/**
  * Port (outbound): full persistence contract for workspace membership records.
  *
  * Used by `WorkspaceService` for:
@@ -36,11 +72,16 @@ export abstract class IWorkspaceMemberRepository {
   abstract countOwners(workspaceId: string): Promise<number>;
 
   /**
-   * Returns all membership records for a workspace, ordered by `joinedAt` ascending.
+   * Returns a page of membership records for a workspace, ordered by `joinedAt ASC, id ASC`
+   * (keyset pagination — §12).
+   *
+   * Pass `query.cursor` from the previous response's `nextCursor` to advance pages.
+   * Default page size is 50; adapter caps at 100.
    *
    * @param workspaceId - UUID of the workspace.
+   * @param query       - Pagination options (limit, cursor).
    */
-  abstract findAllByWorkspaceId(workspaceId: string): Promise<WorkspaceMember[]>;
+  abstract findAllByWorkspaceId(workspaceId: string, query?: ListMembersQuery): Promise<MembersPage>;
 
   /**
    * Removes a membership record and flushes the Unit of Work.
