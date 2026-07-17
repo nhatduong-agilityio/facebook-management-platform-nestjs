@@ -493,7 +493,7 @@ For blocked tasks always append an inline note on the same line:
   - Rules: `CLAUDE.md` §8 (Three-Transport Model); `docs/CODING-STANDARDS.md` §15 (TCP patterns).
   - DoD: `.env.example` has all 10 TCP vars; `docker-compose.yml` exposes ports 4001–4005; `pnpm lint` clean.
 
-- [ ] **TM.2 `services/billing` — add TCP `@MessagePattern` handlers** (~2h)
+- [x] **TM.2 `services/billing` — add TCP `@MessagePattern` handlers** (~2h)
   - Add `app.connectMicroservice({ transport: Transport.TCP, options: { host: '0.0.0.0', port: BILLING_TCP_PORT } })`
     in `main.ts` alongside the existing RMQ transport (ADR-084 hybrid bootstrap pattern).
   - Create `apps/api/src/modules/billing/billing.message-controller.ts` with:

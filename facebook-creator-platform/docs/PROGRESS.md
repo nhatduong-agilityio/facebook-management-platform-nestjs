@@ -5,11 +5,19 @@
 
 ## Resume point
 
-- **Next task:** TM.2 — `services/billing` add TCP `@MessagePattern` handlers
+- **Next task:** TM.3 — `apps/api` → billing TCP adapter
 - **Branch:** `nestjs-practice`
-- **Notes:** TM.1 complete. 2 files changed (.env.example — 10 TCP vars; docker-compose.yml — ports 4001–4005 + TCP env per service). No new packages. 331 tests green. Lint: 0 errors.
+- **Notes:** TM.2 complete. 4 files changed (billing/main.ts — TCP hybrid bootstrap; billing.message-controller.ts new; billing.module.ts — controller registered; billing.message-controller.spec.ts new — 7 tests). No new packages. 331 apps/api + 33 billing tests green. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-17 — TM.2 `services/billing` TCP `@MessagePattern` handlers
+
+- **`services/billing/src/main.ts`**: Added `app.connectMicroservice({ transport: Transport.TCP, options: { host: '0.0.0.0', port: BILLING_TCP_PORT } })` + `await app.startAllMicroservices()` before `app.listen()`. Service is now a hybrid app (HTTP + TCP). Updated JSDoc.
+- **`services/billing/src/billing.message-controller.ts`** (new): 3 `@MessagePattern` handlers — `billing.get-quota` → `{ postLimit }`, `billing.get-subscription` → `SubscriptionResponse` or `RpcException(NOT_FOUND)`, `billing.checkout` → `{ url }` or `RpcException` with domain error code.
+- **`services/billing/src/billing.module.ts`**: Added `BillingMessageController` to `controllers[]`. Updated module JSDoc.
+- **`services/billing/src/billing.message-controller.spec.ts`** (new): 7 tests — ok + error paths for all 3 patterns. Fixed stub: `unref()` returns the value as-is when not a MikroORM `Reference`, so `plan` must be a plain object with fields directly.
+- Tests: 33 billing + 331 apps/api (unchanged) = all green. Lint: 0 errors.
 
 ### 2026-07-17 — TM.1 Three-Transport Migration foundation
 
