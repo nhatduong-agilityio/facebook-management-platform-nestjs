@@ -1,40 +1,45 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { MicroserviceOptions } from '@nestjs/microservices';
+import { Transport } from '@nestjs/microservices';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { getRmqOptions } from '@fcp/rmq-options';
 
 /**
- * Bootstraps the notification service as a **hybrid app**:
- * - HTTP server on `NOTIFICATION_PORT` (default 3005) for read endpoints.
- * - RMQ microservice transport on the `notification_queue` queue for all 11
- *   workspace, post, billing, and Facebook lifecycle events.
+ * Bootstraps the notification service as a **pure-microservice hybrid** (ADR-084):
+ * - RMQ on `notification_queue` — 11 consumers for workspace, post, billing, and
+ *   Facebook lifecycle events that drive notification fan-out.
+ * - TCP on `NOTIFICATION_TCP_HOST:NOTIFICATION_TCP_PORT` — internal RPC from
+ *   `apps/api` for list and mark-read operations (ADR-094).
+ *
+ * No HTTP server is started (`app.listen()` is intentionally omitted) — notification
+ * has no external clients or webhooks. The Express adapter is loaded but no port is
+ * bound; this keeps a single DI container for both transports.
+ *
+ * Note: `WorkspaceMemberReconciler.onModuleInit` calls `apps/api` over HTTP
+ * (`GET /internal/workspaces/:id/members`) — this is the **reverse** direction
+ * (service → gateway) and remains HTTP per ADR-094.
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   app.useLogger(app.get(Logger));
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.setGlobalPrefix('api/v1');
-
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Notification Service (internal)')
-    .setDescription('Internal HTTP API for notifications — called by apps/api only.')
-    .setVersion('1.0')
-    .build();
-  SwaggerModule.setup('api/docs', app, SwaggerModule.createDocument(app, swaggerConfig));
+  app.enableShutdownHooks();
 
   const configService = app.get(ConfigService);
+
   app.connectMicroservice<MicroserviceOptions>(getRmqOptions('notification_queue', configService));
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.TCP,
+    options: {
+      host: configService.get<string>('NOTIFICATION_TCP_HOST', '0.0.0.0'),
+      port: configService.get<number>('NOTIFICATION_TCP_PORT', 4005),
+    },
+  });
 
   await app.startAllMicroservices();
-
-  const port = process.env['NOTIFICATION_PORT'] ?? 3005;
-  await app.listen(port);
 }
 
 bootstrap();

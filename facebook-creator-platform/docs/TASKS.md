@@ -566,7 +566,7 @@ For blocked tasks always append an inline note on the same line:
   - Rules: `docs/CODING-STANDARDS.md` §15; ADR-080.
   - DoD: search controller spec passes with mocked `ISearchClient`; `pnpm test` green in `apps/api`.
 
-- [ ] **TM.8 `services/notification` — add TCP `@MessagePattern` handlers** (~2h)
+- [x] **TM.8 `services/notification` — add TCP `@MessagePattern` handlers** (~2h)
   - Add TCP transport in `main.ts`. Port: `NOTIFICATION_TCP_PORT`.
   - Create `notification.message-controller.ts` with:
     - `@MessagePattern('notification.list')` → `NotificationService.getNotifications(workspaceId, userId)`
@@ -579,7 +579,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: both patterns respond via TCP; 11 RMQ consumers still active; spec covers ok + RpcException
     + BR-F08 revert attempt → RpcException; `pnpm test` green in `services/notification`.
 
-- [ ] **TM.9 `apps/api` → notification TCP adapter** (~1h)
+- [x] **TM.9 `apps/api` → notification TCP adapter** (~1h)
   - Create `notification-tcp.adapter.ts` implementing `INotificationClient`.
   - Add `NOTIFICATION_TCP_CLIENT` + `ClientsModule.registerAsync` in `NotificationModule`.
   - Swap from `NotificationHttpClientAdapter` to `NotificationTcpAdapter`.

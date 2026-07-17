@@ -3,7 +3,7 @@ import type { NotificationResponseDto } from '../dto/notification.dto';
 /**
  * Port: outbound client contract for the notification service.
  *
- * Transport-agnostic — bound to `NotificationHttpClientAdapter` in `NotificationModule`.
+ * Transport-agnostic — bound to `NotificationTcpAdapter` in `NotificationModule` (ADR-094).
  */
 export abstract class INotificationClient {
   /**

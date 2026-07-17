@@ -5,9 +5,31 @@
 
 ## Resume point
 
-- **Next task:** TM.8 — `services/notification` add TCP `@MessagePattern` handlers
+- **Next task:** TM.10 — `services/audit` add TCP `@MessagePattern` handlers
 - **Branch:** `nestjs-practice`
-- **Notes:** TM.7 complete. 349 apps/api tests green (4 new). Lint: 0 errors.
+- **Notes:** TM.9 complete. 354 apps/api tests green (5 new). Lint: 0 errors.
+
+## Log
+
+### 2026-07-17 — TM.9 `apps/api` → notification TCP adapter
+
+- **`apps/api/src/modules/notification/adapters/notification-tcp.adapter.ts`** (new): Extends `INotificationClient`. Injects `NOTIFICATION_TCP_CLIENT` `ClientProxy`. `getNotifications` sends `notification.list` with `{ workspaceId, userId }`; `markAsRead` sends `notification.mark-read` with `{ notificationId, userId }` (discards `{ updated }` return, port returns `void`). Both `pipe(timeout(3_000))`. Error mapping: `RpcException` → `DownstreamServiceError(500)`, other → `DownstreamServiceError(503)`.
+- **`apps/api/src/modules/notification/adapters/notification-tcp.adapter.spec.ts`** (new): 5 tests — getNotifications ok, RpcException→500, timeout→503; markAsRead resolves void, RpcException→500.
+- **`apps/api/src/modules/notification/notification.module.ts`**: Replaced `NotificationHttpClientAdapter` + `IHttpClient` + `FetchHttpClientAdapter` with `NotificationTcpAdapter`; added `ClientsModule.registerAsync` (Transport.TCP, reads `NOTIFICATION_TCP_HOST`/`NOTIFICATION_TCP_PORT`, defaults `localhost:4005`); updated module JSDoc.
+- **`apps/api/src/modules/notification/ports/notification.client.port.ts`**: Updated JSDoc — removed stale `NotificationHttpClientAdapter` reference.
+- `NotificationController` and `notification.controller.spec.ts` unchanged.
+- Tests: 354 apps/api passed (5 new). Lint: 0 errors.
+
+## Log
+
+### 2026-07-17 — TM.8 `services/notification` — TCP `@MessagePattern` handlers
+
+- **`services/notification/src/notification.message-controller.ts`** (new): 2 `@MessagePattern` handlers — `notification.list` → `NotificationService.getNotificationsForUser(workspaceId, userId)` → `NotificationResponseDto[]`; `notification.mark-read` → `NotificationService.markAsRead(notificationId, userId)` → `{ updated: boolean }`. BR-F08 one-way documented in JSDoc: `updated: false` is a silent no-op (already read), not an error. Both catch and re-throw as `RpcException({ code: 'INTERNAL' })`.
+- **`services/notification/src/notification.message-controller.spec.ts`** (new): 5 tests — list ok, list RpcException, mark-read updated=true, mark-read already-read (updated=false, no throw), mark-read RpcException.
+- **`services/notification/src/notification.module.ts`**: Replaced `NotificationController` with `NotificationMessageController` in `controllers[]`; updated JSDoc (no HTTP, TCP only; reverse-direction HTTP from reconciler noted).
+- **`services/notification/src/main.ts`**: Applied pure-microservice-hybrid pattern — `enableShutdownHooks()`, all config via `ConfigService`, added TCP transport (`NOTIFICATION_TCP_HOST`/`NOTIFICATION_TCP_PORT`, defaults `0.0.0.0:4005`), removed Swagger + ValidationPipe + `setGlobalPrefix` + `app.listen()`.
+- **`services/notification/src/notification.controller.ts`** (deleted): HTTP read + seed-projection endpoints removed; `apps/api` will call via TCP after TM.9.
+- Tests: 45 notification passed (5 new). Lint: 0 errors.
 
 ## Log
 
