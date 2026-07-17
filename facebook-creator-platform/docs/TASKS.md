@@ -587,7 +587,7 @@ For blocked tasks always append an inline note on the same line:
   - Rules: `docs/CODING-STANDARDS.md` §15; ADR-080.
   - DoD: notification controller spec passes; `pnpm test` green in `apps/api`.
 
-- [ ] **TM.10 `services/audit` — add TCP `@MessagePattern` handlers** (~2h)
+- [x] **TM.10 `services/audit` — add TCP `@MessagePattern` handlers** (~2h)
   - Add TCP transport in `main.ts`. Port: `AUDIT_TCP_PORT`.
   - Create `audit.message-controller.ts` with:
     - `@MessagePattern('audit.get-logs')` → `AuditService.getWorkspaceAuditLogs(workspaceId, cursor, limit)`
@@ -598,7 +598,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: both patterns respond via TCP; wildcard RMQ consumer still active; spec covers ok +
     RpcException + NOT_FOUND path; `pnpm test` green in `services/audit`.
 
-- [ ] **TM.11 `apps/api` → audit TCP adapter** (~1h)
+- [x] **TM.11 `apps/api` → audit TCP adapter** (~1h)
   - Create `audit-tcp.adapter.ts` implementing `IAuditClient`.
   - Add `AUDIT_TCP_CLIENT` + `ClientsModule.registerAsync` in `AuditModule`.
   - Swap from `AuditHttpClientAdapter` to `AuditTcpAdapter`.

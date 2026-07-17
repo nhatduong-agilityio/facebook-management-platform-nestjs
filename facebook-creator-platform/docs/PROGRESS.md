@@ -5,9 +5,29 @@
 
 ## Resume point
 
-- **Next task:** TM.10 — `services/audit` add TCP `@MessagePattern` handlers
+- **Next task:** TM.12 — Cleanup + full test pass
 - **Branch:** `nestjs-practice`
-- **Notes:** TM.9 complete. 354 apps/api tests green (5 new). Lint: 0 errors.
+- **Notes:** TM.11 complete. 362 apps/api tests green (8 new). 16 audit tests green (7 new). Lint: 0 errors.
+
+## Log
+
+### 2026-07-17 — TM.11 `apps/api` → audit TCP adapter
+
+- **`apps/api/src/modules/audit/adapters/audit-tcp.adapter.ts`** (new): Extends `IAuditClient`. Injects `AUDIT_TCP_CLIENT` `ClientProxy`. `getWorkspaceAuditLogs` sends `audit.get-logs` with `{ workspaceId, limit? }` → maps `RawAuditEvent[]` to `AuditLogResponseDto[]` (restores `new Date(raw.receivedAt)`). `getAuditEvent` sends `audit.get-log` with `{ id }` → returns `null` on `RpcException({ code: 'NOT_FOUND' })` (mirrors HTTP 404 → `null` contract). Error mapping: NOT_FOUND → `null`, other `RpcException` → `DownstreamServiceError(500)`, timeout/connection → `DownstreamServiceError(503)`.
+- **`apps/api/src/modules/audit/adapters/audit-tcp.adapter.spec.ts`** (new): 8 tests — `getWorkspaceAuditLogs`: ok (Date restored), empty array, RpcException→500, ECONNREFUSED→503; `getAuditEvent`: ok (Date restored), NOT_FOUND→null, INTERNAL→500, ECONNREFUSED→503.
+- **`apps/api/src/modules/audit/audit.module.ts`**: Replaced `AuditHttpClientAdapter` + `IHttpClient` + `FetchHttpClientAdapter` with `AuditTcpAdapter`; added `ClientsModule.registerAsync` (Transport.TCP, reads `AUDIT_TCP_HOST`/`AUDIT_TCP_PORT`, defaults `localhost:4003`); updated module JSDoc.
+- **`apps/api/src/modules/audit/adapters/audit-http-client.adapter.ts`** (deleted): HTTP adapter replaced by TCP.
+- `AuditController` and `audit.controller.spec.ts` unchanged — depend only on `IAuditClient` port.
+- Tests: 362 apps/api passed (8 new). Lint: 0 errors.
+
+### 2026-07-17 — TM.10 `services/audit` — TCP `@MessagePattern` handlers
+
+- **`services/audit/src/audit.message-controller.ts`** (new): 2 `@MessagePattern` handlers — `audit.get-logs` → `AuditService.getWorkspaceAuditLogs(workspaceId, { limit, before: new Date(dto.before) })` → `AuditEvent[]` (unwrapped via `result.match()`); `audit.get-log` → `AuditService.getAuditEvent(id)` → `AuditEvent` (propagates `e.code` so NOT_FOUND is distinguishable by client). Both handlers include `if (e instanceof RpcException) throw e` in outer catch to prevent double-wrapping. `before` is an ISO 8601 string in the payload (Date objects don't survive TCP JSON serialisation).
+- **`services/audit/src/audit.message-controller.spec.ts`** (new): 7 tests — `audit.get-logs`: ok, empty array, before-ISO-converts-to-Date, repository-throw→RpcException; `audit.get-log`: ok, NOT_FOUND→RpcException(NOT_FOUND), repository-throw→RpcException(INTERNAL).
+- **`services/audit/src/audit.module.ts`**: Replaced `AuditController` with `AuditMessageController` in `controllers[]`; updated module JSDoc.
+- **`services/audit/src/main.ts`**: Applied pure-microservice-hybrid pattern — `enableShutdownHooks()`, all config via `ConfigService`, added TCP transport (`AUDIT_TCP_HOST`/`AUDIT_TCP_PORT`, defaults `0.0.0.0:4003`), removed `setGlobalPrefix` + `app.listen()`. No HTTP server bound.
+- **`services/audit/src/audit.controller.ts`** (deleted): HTTP read API replaced by TCP.
+- Tests: 16 audit passed (7 new). Lint: 0 errors.
 
 ## Log
 
