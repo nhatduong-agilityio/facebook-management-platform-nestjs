@@ -1,9 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { EntityManager, EntityRepository } from '@mikro-orm/core';
+import { EntityManager, EntityRepository, type FilterQuery } from '@mikro-orm/core';
 import { Workspace } from '../entities/workspace.entity';
 import { WorkspaceMember } from '../entities/workspace-member.entity';
-import { IWorkspaceRepository } from '../ports/workspace.repository.port';
+import {
+  IWorkspaceRepository,
+  type ListWorkspacesCursor,
+  type ListWorkspacesQuery,
+  type WorkspacesPage,
+} from '../ports/workspace.repository.port';
 
 /**
  * MikroORM adapter for `IWorkspaceRepository`.
@@ -27,19 +32,51 @@ export class MikroOrmWorkspaceRepository extends IWorkspaceRepository {
   }
 
   /**
-   * Returns all active workspaces the user belongs to via their membership records.
+   * Returns a page of active workspaces the user belongs to, ordered `createdAt DESC, id DESC`
+   * (keyset pagination — §12).
    *
-   * Two typed repository queries replace raw SQL: first resolve workspace ids from
-   * `workspace_members`, then load the matching `Workspace` rows (the `softDelete`
-   * filter on `BaseEntity` automatically excludes deleted workspaces).
+   * Two typed repository queries: first resolve all workspace IDs via `workspace_members`
+   * (the user's membership set is bounded), then load the matching `Workspace` rows with
+   * the cursor filter applied. The `softDelete` filter on `BaseEntity` excludes deleted workspaces.
    *
    * @inheritdoc
    */
-  async findAllByUserId(userId: string): Promise<Workspace[]> {
-    const memberships = await this.memberRepo.find({ userId }, { fields: ['workspace'] });
-    if (memberships.length === 0) return [];
+  async findAllByUserId(userId: string, query: ListWorkspacesQuery = {}): Promise<WorkspacesPage> {
+    const limit = Math.min(query.limit ?? 50, 100);
 
-    return this.repo.find({ id: { $in: memberships.map((m) => m.workspace.id) } });
+    const memberships = await this.memberRepo.find({ userId }, { fields: ['workspace'] });
+    if (memberships.length === 0) return { data: [], nextCursor: null };
+
+    const workspaceIds = memberships.map((m) => m.workspace.id);
+    const where: FilterQuery<Workspace> = { id: { $in: workspaceIds } };
+
+    if (query.cursor) {
+      const raw = Buffer.from(query.cursor, 'base64url').toString('utf8');
+      const { createdAt, id } = JSON.parse(raw) as ListWorkspacesCursor;
+      const cursorDate = new Date(createdAt);
+      // Keyset: rows strictly before (createdAt DESC, id DESC) of the cursor row.
+      where.$or = [
+        { createdAt: { $lt: cursorDate } },
+        { createdAt: cursorDate, id: { $lt: id } },
+      ];
+    }
+
+    const rows = await this.repo.find(where, {
+      orderBy: { createdAt: 'DESC', id: 'DESC' },
+      limit: limit + 1,
+    });
+
+    const hasMore = rows.length > limit;
+    const data = hasMore ? rows.slice(0, limit) : rows;
+    const last = data.at(-1);
+    const nextCursor =
+      hasMore && last
+        ? Buffer.from(
+            JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id }),
+          ).toString('base64url')
+        : null;
+
+    return { data, nextCursor };
   }
 
   /** @inheritdoc */

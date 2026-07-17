@@ -46,10 +46,13 @@ describe('InternalWorkspaceController', () => {
     it('returns mapped member list', async () => {
       const em = makeEm(null) as any;
       controller = new InternalWorkspaceController(members, workspaces, em);
-      vi.mocked(members.findAllByWorkspaceId).mockResolvedValue([
-        { userId: 'u-1', role: 'owner' } as any,
-        { userId: 'u-2', role: 'editor' } as any,
-      ]);
+      vi.mocked(members.findAllByWorkspaceId).mockResolvedValue({
+        data: [
+          { userId: 'u-1', role: 'owner' } as any,
+          { userId: 'u-2', role: 'editor' } as any,
+        ],
+        nextCursor: null,
+      });
 
       const result = await controller.getMembers('ws-1');
 

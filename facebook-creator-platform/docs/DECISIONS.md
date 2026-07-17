@@ -1040,6 +1040,7 @@ the ingress rule before going live.
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-17 | **ADR-101 Member list cursor uses `joinedAt` not `createdAt` (M-10).** `WorkspaceMember` does not extend `BaseEntity` (no `deletedAt` — hard-deleted); `joinedAt` is the creation timestamp. Members cursor: `base64url(JSON({ joinedAt, id }))` ASC. Workspaces cursor: `base64url(JSON({ createdAt, id }))` DESC, matching posts. |
 | 2026-07-17 | **ADR-100 requestId/traceId propagation (M-9).** `AsyncLocalStorage` + `genReqId: () => uuidv7()` in pino-http; `RequestIdMiddleware` stores `req.id` in `TraceContextService`; `RabbitMqEventBus` stamps `event.traceId` from ALS. No OTEL SDK — overhead unmeasured before T5.5. |
 | 2026-07-17 | **ADR-099 Internal route isolation (H-8).** `/internal/*` must be blocked at ingress/LB (primary control); `x-internal-secret` is defence-in-depth only. `InternalSecretGuard` JSDoc updated. No CIDR whitelist added — network layer is the correct trust boundary. |
 | 2026-07-16 | **ADR-098 Health probes (H-7).** `@nestjs/terminus@11.1.1`; `MikroOrmHealthIndicator.pingCheck`, custom `RedisHealthIndicator` (PING/PONG), `MemoryHealthIndicator.checkHeap` at 300 MB; HTTP 503 on any failure; new v11 `HealthIndicatorService` API used (no deprecated `HealthIndicator` base class). |

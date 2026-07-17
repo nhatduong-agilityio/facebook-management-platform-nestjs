@@ -16,6 +16,8 @@ import { MemberRoleChangedEvent } from './events/member-role-changed.event';
 import type { CreateWorkspaceDto } from './dto/workspace.dto';
 import type { InviteMemberDto } from './dto/invite-member.dto';
 import type { WorkspaceRole } from '../identity/types/workspace-role.type';
+import type { ListMembersQuery, MembersPage } from './ports/workspace-member.repository.port';
+import type { ListWorkspacesQuery, WorkspacesPage } from './ports/workspace.repository.port';
 
 /**
  * Application service for workspace lifecycle and member management.
@@ -68,14 +70,15 @@ export class WorkspaceService {
   }
 
   /**
-   * Returns all active workspaces where the user holds any membership role.
+   * Returns a page of active workspaces where the user holds any membership role.
    *
    * @param userId - UUID of the authenticated user.
-   * @returns `ok(workspaces)` — empty array when the user has no memberships.
+   * @param query  - Pagination options (limit, cursor).
+   * @returns `ok(page)` — empty page when the user has no memberships.
    */
-  async listForUser(userId: string): Promise<Result<Workspace[], AppError>> {
-    const list = await this.workspaces.findAllByUserId(userId);
-    return ok(list);
+  async listForUser(userId: string, query?: ListWorkspacesQuery): Promise<Result<WorkspacesPage, AppError>> {
+    const page = await this.workspaces.findAllByUserId(userId, query);
+    return ok(page);
   }
 
   /**
@@ -109,14 +112,15 @@ export class WorkspaceService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Returns all members of a workspace, ordered by `joinedAt` ascending.
+   * Returns a page of members of a workspace, ordered by `joinedAt ASC, id ASC`.
    *
    * @param workspaceId - UUID of the workspace.
-   * @returns `ok(members)` — always succeeds; empty array when workspace has no members.
+   * @param query       - Pagination options (limit, cursor).
+   * @returns `ok(page)` — always succeeds; empty page when workspace has no members.
    */
-  async listMembers(workspaceId: string): Promise<Result<WorkspaceMember[], AppError>> {
-    const list = await this.members.findAllByWorkspaceId(workspaceId);
-    return ok(list);
+  async listMembers(workspaceId: string, query?: ListMembersQuery): Promise<Result<MembersPage, AppError>> {
+    const page = await this.members.findAllByWorkspaceId(workspaceId, query);
+    return ok(page);
   }
 
   /**

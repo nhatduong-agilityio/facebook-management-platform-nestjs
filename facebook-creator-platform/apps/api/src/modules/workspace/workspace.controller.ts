@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
@@ -29,8 +30,8 @@ import { CurrentUser } from '../identity/decorators/current-user.decorator';
 import { Roles } from '../identity/decorators/roles.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { WorkspaceService } from './workspace.service';
-import { CreateWorkspaceDto, WorkspaceResponseDto } from './dto/workspace.dto';
-import { ChangeRoleDto, InviteMemberDto, InvitationResponseDto, WorkspaceMemberResponseDto } from './dto/invite-member.dto';
+import { CreateWorkspaceDto, ListWorkspacesQueryDto, WorkspaceResponseDto, WorkspacesPageDto } from './dto/workspace.dto';
+import { ChangeRoleDto, InviteMemberDto, InvitationResponseDto, ListWorkspaceMembersQueryDto, WorkspaceMemberResponseDto, WorkspaceMembersPageDto } from './dto/invite-member.dto';
 import { Workspace } from './entities/workspace.entity';
 import { WorkspaceMember } from './entities/workspace-member.entity';
 import { Invitation } from './entities/invitation.entity';
@@ -70,18 +71,20 @@ export class WorkspaceController {
   }
 
   /**
-   * Lists all workspaces where the authenticated user holds any membership role.
+   * Lists workspaces where the authenticated user holds any membership role.
+   * Supports keyset pagination via `?limit=` and `?cursor=` query params.
    *
-   * @param user - Authenticated user injected by `@CurrentUser()`.
+   * @param user  - Authenticated user injected by `@CurrentUser()`.
+   * @param query - Pagination options (limit, cursor).
    */
   @Get()
-  @ApiOperation({ summary: 'List workspaces for the current user' })
-  @ApiOkResponse({ type: WorkspaceResponseDto, isArray: true })
+  @ApiOperation({ summary: 'List workspaces for the current user (paginated)' })
+  @ApiOkResponse({ type: WorkspacesPageDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
-  async list(@CurrentUser() user: User): Promise<WorkspaceResponseDto[]> {
-    const result = await this.workspaceService.listForUser(user.id);
+  async list(@CurrentUser() user: User, @Query() query: ListWorkspacesQueryDto): Promise<WorkspacesPageDto> {
+    const result = await this.workspaceService.listForUser(user.id, query);
     return result.match(
-      (list) => list.map((ws) => this.toWorkspaceResponse(ws)),
+      (page) => ({ data: page.data.map((ws) => this.toWorkspaceResponse(ws)), nextCursor: page.nextCursor }),
       (e) => { throw toHttpException(e); },
     );
   }
@@ -110,23 +113,28 @@ export class WorkspaceController {
   // ---------------------------------------------------------------------------
 
   /**
-   * Lists all members of a workspace, ordered by join date ascending.
+   * Lists members of a workspace, ordered by join date ascending.
+   * Supports keyset pagination via `?limit=` and `?cursor=` query params.
    *
    * Accessible to all workspace members (owner, editor, viewer).
    *
    * @param workspaceId - UUID of the workspace.
+   * @param query       - Pagination options (limit, cursor).
    */
   @Get(':workspaceId/members')
   @UseGuards(WorkspaceRolesGuard)
   @Roles('owner', 'editor', 'viewer')
-  @ApiOperation({ summary: 'List members of a workspace' })
-  @ApiOkResponse({ type: WorkspaceMemberResponseDto, isArray: true })
+  @ApiOperation({ summary: 'List members of a workspace (paginated)' })
+  @ApiOkResponse({ type: WorkspaceMembersPageDto })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
   @ApiForbiddenResponse({ description: 'Not a member of this workspace' })
-  async listMembers(@Param('workspaceId') workspaceId: string): Promise<WorkspaceMemberResponseDto[]> {
-    const result = await this.workspaceService.listMembers(workspaceId);
+  async listMembers(
+    @Param('workspaceId') workspaceId: string,
+    @Query() query: ListWorkspaceMembersQueryDto,
+  ): Promise<WorkspaceMembersPageDto> {
+    const result = await this.workspaceService.listMembers(workspaceId, query);
     return result.match(
-      (list) => list.map((m) => this.toMemberResponse(m)),
+      (page) => ({ data: page.data.map((m) => this.toMemberResponse(m)), nextCursor: page.nextCursor }),
       (e) => { throw toHttpException(e); },
     );
   }

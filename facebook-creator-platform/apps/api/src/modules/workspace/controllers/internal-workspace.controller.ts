@@ -53,19 +53,19 @@ export class InternalWorkspaceController {
   }
 
   /**
-   * Returns all active members of a workspace with their roles.
+   * Returns up to 100 active members of a workspace with their roles.
    *
    * Used by the Notification Service during cold-start reconciliation to
    * re-upsert `workspace_members_projection` rows missed during downtime.
+   * Fetches the maximum page size (100) — workspaces with more than 100 members
+   * require the caller to paginate using the `nextCursor` from this response.
    *
    * @param id - UUID of the workspace.
-   * @returns Array of `{ userId, role }` for each workspace member.
+   * @returns Array of `{ userId, role }` for each workspace member (max 100).
    */
   @Get(':id/members')
-  async getMembers(
-    @Param('id') id: string,
-  ): Promise<{ userId: string; role: string }[]> {
-    const rows = await this.members.findAllByWorkspaceId(id);
-    return rows.map((m) => ({ userId: m.userId, role: m.role }));
+  async getMembers(@Param('id') id: string): Promise<{ userId: string; role: string }[]> {
+    const { data } = await this.members.findAllByWorkspaceId(id, { limit: 100 });
+    return data.map((m) => ({ userId: m.userId, role: m.role }));
   }
 }

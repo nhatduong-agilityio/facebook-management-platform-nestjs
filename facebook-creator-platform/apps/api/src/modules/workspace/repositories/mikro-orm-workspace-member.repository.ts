@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { EntityManager, EntityRepository } from '@mikro-orm/core';
+import { EntityManager, EntityRepository, type FilterQuery } from '@mikro-orm/core';
 import { WorkspaceMember } from '../entities/workspace-member.entity';
-import { IWorkspaceMemberRepository } from '../ports/workspace-member.repository.port';
+import {
+  IWorkspaceMemberRepository,
+  type ListMembersCursor,
+  type ListMembersQuery,
+  type MembersPage,
+} from '../ports/workspace-member.repository.port';
 
 /**
  * MikroORM adapter for `IWorkspaceMemberRepository`.
@@ -35,8 +40,37 @@ export class MikroOrmWorkspaceMemberRepository extends IWorkspaceMemberRepositor
   }
 
   /** @inheritdoc */
-  findAllByWorkspaceId(workspaceId: string): Promise<WorkspaceMember[]> {
-    return this.repo.find({ workspace: workspaceId }, { orderBy: { joinedAt: 'ASC' } });
+  async findAllByWorkspaceId(workspaceId: string, query: ListMembersQuery = {}): Promise<MembersPage> {
+    const limit = Math.min(query.limit ?? 50, 100);
+    const where: FilterQuery<WorkspaceMember> = { workspace: workspaceId };
+
+    if (query.cursor) {
+      const raw = Buffer.from(query.cursor, 'base64url').toString('utf8');
+      const { joinedAt, id } = JSON.parse(raw) as ListMembersCursor;
+      const cursorDate = new Date(joinedAt);
+      // Keyset: rows strictly after (joinedAt ASC, id ASC) of the cursor row.
+      where.$or = [
+        { joinedAt: { $gt: cursorDate } },
+        { joinedAt: cursorDate, id: { $gt: id } },
+      ];
+    }
+
+    const rows = await this.repo.find(where, {
+      orderBy: { joinedAt: 'ASC', id: 'ASC' },
+      limit: limit + 1,
+    });
+
+    const hasMore = rows.length > limit;
+    const data = hasMore ? rows.slice(0, limit) : rows;
+    const last = data.at(-1);
+    const nextCursor =
+      hasMore && last
+        ? Buffer.from(
+            JSON.stringify({ joinedAt: last.joinedAt.toISOString(), id: last.id }),
+          ).toString('base64url')
+        : null;
+
+    return { data, nextCursor };
   }
 
   /** @inheritdoc */

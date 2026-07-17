@@ -108,23 +108,24 @@ describe('WorkspaceService', () => {
   // ---------------------------------------------------------------------------
 
   describe('listForUser', () => {
-    it('returns ok([]) when the user has no workspaces', async () => {
-      vi.mocked(mockWorkspaceRepo.findAllByUserId).mockResolvedValue([]);
+    it('returns ok(empty page) when the user has no workspaces', async () => {
+      vi.mocked(mockWorkspaceRepo.findAllByUserId).mockResolvedValue({ data: [], nextCursor: null });
 
       const result = await service.listForUser('user-1');
 
       expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap()).toEqual([]);
+      expect(result._unsafeUnwrap().data).toEqual([]);
+      expect(result._unsafeUnwrap().nextCursor).toBeNull();
     });
 
-    it('returns ok(workspaces) when memberships exist', async () => {
+    it('returns ok(page) when memberships exist', async () => {
       const ws = Object.assign(new Workspace(), { id: 'ws-1', name: 'My WS' });
-      vi.mocked(mockWorkspaceRepo.findAllByUserId).mockResolvedValue([ws]);
+      vi.mocked(mockWorkspaceRepo.findAllByUserId).mockResolvedValue({ data: [ws], nextCursor: null });
 
       const result = await service.listForUser('user-1');
 
       expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap()).toHaveLength(1);
+      expect(result._unsafeUnwrap().data).toHaveLength(1);
     });
   });
 
@@ -133,23 +134,24 @@ describe('WorkspaceService', () => {
   // ---------------------------------------------------------------------------
 
   describe('listMembers', () => {
-    it('returns ok([]) when workspace has no members', async () => {
-      vi.mocked(mockMemberRepo.findAllByWorkspaceId).mockResolvedValue([]);
+    it('returns ok(empty page) when workspace has no members', async () => {
+      vi.mocked(mockMemberRepo.findAllByWorkspaceId).mockResolvedValue({ data: [], nextCursor: null });
 
       const result = await service.listMembers('ws-1');
 
       expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap()).toEqual([]);
+      expect(result._unsafeUnwrap().data).toEqual([]);
+      expect(result._unsafeUnwrap().nextCursor).toBeNull();
     });
 
-    it('returns ok(members) when members exist', async () => {
+    it('returns ok(page) when members exist', async () => {
       const m = Object.assign(new WorkspaceMember(), { id: 'm-1', userId: 'u-1', role: 'owner' });
-      vi.mocked(mockMemberRepo.findAllByWorkspaceId).mockResolvedValue([m]);
+      vi.mocked(mockMemberRepo.findAllByWorkspaceId).mockResolvedValue({ data: [m], nextCursor: null });
 
       const result = await service.listMembers('ws-1');
 
       expect(result.isOk()).toBe(true);
-      expect(result._unsafeUnwrap()).toHaveLength(1);
+      expect(result._unsafeUnwrap().data).toHaveLength(1);
     });
   });
 
