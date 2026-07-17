@@ -5,11 +5,72 @@
 
 ## Resume point
 
-- **Next task:** M-11 — Missing query indexes for quota count and publish cron
+- **Next task:** TM.1 — Three-Transport Migration foundation (TCP client factory in `apps/api`)
 - **Branch:** `nestjs-practice`
-- **Notes:** M-10 complete. 10 file changes, 0 new packages. 324 tests green. Lint: 0 errors. Continue with M-11 (next in priority order).
+- **Notes:** L-19 complete. All post-T5.7 quality hardening tasks (M-9 through L-19) are done. 1 file changed (DECISIONS.md — ADR-107), no code changes, 0 new packages. 331 tests green. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-17 — L-19 `DevAuthModule` token compatibility verified
+
+- **Investigation**: traced `DevAuthService.generateToken` → `POST /v1/sessions/{id}/tokens` (Clerk REST API) → genuine Clerk-signed JWT. `ClerkAuthGuard` uses `verifyToken(token, { secretKey })` (local crypto, no API call). Tokens are cryptographically compatible. No bypass needed; none added.
+- **`docs/DECISIONS.md`**: ADR-107 added — compatibility verdict, flow description, two-step login-URL fallback, note that `DevAuthModule` is already excluded from production (`NODE_ENV !== 'production'` guard in `AppModule`).
+- No code changes, no new packages.
+- Tests: 331 passed (unchanged). Lint: 0 errors.
+
+### 2026-07-17 — L-18 `PublishFallbackPollJob` threshold documented
+
+- **`apps/api/src/modules/posts/jobs/publish-fallback-poll.job.ts`**: Expanded class JSDoc with threshold rationale (30 min covers Facebook's ~25 min webhook retry cycle), race mitigation (`status='publishing'` query filter + Redis dedup keys as backstop), and TTL×3 (90 min) failure threshold rationale. Expanded `run()` JSDoc to describe cutoff vs. triple-cutoff logic. Confirmed forked EM at line 49 (ADR-030/054 compliant). No logic changes.
+- **`docs/DECISIONS.md`**: ADR-106 added — 30-minute threshold choice, race mitigation strategy, TTL×3 failure window, and note to revisit after T5.5 load-test results.
+- Tests: 331 passed (unchanged). Lint: 0 errors.
+
+### 2026-07-17 — L-17 Workspace soft-delete policy — Option B deferred
+
+- **`docs/DECISIONS.md`**: ADR-105 added — chose Option B (deferred, not permanently out-of-scope). Key rationale: `ON DELETE RESTRICT` FKs on `posts` and `facebook_accounts` require domain-layer cascade; Stripe subscription cancellation + `WorkspaceDeletedEvent` + 90-day GDPR retention job are all architecturally ready to implement.
+- **`docs/TASKS.md`**: Placeholder task `W-1` appended under new `## Deferred — Workspace Lifecycle` section — full scope: delete endpoint, domain-layer cascade order, BR-R02 sole-owner guard, `WorkspaceDeletedEvent`, retention job, unit + e2e tests.
+- No code changes, no new packages.
+- Tests: 331 passed (unchanged). Lint: 0 errors.
+
+### 2026-07-17 — L-16 API versioning strategy ADR
+
+- **`docs/DECISIONS.md`**: ADR-104 added — documents current state (`api/v1` via `setGlobalPrefix`, no `enableVersioning`), non-breaking change rule (additive = no bump), breaking-change migration path (`VersioningType.URI` + `@Version('1')` default + `@Version('2')` on specific methods), and 6-month `v1` deprecation window with `Sunset` header.
+- No code changes, no new packages.
+- Tests: 331 passed (unchanged). Lint: 0 errors.
+
+### 2026-07-17 — L-15 Swagger `@ApiBadRequestResponse` on `PATCH /posts/:id/status`
+
+- **`apps/api/src/modules/posts/posts.controller.ts`**: Added `ApiBadRequestResponse` to the `@nestjs/swagger` import; added `@ApiBadRequestResponse({ description: 'scheduledAt missing or not a future datetime (BR-F06, VALIDATION_ERROR)' })` decorator to `transitionStatus`. `createPost` `@ApiConflictResponse` already mentioned `PLAN_LIMIT_EXCEEDED` — no change needed.
+- No new packages, no new tests (DoD: lint clean + Swagger UI shows 400 path).
+- Tests: 331 passed (unchanged). Lint: 0 errors.
+
+### 2026-07-17 — M-14 HTTP timeout config + fail-open quota strategy
+
+- **`apps/api/src/common/http/fetch-http-client.adapter.ts`**: Injected `ConfigService`; reads `HTTP_CLIENT_TIMEOUT_MS` (default 5 000 ms) via `config.get`; applies `AbortSignal.timeout(this.timeoutMs)` on every request.
+- **`apps/api/src/modules/billing/adapters/billing-http-client.adapter.ts`**: Injected `ConfigService`; reads `BILLING_SERVICE_URL` (getOrThrow) and `HTTP_CLIENT_TIMEOUT_MS`; applies `AbortSignal.timeout` to all 3 fetch calls; removed silent fallback from `getPostLimit` (now throws `DownstreamServiceError`).
+- **`apps/api/src/modules/billing/adapters/billing-quota.adapter.ts`**: Exported `FREE_PLAN_LIMIT = 10`; added `Logger`; `getPostLimit` catches `DownstreamServiceError` → returns fallback with `logger.warn`; re-throws unexpected errors.
+- **`apps/api/src/modules/billing/adapters/billing-quota.adapter.spec.ts`** (new): 3 tests — normal path, fail-open `DownstreamServiceError`, unexpected error re-throw.
+- **`.env.example`**: Added `HTTP_CLIENT_TIMEOUT_MS=5000` under `# --- App ---`.
+- **`docs/DECISIONS.md`**: ADR-103 added — timeout env var + fail-open policy rationale.
+- Tests: 331 passed (3 new). Lint: 0 errors.
+
+### 2026-07-17 — M-13 `scheduledAt` ISO 8601 UTC validation
+
+- **`apps/api/src/modules/posts/dto/post.dto.ts`**: Replaced `@IsDateString()` with `@IsISO8601({ strict: true })` + `@Matches(/...(Z|[+-]\d{2}:\d{2})$/)` on `CreatePostDto.scheduledAt` and `UpdatePostDto.scheduledAt` (same file, same import). Updated `@ApiPropertyOptional` descriptions to state timezone offset required. Removed `IsDateString` import; added `IsISO8601`, `Matches`.
+- **`apps/api/src/modules/posts/dto/update-post-status.dto.ts`**: Same decorator swap on `UpdatePostStatusDto.scheduledAt`. Removed `IsDateString` import; added `IsISO8601`, `Matches`.
+- **`apps/api/src/modules/posts/dto/post.dto.spec.ts`** (new): 4 DTO validation tests — `CreatePostDto` and `UpdatePostStatusDto` each: no-timezone-offset string → `scheduledAt` error; `Z`-suffixed string → no error. Uses `class-validator`'s `validate()` + `class-transformer`'s `plainToInstance` directly (no NestJS bootstrap needed).
+- **Why `@Matches` alongside `@IsISO8601`**: `validator.js@13` `isISO8601({ strict: true })` only validates calendar-date correctness — timezone is optional in the underlying regex. `@Matches` enforces the timezone requirement.
+- Tests: 328 passed (4 new). Lint: 0 errors.
+
+## Log
+
+### 2026-07-17 — M-11 Missing query indexes for quota count and publish cron
+
+- **`Migration20260717000001_PerfIndexesV2.ts`** (new): Two partial indexes on `core.posts`:
+  - `idx_posts_workspace_active (workspace_id) WHERE deleted_at IS NULL` — covers `countByWorkspace` quota check on every `POST /posts`.
+  - `idx_posts_scheduled_due (status, scheduled_at) WHERE status = 'scheduled' AND deleted_at IS NULL` — covers `PublishJob` cron query (`WHERE status='scheduled' AND scheduledAt <= now()`).
+- **`docs/DECISIONS.md`**: ADR-102 added — rationale for each index, partial predicate size impact, note on EXPLAIN ANALYZE verification against live DB.
+- No application code changes. No new packages.
+- Tests: 324 passed. Lint: 0 errors.
 
 ### 2026-07-17 — M-10 Pagination for `listMembers` and `listForUser`
 

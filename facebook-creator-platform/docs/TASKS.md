@@ -336,7 +336,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: `GET /workspaces/:id/members` paginated; response shape matches `PostsPageDto`; `pnpm test`
     green.
 
-- [ ] **M-11 Missing query indexes for quota count and publish cron** (~1h)
+- [x] **M-11 Missing query indexes for quota count and publish cron** (~1h)
   - `postRepo.countByWorkspace(workspaceId)` runs on every `createPost` without a partial index on
     `workspace_id WHERE deleted_at IS NULL`. `PublishJob` queries `WHERE status='scheduled' AND
     scheduledAt <= now()` without a composite index.
@@ -353,7 +353,7 @@ For blocked tasks always append an inline note on the same line:
     (every FK and query-pattern column indexed).
   - DoD: migration runs cleanly; `EXPLAIN ANALYZE` on both queries confirms index scan.
 
-- [ ] **M-12 Invitation acceptance endpoint is internal-only — needs a public route** (~2h)
+- [x] **M-12 Invitation acceptance endpoint is internal-only — needs a public route** (~2h)
   - `WorkspaceService.acceptInvitation()` is implemented (T2.8) but the only HTTP surface is
     `InternalInvitationController`. Invitation acceptance must be triggered by an invited user
     clicking an email link — requiring a **public** authenticated endpoint.
@@ -367,7 +367,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: endpoint reachable at documented URL; expired token → 400; already-accepted → 409;
     `pnpm test` green with new spec.
 
-- [ ] **M-13 `scheduledAt` not validated as strict ISO 8601 UTC at DTO layer** (~1h)
+- [x] **M-13 `scheduledAt` not validated as strict ISO 8601 UTC at DTO layer** (~1h)
   - `scheduledAt` validates as a future datetime but accepts `2026-08-01T10:00:00` (no timezone
     offset), which is silently interpreted as server local time instead of UTC.
   - Fix: add `@IsISO8601({ strict: true })` to `scheduledAt` in `CreatePostDto` and
@@ -379,7 +379,7 @@ For blocked tasks always append an inline note on the same line:
     `docs/CODING-STANDARDS.md` §9 (JSDoc on `scheduledAt` in DTOs).
   - DoD: missing timezone offset rejected with 400; unit test green; `pnpm test` green.
 
-- [ ] **M-14 No explicit timeout config or fail-open fallback on downstream HTTP** (~3h)
+- [x] **M-14 No explicit timeout config or fail-open fallback on downstream HTTP** (~3h)
   - `FetchHttpClientAdapter` uses `AbortSignal.timeout(5000)` (ADR-065). Verify all adapter paths
     are covered. Add configurable per-path timeouts and a fail-open fallback for
     `BillingQuotaAdapter` — billing outage must not block post creation entirely.
@@ -397,7 +397,7 @@ For blocked tasks always append an inline note on the same line:
 
 ### Low — Polish & Documentation
 
-- [ ] **L-15 Swagger missing `@ApiBadRequestResponse` on `PATCH /posts/:id/status`** (~30 min)
+- [x] **L-15 Swagger missing `@ApiBadRequestResponse` on `PATCH /posts/:id/status`** (~30 min)
   - `PATCH /posts/:id/status` can return 400 (`VALIDATION_ERROR`) when `scheduledAt` is missing or
     in the past. Only `@ApiConflictResponse` is documented; the 400 path is invisible in Swagger UI.
   - Fix: add `@ApiBadRequestResponse({ description: 'scheduledAt missing or not a future datetime
@@ -407,7 +407,7 @@ For blocked tasks always append an inline note on the same line:
     `docs/CODING-STANDARDS.md` §9 (Swagger decorators are part of exported-code docs). No new tests.
   - DoD: Swagger UI shows 400 on `PATCH /posts/:id/status`; `pnpm lint` clean.
 
-- [ ] **L-16 API versioning strategy not defined or documented** (~30 min)
+- [x] **L-16 API versioning strategy not defined or documented** (~30 min)
   - Routes use `api/v1` prefix. No policy exists for introducing `v2` endpoints. Without a defined
     strategy, the first breaking change forces full controller duplication.
   - Append ADR to `docs/DECISIONS.md` defining: (1) additive changes are non-breaking — no version
@@ -419,7 +419,7 @@ For blocked tasks always append an inline note on the same line:
     `docs/DECISIONS.md` (mandatory location).
   - DoD: ADR in `docs/DECISIONS.md` with the versioning policy; no code change needed.
 
-- [ ] **L-17 Workspace soft-delete policy undefined** (~30 min)
+- [x] **L-17 Workspace soft-delete policy undefined** (~30 min)
   - `Workspace` has `deletedAt` (from `BaseEntity`) but no delete endpoint and no retention job.
     It is unclear if this is permanently out-of-scope or deferred.
   - Choose: Option A — permanently out-of-scope (record in ADR). Option B — deferred, with
@@ -431,7 +431,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: ADR in `docs/DECISIONS.md`; if Option B, placeholder task appended to TASKS.md; no
     code change needed for Option A.
 
-- [ ] **L-18 `PublishFallbackPollJob` threshold undocumented** (~30 min)
+- [x] **L-18 `PublishFallbackPollJob` threshold undocumented** (~30 min)
   - The threshold (how long to wait in `publishing` before polling Facebook to confirm) is not
     documented. Too short risks a race with the webhook consumer; too long leaves users seeing
     stale `publishing` status.
@@ -444,7 +444,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: JSDoc on `PublishFallbackPollJob` class + `run()` explains threshold and race handling;
     ADR in `docs/DECISIONS.md`; `pnpm lint` clean.
 
-- [ ] **L-19 `DevAuthModule` token compatibility with `ClerkAuthGuard` unverified** (~1h)
+- [x] **L-19 `DevAuthModule` token compatibility with `ClerkAuthGuard` unverified** (~1h)
   - `ClerkAuthGuard` calls `verifyToken(token, { secretKey: CLERK_SECRET_KEY })`. For a
     `DevAuth`-issued token to pass, it must be a real Clerk JWT. This is unverified.
   - Verify: read `dev-auth.service.ts` + `dev-auth.controller.ts`. If `DevAuthModule` creates a
@@ -627,6 +627,39 @@ For blocked tasks always append an inline note on the same line:
     (or only the class definition files if retained for future use); all `*_SERVICE_URL` internal
     vars removed from `apps/api` env usage; `pnpm -r test` green across all packages;
     `pnpm load:smoke` passes.
+
+---
+
+## Deferred — Workspace Lifecycle
+
+- [ ] **W-1 Workspace soft-delete (delete endpoint + cascade + retention job)** (~2d)
+  - Implement `DELETE /workspaces/:id` that soft-deletes the workspace and cascades
+    domain-layer soft-deletes to all child aggregates. The `posts` and `facebook_accounts`
+    tables use `ON DELETE RESTRICT` FKs — the DB will reject the workspace soft-delete unless
+    child rows are handled first at the domain layer (not via DB cascade).
+  - **Endpoint**: `DELETE /workspaces/:id` (Owner only). Guard: BR-R02 — sole-owner check
+    must confirm the owner is the last member before proceeding (or reject with 409).
+  - **Domain cascade** (order matters due to FK constraints):
+    1. Soft-delete all non-terminal posts (`draft`, `scheduled`, `publishing`) → emit
+       `PostCancelledEvent` for each so the publish job skips them.
+    2. Deauthorize all linked `FacebookAccount` rows (soft-delete or status update).
+    3. Cancel the active Stripe subscription via `BillingService.cancelSubscription`.
+    4. Soft-delete the `Workspace` row (`deletedAt = now()`).
+    5. Emit `WorkspaceDeletedEvent` (workspaceId, ownerId, deletedAt) for the Audit Service.
+  - **One flush rule**: collect all mutations, `em.flush()` once, then publish events after
+    commit (`IEventBus.emit`).
+  - **90-day hard-purge retention job**: a scheduled job (`@Cron`) queries
+    `WHERE deleted_at <= now() - interval '90 days'` across `workspaces`, `posts`, and
+    `facebook_accounts` and hard-deletes rows in dependency order. Uses a forked EM
+    (ADR-054 pattern). Records purged row count to the Audit Service.
+  - **Tests**: unit test for `WorkspaceService.delete` (cascade order, sole-owner guard,
+    event emission); unit test for the retention job (stub EM, verify delete order);
+    e2e test for `DELETE /workspaces/:id` (200 soft-delete, 409 sole-owner violation,
+    403 non-owner, 404 not-found).
+  - Rules: `CLAUDE.md` §3 (soft delete + hard purge via retention job); §6 (one flush);
+    §7 (audit via event, not direct DB write); BR-R02; ADR-105 (decision rationale).
+  - DoD: endpoint returns 204; workspace and children are soft-deleted; `WorkspaceDeletedEvent`
+    published; retention job hard-purges rows older than 90 days; all tests green.
 
 ---
 

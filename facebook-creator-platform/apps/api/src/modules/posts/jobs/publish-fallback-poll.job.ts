@@ -14,16 +14,37 @@ import { PostFailedEvent } from '../events/post-failed.event';
 const EVERY_5_MINUTES = '0 */5 * * * *';
 
 /**
- * Cron job that polls Facebook to confirm posts in `publishing` state.
+ * Cron job that polls Facebook to confirm posts stuck in `publishing` state.
  *
- * Runs every 5 minutes. Finds posts with `status='publishing'` and
- * `updatedAt <= now() - PUBLISH_TTL_MINUTES` (default 30 min), then calls
- * `GET /{facebookGraphPostId}` on the Graph API:
- * - post is live → `publishing→published` + emits `PostPublishedEvent`
- * - post not live and within TTL×3 → no change (will be re-checked next tick)
- * - post not live and beyond TTL×3 → `failed` + emits `PostFailedEvent`
+ * **Why this job exists**: the happy path relies on a Facebook webhook delivering
+ * `feed` change events. If the webhook is delayed or dropped, posts remain in
+ * `publishing` indefinitely. This job is the fallback recovery mechanism.
  *
- * Uses a forked `EntityManager` per run (ADR-030 — non-request context).
+ * **Poll interval**: every 5 minutes (`EVERY_5_MINUTES` cron expression).
+ *
+ * **Threshold — `PUBLISH_TTL_MINUTES` (default 30 min)**:
+ * Facebook's webhook retry cycle runs for approximately 25 minutes at
+ * exponentially increasing intervals before giving up. A 30-minute TTL means
+ * the job only activates *after* Facebook's full retry window has likely closed,
+ * giving the webhook consumer a generous head-start and keeping the race window
+ * negligible. Configure via the `PUBLISH_TTL_MINUTES` environment variable.
+ *
+ * **Race mitigation with the webhook consumer**:
+ * The `em.find` query filters by `status = 'publishing'`. If the webhook consumer
+ * already committed a `published` transition, the post is absent from the result
+ * set — the job never sees it. The 30-minute TTL reinforces this: by the time
+ * the job activates, the webhook window is closed. In the unlikely event that
+ * both paths transition the same post concurrently, any duplicate
+ * `PostPublishedEvent` is deduplicated by consumers via Redis dedup keys
+ * (ADR-028/029).
+ *
+ * **Failure threshold — TTL×3 (default 90 min)**:
+ * A post that is still not confirmed after three full poll cycles is unlikely
+ * to recover. Marking it `failed` at TTL×3 prevents permanent `publishing` limbo
+ * while still tolerating transient Graph API errors across multiple ticks.
+ *
+ * **Forked `EntityManager`**: each `run()` invocation forks a fresh EM so the
+ * cron context is isolated from the NestJS request scope (ADR-030/054).
  */
 @Injectable()
 export class PublishFallbackPollJob {
@@ -42,7 +63,11 @@ export class PublishFallbackPollJob {
   /**
    * Entry point called by `@nestjs/schedule` every 5 minutes.
    *
-   * Forks a fresh `EntityManager` for isolation.
+   * Forks a fresh `EntityManager`, then queries for posts in `publishing` state
+   * whose `updatedAt` is older than `PUBLISH_TTL_MINUTES` (the cutoff). Posts
+   * older than `TTL×3` (the triple cutoff) are moved to `failed`; posts between
+   * the two cutoffs are polled against the Graph API and transitioned to
+   * `published` if confirmed live, or left for the next tick if not yet visible.
    */
   @Cron(EVERY_5_MINUTES)
   async run(): Promise<void> {
