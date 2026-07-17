@@ -19,12 +19,14 @@ import { MikroOrmBillingEventRepository } from './repositories/mikro-orm-billing
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
 import { BillingWebhookController } from './billing.webhook.controller';
+import { BillingMessageController } from './billing.message-controller';
 
 /**
  * Core billing module: Plans, Subscriptions, Stripe Checkout, and state machine (T3.2).
  *
- * Owns the `billing` Postgres schema. Exposes internal HTTP endpoints called by
- * `apps/api` and the Stripe webhook endpoint called by Stripe directly.
+ * Owns the `billing` Postgres schema. Exposes:
+ * - HTTP endpoints for the Stripe webhook and browser redirect (Stripe → billing directly).
+ * - TCP `@MessagePattern` handlers for synchronous RPC from `apps/api` (ADR-094).
  *
  * Port bindings:
  * - `IPlanRepository`          → `MikroOrmPlanRepository`
@@ -57,7 +59,7 @@ import { BillingWebhookController } from './billing.webhook.controller';
       },
     ]),
   ],
-  controllers: [BillingController, BillingWebhookController],
+  controllers: [BillingController, BillingWebhookController, BillingMessageController],
   providers: [
     BillingService,
     { provide: IPlanRepository, useClass: MikroOrmPlanRepository },
