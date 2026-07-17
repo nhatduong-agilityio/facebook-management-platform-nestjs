@@ -34,7 +34,7 @@ import { NotificationController } from './notification.controller';
           transport: Transport.TCP,
           options: {
             host: config.get<string>('NOTIFICATION_TCP_HOST', 'localhost'),
-            port: config.get<number>('NOTIFICATION_TCP_PORT', 4005),
+            port: config.get<number>('NOTIFICATION_TCP_PORT', 3005),
           },
         }),
       },

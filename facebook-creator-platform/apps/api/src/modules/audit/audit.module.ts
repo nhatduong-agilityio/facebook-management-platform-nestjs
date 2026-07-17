@@ -31,7 +31,7 @@ import { AuditController } from './audit.controller';
           transport: Transport.TCP,
           options: {
             host: config.get<string>('AUDIT_TCP_HOST', 'localhost'),
-            port: config.get<number>('AUDIT_TCP_PORT', 4003),
+            port: config.get<number>('AUDIT_TCP_PORT', 3003),
           },
         }),
       },

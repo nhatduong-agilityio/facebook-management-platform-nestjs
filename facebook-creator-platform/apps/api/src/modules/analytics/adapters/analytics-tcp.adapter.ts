@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { IAnalyticsClient } from '../ports/analytics-http.client.port';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 import type { MetricsSummaryDto, PostMetricsDayDto } from '../dto/analytics.dto';
 
 /** DI token for the analytics TCP `ClientProxy`. */

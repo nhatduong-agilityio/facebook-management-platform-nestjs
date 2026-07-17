@@ -8,15 +8,17 @@ import { AppModule } from './app.module';
 import { getRmqOptions } from '@fcp/rmq-options';
 
 /**
- * Bootstraps the notification service as a **pure-microservice hybrid** (ADR-084):
+ * Bootstraps the notification service as a **pure-microservice hybrid** (ADR-084, ADR-108):
  * - RMQ on `notification_queue` — 11 consumers for workspace, post, billing, and
  *   Facebook lifecycle events that drive notification fan-out.
- * - TCP on `NOTIFICATION_TCP_HOST:NOTIFICATION_TCP_PORT` — internal RPC from
- *   `apps/api` for list and mark-read operations (ADR-094).
+ * - TCP on `0.0.0.0:NOTIFICATION_PORT` — internal RPC from `apps/api` for list and
+ *   mark-read operations (ADR-094).
  *
- * No HTTP server is started (`app.listen()` is intentionally omitted) — notification
- * has no external clients or webhooks. The Express adapter is loaded but no port is
- * bound; this keeps a single DI container for both transports.
+ * Port consolidation (ADR-108): TCP reuses `NOTIFICATION_PORT` (default 3005); the
+ * separate `NOTIFICATION_TCP_PORT` (4005) is removed. `apps/api` connects on
+ * `NOTIFICATION_TCP_HOST:NOTIFICATION_TCP_PORT` (defaulting to `localhost:3005`).
+ *
+ * No HTTP server is started (`app.listen()` is intentionally omitted).
  *
  * Note: `WorkspaceMemberReconciler.onModuleInit` calls `apps/api` over HTTP
  * (`GET /internal/workspaces/:id/members`) — this is the **reverse** direction
@@ -35,7 +37,7 @@ async function bootstrap(): Promise<void> {
     transport: Transport.TCP,
     options: {
       host: configService.get<string>('NOTIFICATION_TCP_HOST', '0.0.0.0'),
-      port: configService.get<number>('NOTIFICATION_TCP_PORT', 4005),
+      port: configService.get<number>('NOTIFICATION_PORT', 3005),
     },
   });
 

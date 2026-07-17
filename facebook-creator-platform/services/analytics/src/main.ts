@@ -8,15 +8,16 @@ import { AppModule } from './app.module';
 import { getRmqOptions } from '@fcp/rmq-options';
 
 /**
- * Bootstraps the analytics service as a **pure-microservice hybrid** (ADR-084):
+ * Bootstraps the analytics service as a **pure-microservice hybrid** (ADR-084, ADR-108):
  * - RMQ on `analytics.posts.published` — consumes `posts.published` events.
- * - TCP on `ANALYTICS_TCP_HOST:ANALYTICS_TCP_PORT` — internal RPC from `apps/api` (ADR-094).
+ * - TCP on `0.0.0.0:ANALYTICS_PORT` — internal RPC from `apps/api` (ADR-094).
  *
- * No HTTP server is started (`app.listen()` is intentionally omitted) — analytics
- * has no external clients, no webhooks, no Swagger or health endpoint. The Express
- * adapter is loaded but no port is bound; this keeps a single DI container for both
- * transports (vs. two separate `createMicroservice` calls which would duplicate the
- * MikroORM pool and all repositories).
+ * Port consolidation (ADR-108): the old dual-port layout (HTTP :3002 + TCP :4002) is
+ * collapsed — TCP now reuses `ANALYTICS_PORT` (default 3002) since there is no HTTP
+ * server. `apps/api` connects on `ANALYTICS_TCP_HOST:ANALYTICS_TCP_PORT` (defaulting
+ * to `localhost:3002`).
+ *
+ * No HTTP server is started (`app.listen()` is intentionally omitted).
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -33,7 +34,7 @@ async function bootstrap(): Promise<void> {
     transport: Transport.TCP,
     options: {
       host: configService.get<string>('ANALYTICS_TCP_HOST', '0.0.0.0'),
-      port: configService.get<number>('ANALYTICS_TCP_PORT', 4002),
+      port: configService.get<number>('ANALYTICS_PORT', 3002),
     },
   });
 

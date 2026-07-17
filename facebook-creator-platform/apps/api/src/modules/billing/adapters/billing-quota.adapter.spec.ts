@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BillingQuotaAdapter, FREE_PLAN_LIMIT } from './billing-quota.adapter';
 import { IBillingHttpClient } from '../ports/billing-http.client.port';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 
 describe('BillingQuotaAdapter', () => {
   let adapter: BillingQuotaAdapter;

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { of, throwError } from 'rxjs';
 import { RpcException } from '@nestjs/microservices';
 import { AuditTcpAdapter, AUDIT_TCP_CLIENT } from './audit-tcp.adapter';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 import type { ClientProxy } from '@nestjs/microservices';
 
 const RAW_EVENT = {

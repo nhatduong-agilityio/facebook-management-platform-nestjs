@@ -15,7 +15,7 @@ import { Roles } from '../identity/decorators/roles.decorator';
 import { CurrentUser } from '../identity/decorators/current-user.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { AppError } from '../../common/errors/app-error';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import { INotificationClient } from './ports/notification.client.port';
 import { NotificationResponseDto } from './dto/notification.dto';
 

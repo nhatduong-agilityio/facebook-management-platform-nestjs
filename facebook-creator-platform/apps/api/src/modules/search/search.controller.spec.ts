@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SearchController } from './search.controller';
 import { ISearchClient } from './ports/search.client.port';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import type { SearchResultDto } from './dto/search-result.dto';
 
 const makeResult = (overrides: Partial<SearchResultDto> = {}): SearchResultDto => ({

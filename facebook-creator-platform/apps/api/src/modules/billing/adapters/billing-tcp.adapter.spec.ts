@@ -3,7 +3,7 @@ import { of, throwError } from 'rxjs';
 import { RpcException } from '@nestjs/microservices';
 import type { ClientProxy } from '@nestjs/microservices';
 import { BillingTcpAdapter } from './billing-tcp.adapter';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 import type { SubscriptionResponse, CheckoutResponse } from '@fcp/billing-contracts';
 
 const makeSubscriptionResponse = (): SubscriptionResponse => ({

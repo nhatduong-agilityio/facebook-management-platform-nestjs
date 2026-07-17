@@ -34,7 +34,7 @@ import { AnalyticsController } from './analytics.controller';
           transport: Transport.TCP,
           options: {
             host: config.get<string>('ANALYTICS_TCP_HOST', 'localhost'),
-            port: config.get<number>('ANALYTICS_TCP_PORT', 4002),
+            port: config.get<number>('ANALYTICS_TCP_PORT', 3002),
           },
         }),
       },

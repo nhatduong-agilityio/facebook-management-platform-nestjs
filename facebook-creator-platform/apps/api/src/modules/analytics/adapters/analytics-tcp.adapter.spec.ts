@@ -3,7 +3,7 @@ import { of, throwError } from 'rxjs';
 import { RpcException } from '@nestjs/microservices';
 import type { ClientProxy } from '@nestjs/microservices';
 import { AnalyticsTcpAdapter } from './analytics-tcp.adapter';
-import { DownstreamServiceError } from '../../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../../common/errors/downstream-service.error';
 import type { MetricsSummaryDto, PostMetricsDayDto } from '../dto/analytics.dto';
 
 const makeMetricsSummary = (): MetricsSummaryDto => ({

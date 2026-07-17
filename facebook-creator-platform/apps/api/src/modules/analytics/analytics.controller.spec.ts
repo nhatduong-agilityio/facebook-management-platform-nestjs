@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AnalyticsController } from './analytics.controller';
 import { IAnalyticsClient } from './ports/analytics-http.client.port';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import type { MetricsSummaryDto, PostMetricsDayDto } from './dto/analytics.dto';
 
 const makeMetrics = (overrides: Partial<MetricsSummaryDto> = {}): MetricsSummaryDto => ({

@@ -123,11 +123,8 @@ services:
     command: node services/analytics/dist/main.js
     ports:
       - '3002:3002'
-      - '4002:4002'
     environment:
       ANALYTICS_PORT: '3002'
-      ANALYTICS_TCP_PORT: '4002'
-      ANALYTICS_TCP_HOST: '0.0.0.0'
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
@@ -147,11 +144,8 @@ services:
     command: node services/audit/dist/main.js
     ports:
       - '3003:3003'
-      - '4003:4003'
     environment:
       AUDIT_PORT: '3003'
-      AUDIT_TCP_PORT: '4003'
-      AUDIT_TCP_HOST: '0.0.0.0'
       MONGODB_URI: mongodb://mongodb:27017/fcp_audit
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
@@ -171,11 +165,8 @@ services:
     command: node services/search/dist/main.js
     ports:
       - '3004:3004'
-      - '4004:4004'
     environment:
       SEARCH_PORT: '3004'
-      SEARCH_TCP_PORT: '4004'
-      SEARCH_TCP_HOST: '0.0.0.0'
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
@@ -195,11 +186,8 @@ services:
     command: node services/notification/dist/main.js
     ports:
       - '3005:3005'
-      - '4005:4005'
     environment:
       NOTIFICATION_PORT: '3005'
-      NOTIFICATION_TCP_PORT: '4005'
-      NOTIFICATION_TCP_HOST: '0.0.0.0'
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
@@ -243,12 +231,17 @@ services:
       MONGODB_URI: mongodb://mongodb:27017/fcp_audit
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
-      # Internal service URLs — use Docker service names, not localhost
-      BILLING_SERVICE_URL: http://billing:3001/api/v1
-      ANALYTICS_SERVICE_URL: http://analytics:3002/api/v1
-      AUDIT_SERVICE_URL: http://audit:3003/api/v1
-      SEARCH_SERVICE_URL: http://search:3004/api/v1
-      NOTIFICATION_SERVICE_URL: http://notification:3005/api/v1
+      # TCP clients — use Docker service names as hosts (ADR-094, ADR-108)
+      BILLING_TCP_HOST: billing
+      BILLING_TCP_PORT: '4001'
+      ANALYTICS_TCP_HOST: analytics
+      ANALYTICS_TCP_PORT: '3002'
+      AUDIT_TCP_HOST: audit
+      AUDIT_TCP_PORT: '3003'
+      SEARCH_TCP_HOST: search
+      SEARCH_TCP_PORT: '3004'
+      NOTIFICATION_TCP_HOST: notification
+      NOTIFICATION_TCP_PORT: '3005'
       # Stripe browser redirects must be browser-reachable (localhost, not docker hostname)
       BILLING_SUCCESS_URL: http://localhost:3000/api/v1/billing/success
       BILLING_CANCEL_URL: http://localhost:3000/api/v1/billing/cancel

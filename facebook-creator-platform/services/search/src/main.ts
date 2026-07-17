@@ -8,15 +8,15 @@ import { AppModule } from './app.module';
 import { getRmqOptions } from '@fcp/rmq-options';
 
 /**
- * Bootstraps the search service as a **pure-microservice hybrid** (ADR-084):
+ * Bootstraps the search service as a **pure-microservice hybrid** (ADR-084, ADR-108):
  * - RMQ on `search_queue` — 5 consumers for post lifecycle events (Algolia index ops).
- * - TCP on `SEARCH_TCP_HOST:SEARCH_TCP_PORT` — internal RPC from `apps/api` (ADR-094).
+ * - TCP on `0.0.0.0:SEARCH_PORT` — internal RPC from `apps/api` (ADR-094).
  *
- * No HTTP server is started (`app.listen()` is intentionally omitted) — search
- * has no external clients, no webhooks, no Swagger or health endpoint. The Express
- * adapter is loaded but no port is bound; this keeps a single DI container for both
- * transports (vs. two separate `createMicroservice` calls which would duplicate all
- * providers and the Algolia/Redis clients).
+ * Port consolidation (ADR-108): TCP reuses `SEARCH_PORT` (default 3004); the separate
+ * `SEARCH_TCP_PORT` (4004) is removed. `apps/api` connects on `SEARCH_TCP_HOST:SEARCH_TCP_PORT`
+ * (defaulting to `localhost:3004`).
+ *
+ * No HTTP server is started (`app.listen()` is intentionally omitted).
  */
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -31,7 +31,7 @@ async function bootstrap(): Promise<void> {
     transport: Transport.TCP,
     options: {
       host: configService.get<string>('SEARCH_TCP_HOST', '0.0.0.0'),
-      port: configService.get<number>('SEARCH_TCP_PORT', 4004),
+      port: configService.get<number>('SEARCH_PORT', 3004),
     },
   });
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotificationController } from './notification.controller';
 import { INotificationClient } from './ports/notification.client.port';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import type { NotificationResponseDto } from './dto/notification.dto';
 
 const makeNotification = (overrides: Partial<NotificationResponseDto> = {}): NotificationResponseDto => ({

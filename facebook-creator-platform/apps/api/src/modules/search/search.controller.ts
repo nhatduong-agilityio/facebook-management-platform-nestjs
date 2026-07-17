@@ -15,7 +15,7 @@ import { WorkspaceRolesGuard } from '../identity/guards/roles.guard';
 import { Roles } from '../identity/decorators/roles.decorator';
 import { toHttpException } from '../../common/http/to-http-exception';
 import { AppError } from '../../common/errors/app-error';
-import { DownstreamServiceError } from '../../common/http/http-client.port';
+import { DownstreamServiceError } from '../../common/errors/downstream-service.error';
 import { ISearchClient } from './ports/search.client.port';
 import { SearchResultDto } from './dto/search-result.dto';
 
