@@ -545,7 +545,7 @@ For blocked tasks always append an inline note on the same line:
   - Rules: `docs/CODING-STANDARDS.md` §15; ADR-080.
   - DoD: analytics controller specs pass with mocked `IAnalyticsClient`; `pnpm test` green in `apps/api`.
 
-- [ ] **TM.6 `services/search` — replace HTTP with TCP `@MessagePattern`** (~2h)
+- [x] **TM.6 `services/search` — replace HTTP with TCP `@MessagePattern`** (~2h)
   - Add TCP transport in `main.ts`. Port: `SEARCH_TCP_PORT`.
   - Create `search.message-controller.ts` with `@MessagePattern('search.query')` →
     `SearchService.search(workspaceId, query)` → `SearchResultDto[]`.
@@ -558,7 +558,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: search query responds via TCP; no HTTP server started; 5 RMQ consumers still active;
     `pnpm test` green in `services/search`.
 
-- [ ] **TM.7 `apps/api` → search TCP adapter** (~1h)
+- [x] **TM.7 `apps/api` → search TCP adapter** (~1h)
   - Create `search-tcp.adapter.ts` implementing `ISearchClient`.
   - Add `SEARCH_TCP_CLIENT` + `ClientsModule.registerAsync` in `SearchModule`.
   - Swap provider binding from `SearchHttpClientAdapter` to `SearchTcpAdapter`.
