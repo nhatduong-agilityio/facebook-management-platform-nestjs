@@ -5,11 +5,18 @@
 
 ## Resume point
 
-- **Next task:** TM.3 — `apps/api` → billing TCP adapter
+- **Next task:** TM.4 — `services/analytics` add TCP `@MessagePattern` handlers
 - **Branch:** `nestjs-practice`
-- **Notes:** TM.2 complete. 4 files changed (billing/main.ts — TCP hybrid bootstrap; billing.message-controller.ts new; billing.module.ts — controller registered; billing.message-controller.spec.ts new — 7 tests). No new packages. 331 apps/api + 33 billing tests green. Lint: 0 errors.
+- **Notes:** TM.3 complete. 3 files changed (billing-tcp.adapter.ts new; billing-tcp.adapter.spec.ts new — 7 tests; billing.module.ts — swapped to TCP + ClientsModule.registerAsync; BillingHttpClientAdapter removed from module). 338 apps/api tests green. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-17 — TM.3 `apps/api` → billing TCP adapter
+
+- **`apps/api/src/modules/billing/adapters/billing-tcp.adapter.ts`** (new): Extends `IBillingHttpClient`. Injects `BILLING_TCP_CLIENT` `ClientProxy`. Each method uses `firstValueFrom(client.send(...).pipe(timeout(3_000)))`. Error mapping: `RpcException(NOT_FOUND)` → `DownstreamServiceError(404)`, other `RpcException` → `DownstreamServiceError(500)`, timeout/connection → `DownstreamServiceError(503)`. Preserves the `DownstreamServiceError` contract so `BillingController` and `BillingQuotaAdapter` are unchanged.
+- **`apps/api/src/modules/billing/adapters/billing-tcp.adapter.spec.ts`** (new): 7 tests — ok + error paths for `getPostLimit`, `getSubscription` (including NOT_FOUND 404), and `createCheckoutSession`. Uses `of()` / `throwError()` from rxjs to mock `ClientProxy.send()`.
+- **`apps/api/src/modules/billing/billing.module.ts`**: Replaced `BillingHttpClientAdapter` with `BillingTcpAdapter`; added `ClientsModule.registerAsync` (Transport.TCP, reads `BILLING_TCP_HOST`/`BILLING_TCP_PORT` from config); updated module JSDoc.
+- Tests: 338 apps/api passed (7 new). Lint: 0 errors.
 
 ### 2026-07-17 — TM.2 `services/billing` TCP `@MessagePattern` handlers
 
