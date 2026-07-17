@@ -16,6 +16,7 @@ export interface FacebookFeedPayload {
   readonly facebookPostId: string;
   readonly pageId: string;
   readonly occurredAt: string;
+  readonly traceId?: string;
 }
 
 /**
@@ -65,7 +66,7 @@ export class FacebookFeedConsumer extends IdempotentConsumer {
 
       if (!post) {
         this.logger.log(
-          { facebookPostId: data.facebookPostId },
+          { facebookPostId: data.facebookPostId, traceId: data.traceId },
           'FacebookFeedConsumer: no publishing post found for graph post id — skipping',
         );
         return;
@@ -88,7 +89,7 @@ export class FacebookFeedConsumer extends IdempotentConsumer {
       );
 
       this.logger.log(
-        { postId: post.id, workspaceId },
+        { postId: post.id, workspaceId, traceId: data.traceId },
         'FacebookFeedConsumer: post transitioned to published',
       );
     });

@@ -27,6 +27,7 @@ const sampleData: PostPublishedPayload = {
   postId: 'post-abc',
   workspaceId: 'ws-xyz',
   facebookGraphPostId: 'page-1_post-2',
+  traceId: 'trace-abc',
 };
 
 describe('PostPublishedConsumer', () => {
@@ -53,7 +54,7 @@ describe('PostPublishedConsumer', () => {
 
     expect(mockLogger.log).toHaveBeenCalledOnce();
     expect(mockLogger.log).toHaveBeenCalledWith(
-      { postId: 'post-abc', workspaceId: 'ws-xyz' },
+      { postId: 'post-abc', workspaceId: 'ws-xyz', traceId: 'trace-abc' },
       'PostPublishedConsumer: received posts.published',
     );
     expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);

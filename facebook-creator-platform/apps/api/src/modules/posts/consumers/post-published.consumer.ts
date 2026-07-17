@@ -14,6 +14,7 @@ export interface PostPublishedPayload {
   readonly postId: string;
   readonly workspaceId: string;
   readonly facebookGraphPostId: string;
+  readonly traceId?: string;
 }
 
 /**
@@ -51,7 +52,7 @@ export class PostPublishedConsumer extends IdempotentConsumer {
     const msg = ctx.getMessage() as Message;
     await this.withDedup(data.eventId, channel, msg, async () => {
       this.logger.log(
-        { postId: data.postId, workspaceId: data.workspaceId },
+        { postId: data.postId, workspaceId: data.workspaceId, traceId: data.traceId },
         'PostPublishedConsumer: received posts.published',
       );
     });

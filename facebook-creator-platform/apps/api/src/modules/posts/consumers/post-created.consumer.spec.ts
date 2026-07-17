@@ -27,6 +27,7 @@ const sampleData: PostCreatedPayload = {
   postId: 'post-abc',
   workspaceId: 'ws-xyz',
   createdByUserId: 'user-111',
+  traceId: 'trace-abc',
 };
 
 describe('PostCreatedConsumer', () => {
@@ -53,7 +54,7 @@ describe('PostCreatedConsumer', () => {
 
     expect(mockLogger.log).toHaveBeenCalledOnce();
     expect(mockLogger.log).toHaveBeenCalledWith(
-      { postId: 'post-abc', workspaceId: 'ws-xyz' },
+      { postId: 'post-abc', workspaceId: 'ws-xyz', traceId: 'trace-abc' },
       'PostCreatedConsumer: received posts.created',
     );
     expect(mockChannel.ack).toHaveBeenCalledWith(mockMsg);

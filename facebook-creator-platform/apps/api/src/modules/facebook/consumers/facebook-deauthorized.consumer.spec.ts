@@ -37,6 +37,7 @@ const sampleData: FacebookDeauthorizedPayload = {
   eventId: 'evt-deauth-001',
   pageId: 'page-999',
   occurredAt: new Date().toISOString(),
+  traceId: 'trace-abc',
 };
 
 describe('FacebookPageDeauthorizedConsumer', () => {

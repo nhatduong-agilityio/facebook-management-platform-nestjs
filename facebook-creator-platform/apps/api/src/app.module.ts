@@ -1,10 +1,13 @@
 import { join } from 'node:path';
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { uuidv7 } from 'uuidv7';
+import { TraceModule } from './common/trace/trace.module';
+import { RequestIdMiddleware } from './common/trace/request-id.middleware';
 import { HealthModule } from './health/health.module';
 import { DatabaseModule } from './database/database.module';
 import { RabbitmqModule } from './infrastructure/rabbitmq/rabbitmq.module';
@@ -51,6 +54,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
     }),
     LoggerModule.forRoot({
       pinoHttp: {
+        genReqId: () => uuidv7(),
         redact: {
           paths: [
             'req.headers.authorization',
@@ -66,6 +70,7 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
         transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
       },
     }),
+    TraceModule,
     DatabaseModule,
     ScheduleModule.forRoot(),
     HealthModule,
@@ -85,4 +90,9 @@ import { DevAuthModule } from './modules/dev-auth/dev-auth.module';
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /** Applies `RequestIdMiddleware` globally so every HTTP request gets a UUID v7 requestId in ALS (ADR-100). */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}

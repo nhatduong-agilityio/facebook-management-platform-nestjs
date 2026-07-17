@@ -2,6 +2,7 @@ import { of, throwError } from 'rxjs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ClientProxy } from '@nestjs/microservices';
 import { FCP_EVENTS_EXCHANGE } from '@fcp/constants';
+import type { TraceContextService } from '../trace/trace.context';
 import { RabbitMqEventBus } from './rabbitmq-event-bus';
 import { IMessagingLogRepository } from './messaging-log.port';
 import { PostCreatedEvent } from '../../modules/posts/events/post-created.event';
@@ -19,13 +20,18 @@ const mockMessagingLog: IMessagingLogRepository = {
   insertDeadLetter: vi.fn().mockResolvedValue(undefined),
 } as unknown as IMessagingLogRepository;
 
+const mockTraceCtx = {
+  getRequestId: vi.fn().mockReturnValue(undefined),
+} as unknown as TraceContextService;
+
 describe('RabbitMqEventBus', () => {
   let bus: RabbitMqEventBus;
 
   beforeEach(() => {
-    bus = new RabbitMqEventBus(mockClient, mockMessagingLog);
+    bus = new RabbitMqEventBus(mockClient, mockMessagingLog, mockTraceCtx);
     vi.clearAllMocks();
     vi.mocked(mockClient.emit).mockReturnValue(of(undefined));
+    vi.mocked(mockTraceCtx.getRequestId).mockReturnValue(undefined);
   });
 
   it('emits PostCreatedEvent with routing key posts.created', async () => {

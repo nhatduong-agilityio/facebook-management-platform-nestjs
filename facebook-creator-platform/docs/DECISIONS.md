@@ -958,9 +958,90 @@ Migration tasks: TM.1–TM.12 in `docs/TASKS.md`.
   use a reverse proxy or service mesh in production (Envoy, Linkerd) if horizontal scaling is needed.
   Acceptable for current training project scale.
 
+## ADR-099 — Internal route isolation: ingress/LB block required; `x-internal-secret` is defence-in-depth (H-8, 2026-07-17)
+
+### Context
+
+`/internal/*` endpoints (ADR-050) are used exclusively by sibling services
+(`services/analytics`, `services/email`, `services/notification`) to resolve PII
+(page tokens, user emails, workspace membership). They are protected by
+`InternalSecretGuard`, which checks the `x-internal-secret` request header against
+`INTERNAL_API_SECRET`. However, if `apps/api` is internet-accessible — typical in
+early deployments — these endpoints are reachable from the public internet. An attacker
+who discovers the secret (e.g. via a leaked `.env`, a log line, or brute-force) gains
+read access to decrypted page tokens and user email addresses.
+
+### Decision
+
+**Two-layer security model required in every production deployment:**
+
+1. **Network isolation (primary control):** The ingress or load-balancer MUST block
+   all external traffic to `/internal/*` paths. Acceptable mechanisms:
+
+   | Platform | Rule |
+   |---|---|
+   | nginx | `location /api/v1/internal/ { deny all; }` before the proxy_pass block |
+   | k8s `NetworkPolicy` | Allow ingress on `/internal/*` only from pods in the same namespace |
+   | AWS ALB + WAF | Path-based WAF rule returning 403 for `/internal/*` from non-VPC CIDRs |
+   | Docker Compose (dev) | Services communicate on the internal Docker network; `apps/api` port not exposed to host for internal paths |
+
+2. **Shared secret header (secondary control / defence-in-depth):** `InternalSecretGuard`
+   verifies `x-internal-secret` on every internal call. This catches misconfigured
+   ingress rules but must not be the sole barrier. `INTERNAL_API_SECRET` must be:
+   - At least 32 bytes of cryptographically random data (e.g. `openssl rand -hex 32`)
+   - Rotated if ever exposed
+   - Never logged (Pino redact config covers `*.secret` paths)
+
+### What is NOT changing
+
+No code changes to the application logic, no new dependencies, no CIDR whitelist
+added to the guard. The shared-secret check (`InternalSecretGuard`) is correct as
+written; this ADR establishes the deployment requirement that makes it sufficient.
+
+### Rationale for not adding a CIDR whitelist to the guard
+
+An in-process CIDR whitelist (`X-Forwarded-For` parsing) introduces risk:
+- `X-Forwarded-For` is trivially spoofable unless the load-balancer strips and
+  re-sets it before forwarding.
+- The correct trust boundary is the network layer (ingress/LB), not the application.
+- Adding CIDR logic to the guard gives false confidence that the primary control
+  has been applied.
+
+Record this ADR in runbook / deployment checklist so every environment verifies
+the ingress rule before going live.
+
+---
+
+## ADR-100 — requestId/traceId propagation: AsyncLocalStorage + pino-http genReqId; no OpenTelemetry SDK (M-9, 2026-07-17)
+
+**Context:** HTTP requests must be correlated with the domain events they trigger so that failures several hops away (e.g. in `services/search`) can be traced back to the originating request in Pino logs.
+
+**Decision: `AsyncLocalStorage` + `genReqId` in pino-http**
+
+- `genReqId: () => uuidv7()` in `LoggerModule.forRoot` → pino-http assigns a UUID v7 to `req.id` and logs it as `reqId` on every HTTP log line automatically.
+- `RequestIdMiddleware` reads `req.id` and stores it in `TraceContextService` (a `@Global()` singleton wrapping `AsyncLocalStorage<string>`).
+- `RabbitMqEventBus.publish()` reads from ALS and stamps `event.traceId` before serializing — single control point, no service signature changes.
+- `DomainEvent.traceId: string = uuidv7()` default → cron-emitted events get their own UUID rather than `undefined`.
+- Consumers log `traceId` alongside their domain fields so the correlation ID is present in broker consumer logs.
+
+**Why not OpenTelemetry SDK:**
+- The task description explicitly forbids adding the OTEL SDK without measuring overhead first ("Do NOT add OpenTelemetry SDK without measuring overhead — record decision in `docs/DECISIONS.md`").
+- OTEL SDK requires `@opentelemetry/sdk-node` + exporters (~10 MB), adds async context propagation that duplicates what ALS already gives us, and requires W3C `traceparent` header propagation across all internal TCP calls.
+- `AsyncLocalStorage` is a Node.js built-in (zero new packages), the HTTP→event-bus path is the only correlation hop needed now, and Artillery load tests (T5.5) must run before adding observability overhead.
+
+**Why event bus adapter sets `traceId` (not service constructors):**
+- Changing all service `publish()` call sites to accept / forward a `requestId` argument would be invasive and leak infrastructure concerns into domain code.
+- The ALS approach keeps service code clean; the adapter is the single outbound adapter for all events.
+
+**Trade-off accepted:** Cron-triggered events carry a synthetic `traceId` (not an HTTP request ID). This is documented on `DomainEvent.traceId` and is the correct semantics — cron events are not children of any HTTP request.
+
+---
+
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-17 | **ADR-100 requestId/traceId propagation (M-9).** `AsyncLocalStorage` + `genReqId: () => uuidv7()` in pino-http; `RequestIdMiddleware` stores `req.id` in `TraceContextService`; `RabbitMqEventBus` stamps `event.traceId` from ALS. No OTEL SDK — overhead unmeasured before T5.5. |
+| 2026-07-17 | **ADR-099 Internal route isolation (H-8).** `/internal/*` must be blocked at ingress/LB (primary control); `x-internal-secret` is defence-in-depth only. `InternalSecretGuard` JSDoc updated. No CIDR whitelist added — network layer is the correct trust boundary. |
 | 2026-07-16 | **ADR-098 Health probes (H-7).** `@nestjs/terminus@11.1.1`; `MikroOrmHealthIndicator.pingCheck`, custom `RedisHealthIndicator` (PING/PONG), `MemoryHealthIndicator.checkHeap` at 300 MB; HTTP 503 on any failure; new v11 `HealthIndicatorService` API used (no deprecated `HealthIndicator` base class). |
 | 2026-07-16 | **ADR-097 CORS (H-5).** `app.enableCors` with `ALLOWED_ORIGINS` env var (comma-separated, default `http://localhost:4000`); `credentials: true`; `OPTIONS` included for preflight; `allowedHeaders` restricted to `Content-Type` + `Authorization`. |
 | 2026-07-16 | **ADR-096 Rate limiting (H-4).** `@nestjs/throttler@^6.5.0`; global 100 req/60 s/IP via `APP_GUARD`; invite override 5/min; dev-auth token 10/min; Facebook + Clerk webhooks exempt via `@SkipThrottle()` (HMAC-verified). |

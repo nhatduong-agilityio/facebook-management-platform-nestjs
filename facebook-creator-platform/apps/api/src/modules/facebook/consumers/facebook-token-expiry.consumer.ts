@@ -14,6 +14,7 @@ export interface FacebookTokenExpiringPayload {
   readonly workspaceId: string;
   readonly pageId: string;
   readonly tokenExpiresAt: string;
+  readonly traceId?: string;
 }
 
 /**
@@ -69,7 +70,7 @@ export class FacebookTokenExpiryConsumer extends IdempotentConsumer {
       if (result.isErr()) {
         if (result.error.code === 'NOT_FOUND') {
           this.logger.warn(
-            { accountId: data.accountId, workspaceId: data.workspaceId },
+            { accountId: data.accountId, workspaceId: data.workspaceId, traceId: data.traceId },
             'FacebookTokenExpiryConsumer: account not found — permanent nack',
           );
           return 'nack';
@@ -79,7 +80,7 @@ export class FacebookTokenExpiryConsumer extends IdempotentConsumer {
       }
 
       this.logger.log(
-        { accountId: data.accountId, workspaceId: data.workspaceId },
+        { accountId: data.accountId, workspaceId: data.workspaceId, traceId: data.traceId },
         'FacebookTokenExpiryConsumer: token refreshed successfully',
       );
     });

@@ -296,7 +296,7 @@ For blocked tasks always append an inline note on the same line:
   - DoD: endpoint probes Postgres + Redis; returns 503 on dependency failure; `pnpm test` green;
     ADR in `docs/DECISIONS.md`.
 
-- [ ] **H-8 Internal routes have no network isolation — only shared secret header** (~1h)
+- [x] **H-8 Internal routes have no network isolation — only shared secret header** (~1h)
   - `/internal/*` endpoints are protected only by `x-internal-secret`. If `apps/api` is
     internet-accessible these endpoints are reachable from the public internet. No ingress rule
     blocks public access.
@@ -309,7 +309,7 @@ For blocked tasks always append an inline note on the same line:
 
 ### Medium — Fix Before Scale Validation
 
-- [ ] **M-9 No correlation ID / distributed trace across HTTP requests and events** (~3h)
+- [x] **M-9 No correlation ID / distributed trace across HTTP requests and events** (~3h)
   - When a `PostCreatedEvent` fails in `services/search` three hops from the HTTP request, there
     is no shared ID to correlate log entries across services and the event bus.
   - Build: add `traceId: string` (UUID v7) to the `DomainEvent` abstract class in
