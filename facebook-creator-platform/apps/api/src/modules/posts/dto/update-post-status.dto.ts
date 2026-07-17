@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsISO8601, IsIn, IsOptional, IsString, Matches } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { PostStatus } from '../entities/post.entity';
 
@@ -30,12 +30,17 @@ export class UpdatePostStatusDto {
   /**
    * Required when transitioning to `scheduled`.
    * Must be a future datetime (BR-F06); past values are rejected with VALIDATION_ERROR.
+   * Must include a UTC timezone offset — bare local-time strings are rejected.
+   * Examples: `2026-08-01T10:00:00.000Z`, `2026-08-01T10:00:00+05:30`.
    */
   @ApiPropertyOptional({
-    description: 'ISO-8601 future datetime; required when status = "scheduled" (BR-F06)',
+    description: 'ISO-8601 UTC future datetime; required when status = "scheduled" (BR-F06). Timezone offset required — e.g. 2026-08-01T10:00:00.000Z',
   })
   @IsOptional()
-  @IsDateString()
+  @IsISO8601({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/, {
+    message: 'scheduledAt must include a UTC timezone offset (e.g. 2026-08-01T10:00:00.000Z)',
+  })
   scheduledAt?: string;
 
   /**

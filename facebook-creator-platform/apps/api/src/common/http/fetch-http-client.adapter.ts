@@ -1,18 +1,25 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { IHttpClient, DownstreamServiceError } from './http-client.port';
-
-/** Abort timeout for all outbound requests (ms). Prevents gateway hang on slow downstreams. */
-const TIMEOUT_MS = 5_000;
 
 /**
  * `IHttpClient` implementation backed by the Node 25 built-in `fetch`.
  *
- * - Applies a 5-second `AbortSignal.timeout` to every request.
+ * - Applies a configurable `AbortSignal.timeout` to every request.
+ *   Timeout is read from `HTTP_CLIENT_TIMEOUT_MS` env var (default 5 000 ms).
  * - Converts non-2xx responses and network failures into `DownstreamServiceError`
  *   so callers never see raw `ECONNREFUSED` strings.
  */
 @Injectable()
 export class FetchHttpClientAdapter extends IHttpClient {
+  private readonly timeoutMs: number;
+
+  /** @param config - NestJS `ConfigService`; reads `HTTP_CLIENT_TIMEOUT_MS` (default 5 000). */
+  constructor(private readonly config: ConfigService) {
+    super();
+    this.timeoutMs = this.config.get<number>('HTTP_CLIENT_TIMEOUT_MS', 5_000);
+  }
+
   /**
    * GETs a URL and returns the parsed JSON body.
    *
@@ -24,6 +31,14 @@ export class FetchHttpClientAdapter extends IHttpClient {
     return this.request<T>('GET', url);
   }
 
+  /**
+   * PATCHes a URL with an optional JSON body and returns the parsed JSON body.
+   *
+   * @param url  - Fully-qualified target URL.
+   * @param body - Optional request body serialized as JSON.
+   * @returns Parsed body cast to `T`.
+   * @throws {DownstreamServiceError} on non-2xx status or connection/timeout failure.
+   */
   async patch<T>(url: string, body?: unknown): Promise<T> {
     return this.request<T>('PATCH', url, body);
   }
@@ -33,7 +48,7 @@ export class FetchHttpClientAdapter extends IHttpClient {
     try {
       res = await fetch(url, {
         method,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(this.timeoutMs),
         headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });

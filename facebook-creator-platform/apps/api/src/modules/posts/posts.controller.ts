@@ -14,6 +14,7 @@ import {
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiBadRequestResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -231,6 +232,7 @@ export class PostsController {
   @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
   @ApiForbiddenResponse({ description: 'Insufficient workspace role' })
   @ApiNotFoundResponse({ description: 'Post not found' })
+  @ApiBadRequestResponse({ description: 'scheduledAt missing or not a future datetime (BR-F06, VALIDATION_ERROR)' })
   @ApiConflictResponse({ description: 'Transition not allowed from current status (INVALID_STATE_TRANSITION)' })
   async transitionStatus(
     @Param('workspaceId') workspaceId: string,

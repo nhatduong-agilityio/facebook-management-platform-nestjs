@@ -355,7 +355,7 @@
           "name": "chk_post_metrics_non_negative",
           "expression": "(reach >= 0) AND (impressions >= 0) AND (likes >= 0) AND (comments >= 0) AND (shares >= 0)",
           "definition": "CHECK (((reach >= 0) AND (impressions >= 0) AND (likes >= 0) AND (comments >= 0) AND (shares >= 0)))",
-          "columnName": "likes"
+          "columnName": "reach"
         }
       ],
       "triggers": [],
@@ -1025,6 +1025,7 @@
             "trialing",
             "active",
             "grace_period",
+            "past_due",
             "cancelled"
           ],
           "mappedType": "enum"
@@ -1169,8 +1170,8 @@
         },
         {
           "name": "chk_subscriptions_status",
-          "expression": "\"status\" in ('trialing', 'active', 'grace_period', 'cancelled')",
-          "definition": "check (\"status\" in ('trialing', 'active', 'grace_period', 'cancelled'))",
+          "expression": "\"status\" in ('trialing', 'active', 'grace_period', 'past_due', 'cancelled')",
+          "definition": "check (\"status\" in ('trialing', 'active', 'grace_period', 'past_due', 'cancelled'))",
           "columnName": "status"
         }
       ],
@@ -1962,6 +1963,18 @@
         },
         {
           "columnNames": [
+            "status",
+            "scheduled_at"
+          ],
+          "composite": true,
+          "constraint": false,
+          "keyName": "idx_posts_scheduled_due",
+          "primary": false,
+          "unique": false,
+          "where": "((status)::text = 'scheduled'::text) AND (deleted_at IS NULL)"
+        },
+        {
+          "columnNames": [
             "status"
           ],
           "composite": false,
@@ -1969,6 +1982,17 @@
           "keyName": "idx_posts_status",
           "primary": false,
           "unique": false
+        },
+        {
+          "columnNames": [
+            "workspace_id"
+          ],
+          "composite": false,
+          "constraint": false,
+          "keyName": "idx_posts_workspace_active",
+          "primary": false,
+          "unique": false,
+          "where": "deleted_at IS NULL"
         },
         {
           "columnNames": [
@@ -3381,6 +3405,23 @@
           "collation": null,
           "enumItems": [],
           "mappedType": "string"
+        },
+        "last_retry_at": {
+          "name": "last_retry_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
         },
         "payload": {
           "name": "payload",
