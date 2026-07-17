@@ -5,11 +5,33 @@
 
 ## Resume point
 
-- **Next task:** H-8 — Internal route network isolation (ADR + guard JSDoc)
+- **Next task:** M-10 — Pagination missing from `listMembers` and `listForUser`
 - **Branch:** `nestjs-practice`
-- **Notes:** H-7 complete. Tests: 322/322 (apps/api). Lint: 0 errors. Continue with H-8.
+- **Notes:** M-9 complete. 18 file touches: 3 new trace files, 5 logic changes, 5 consumer updates, 5 spec updates. 322 tests green. Lint: 0 errors. Continue with M-10 (next in priority order).
 
 ## Log
+
+### 2026-07-17 — M-9 Correlation ID / distributed trace
+
+- **`apps/api/src/common/trace/trace.context.ts`** (new): `TraceContextService` — `@Injectable()` singleton wrapping `AsyncLocalStorage<string>`; `run(id, fn)` + `getRequestId()`.
+- **`apps/api/src/common/trace/trace.module.ts`** (new): `@Global() TraceModule` — provides and exports `TraceContextService` as a singleton across all modules.
+- **`apps/api/src/common/trace/request-id.middleware.ts`** (new): `RequestIdMiddleware` — reads `req.id` (pino-http `genReqId`-generated UUID v7) and calls `traceCtx.run(requestId, next)`.
+- **`apps/api/src/common/events/event-bus.port.ts`**: Added `traceId: string = uuidv7()` to `DomainEvent`; default UUID v7 so cron events are always correlated.
+- **`apps/api/src/common/events/rabbitmq-event-bus.ts`**: Injected `TraceContextService`; `publish()` stamps `event.traceId` from ALS before serializing.
+- **`apps/api/src/common/events/rabbitmq-event-bus.spec.ts`**: Added `mockTraceCtx` as 3rd constructor arg.
+- **`apps/api/src/app.module.ts`**: Added `genReqId: () => uuidv7()` to pinoHttp; imported `TraceModule`; implemented `NestModule.configure()` to apply `RequestIdMiddleware` globally.
+- **5 consumer files**: Added `traceId?: string` to payload interfaces; added `traceId: data.traceId` to all `logger.log`/`logger.warn` calls.
+- **5 consumer spec files**: Added `traceId: 'trace-abc'` to sampleData; updated exact-arg log assertions in `post-created` and `post-published` specs.
+- **`docs/DECISIONS.md`**: ADR-100 added — ALS + genReqId approach; why not OpenTelemetry; why event bus adapter sets traceId; change-log row added.
+- Tests: 322 passed. Lint: 0 errors.
+
+### 2026-07-17 — H-8 Internal route network isolation
+
+- **`apps/api/src/common/guards/internal-secret.guard.ts`** (updated): Rewrote JSDoc to document the dual-layer security model — primary control is ingress/LB blocking `/internal/*` from public internet (nginx, k8s `NetworkPolicy`, AWS WAF); `x-internal-secret` check is secondary defence-in-depth. No logic changes.
+- **`docs/DECISIONS.md`**: ADR-099 added — explains why shared secret alone is insufficient, required ingress/LB rule patterns for each platform, rationale for not adding a CIDR whitelist to the guard (`X-Forwarded-For` spoofable without LB stripping; network layer is the correct trust boundary). Change-log row added.
+- Lint: 0 errors.
+
+
 
 ### 2026-07-16 — H-7 Health check dependency probes
 

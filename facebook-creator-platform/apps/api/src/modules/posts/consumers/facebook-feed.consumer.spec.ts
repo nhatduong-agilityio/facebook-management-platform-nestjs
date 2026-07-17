@@ -40,6 +40,7 @@ const sampleData: FacebookFeedPayload = {
   facebookPostId: 'page-123_post-456',
   pageId: 'page-123',
   occurredAt: new Date().toISOString(),
+  traceId: 'trace-abc',
 };
 
 describe('FacebookFeedConsumer', () => {

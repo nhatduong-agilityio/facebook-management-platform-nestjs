@@ -14,6 +14,7 @@ export interface PostCreatedPayload {
   readonly postId: string;
   readonly workspaceId: string;
   readonly createdByUserId: string;
+  readonly traceId?: string;
 }
 
 /**
@@ -50,7 +51,7 @@ export class PostCreatedConsumer extends IdempotentConsumer {
     const msg = ctx.getMessage() as Message;
     await this.withDedup(data.eventId, channel, msg, async () => {
       this.logger.log(
-        { postId: data.postId, workspaceId: data.workspaceId },
+        { postId: data.postId, workspaceId: data.workspaceId, traceId: data.traceId },
         'PostCreatedConsumer: received posts.created',
       );
     });

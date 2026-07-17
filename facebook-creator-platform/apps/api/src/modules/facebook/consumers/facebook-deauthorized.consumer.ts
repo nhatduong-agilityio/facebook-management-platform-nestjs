@@ -15,6 +15,7 @@ export interface FacebookDeauthorizedPayload {
   readonly eventId: string;
   readonly pageId: string;
   readonly occurredAt: string;
+  readonly traceId?: string;
 }
 
 /**
@@ -64,7 +65,7 @@ export class FacebookPageDeauthorizedConsumer extends IdempotentConsumer {
 
       if (!account) {
         this.logger.log(
-          { pageId: data.pageId },
+          { pageId: data.pageId, traceId: data.traceId },
           'FacebookPageDeauthorizedConsumer: no active account found — already deauthorized or never connected',
         );
         return;
@@ -88,7 +89,7 @@ export class FacebookPageDeauthorizedConsumer extends IdempotentConsumer {
       });
 
       this.logger.log(
-        { pageId: data.pageId, accountId: account.id },
+        { pageId: data.pageId, accountId: account.id, traceId: data.traceId },
         'FacebookPageDeauthorizedConsumer: account soft-deleted and active posts cancelled',
       );
     });

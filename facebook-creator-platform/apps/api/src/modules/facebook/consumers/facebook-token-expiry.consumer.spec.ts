@@ -31,6 +31,7 @@ const sampleData: FacebookTokenExpiringPayload = {
   workspaceId: 'ws-uuid-1',
   pageId: 'page-111',
   tokenExpiresAt: new Date(Date.now() + 7 * 86400_000).toISOString(),
+  traceId: 'trace-abc',
 };
 
 describe('FacebookTokenExpiryConsumer', () => {
