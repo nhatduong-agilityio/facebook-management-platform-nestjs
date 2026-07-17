@@ -5,9 +5,31 @@
 
 ## Resume point
 
-- **Next task:** TM.6 — `services/search` replace HTTP with TCP `@MessagePattern`
+- **Next task:** TM.8 — `services/notification` add TCP `@MessagePattern` handlers
 - **Branch:** `nestjs-practice`
-- **Notes:** TM.4 + TM.5 complete. 345 apps/api tests green (7 new in TM.5). 13 analytics tests green (4 new in TM.4). Lint: 0 errors.
+- **Notes:** TM.7 complete. 349 apps/api tests green (4 new). Lint: 0 errors.
+
+## Log
+
+### 2026-07-17 — TM.7 `apps/api` → search TCP adapter
+
+- **`apps/api/src/modules/search/adapters/search-tcp.adapter.ts`** (new): Extends `ISearchClient`. Injects `SEARCH_TCP_CLIENT` `ClientProxy`. `search(workspaceId, query)` calls pattern `search.query` via `firstValueFrom(client.send(...).pipe(timeout(3_000)))`. Error mapping: `RpcException` → `DownstreamServiceError(500, 'search')`, timeout/connection → `DownstreamServiceError(503, 'search')`.
+- **`apps/api/src/modules/search/adapters/search-tcp.adapter.spec.ts`** (new): 4 tests — returns results, returns empty array, `RpcException` → 500, connection error → 503. Uses `of()` / `throwError()` from rxjs.
+- **`apps/api/src/modules/search/search.module.ts`**: Replaced `SearchHttpClientAdapter` + `IHttpClient` + `FetchHttpClientAdapter` with `SearchTcpAdapter`; added `ClientsModule.registerAsync` (Transport.TCP, reads `SEARCH_TCP_HOST`/`SEARCH_TCP_PORT`, defaults `localhost:4004`); updated module JSDoc.
+- **`apps/api/src/modules/search/ports/search.client.port.ts`**: Updated JSDoc — removed stale `SearchHttpClientAdapter` reference, now references `SearchTcpAdapter`.
+- `SearchController` and `search.controller.spec.ts` unchanged — both depend only on `ISearchClient` port.
+- Tests: 349 apps/api passed (4 new). Lint: 0 errors.
+
+## Log
+
+### 2026-07-17 — TM.6 `services/search` — replace HTTP with TCP `@MessagePattern`
+
+- **`services/search/src/search.message-controller.ts`** (new): `@MessagePattern('search.query')` → `SearchService.search(dto.workspaceId, dto.query)` → `SearchResultDto[]`; catches and re-throws as `RpcException({ code: 'INTERNAL', message })`.
+- **`services/search/src/search.message-controller.spec.ts`** (new): 2 tests — returns results array on success; throws `RpcException` on Algolia failure.
+- **`services/search/src/search.module.ts`**: Replaced `SearchController` with `SearchMessageController` in `controllers[]`; updated JSDoc (no HTTP, TCP only).
+- **`services/search/src/main.ts`**: Applied pure-microservice-hybrid pattern — `enableShutdownHooks()`, all config via `ConfigService`, added TCP transport (`SEARCH_TCP_HOST`/`SEARCH_TCP_PORT`, defaults `0.0.0.0:4004`), removed Swagger + ValidationPipe + `setGlobalPrefix` + `app.listen()`.
+- **`services/search/src/search.controller.ts`** (deleted): HTTP `GET /search` endpoint removed; `apps/api` will call via TCP after TM.7.
+- Tests: 17 search passed (2 new). Lint: 0 errors.
 
 ## Log
 

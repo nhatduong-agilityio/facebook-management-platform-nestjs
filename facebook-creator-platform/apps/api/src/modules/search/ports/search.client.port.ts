@@ -3,9 +3,8 @@ import type { SearchResultDto } from '../dto/search-result.dto';
 /**
  * Port: outbound client contract for the search service.
  *
- * Transport-agnostic — bound to `SearchHttpClientAdapter` in `SearchModule`.
- * A future RabbitMQ RPC adapter or direct Algolia adapter can implement this
- * interface without changing the controller.
+ * Transport-agnostic — bound to `SearchTcpAdapter` in `SearchModule` (ADR-094).
+ * Swapping to a direct Algolia adapter requires only a new binding here.
  */
 export abstract class ISearchClient {
   /**
