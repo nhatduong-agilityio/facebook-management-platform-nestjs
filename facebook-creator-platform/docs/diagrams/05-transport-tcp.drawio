@@ -1,0 +1,54 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T00:00:00.000Z" agent="Claude Code" version="24.7.2" type="device">
+<diagram id="tcp1" name="TCP @MessagePattern">
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1200" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="TCP Transport — @MessagePattern (Synchronous RPC)" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="16" width="1000" height="34" as="geometry"/></mxCell>
+<mxCell id="rule" value="Rule (ADR-094): TCP ClientProxy.send() is used for ALL synchronous queries from apps/api to internal services.  Pattern: adapter.send(pattern, payload).pipe(timeout(3000)) → firstValueFrom()" style="text;html=1;align=center;fontSize=11;fontColor=#CC6600;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="100" y="52" width="1600" height="22" as="geometry"/></mxCell>
+
+<!-- CALLER: apps/api -->
+<mxCell id="api" value="apps/api (ClientProxy.send())" style="rounded=1;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="90" width="300" height="60" as="geometry"/></mxCell>
+
+<!-- BILLING TCP -->
+<mxCell id="bil_z" value="services/billing — TCP :4001" style="swimlane;startSize=28;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="500" y="80" width="560" height="180" as="geometry"/></mxCell>
+<mxCell id="bil1" value="@MessagePattern('billing.get-quota')&#xa;payload: { workspaceId }&#xa;→ BillingService.getPostLimit(workspaceId)&#xa;← { postLimit: number }" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="bil_z"><mxGeometry x="15" y="38" width="530" height="60" as="geometry"/></mxCell>
+<mxCell id="bil2" value="@MessagePattern('billing.get-subscription')&#xa;payload: { workspaceId }&#xa;← SubscriptionResponse { planCode, status, postLimit, trialEndsAt }" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="bil_z"><mxGeometry x="15" y="108" width="530" height="60" as="geometry"/></mxCell>
+
+<!-- billing checkout -->
+<mxCell id="bil_z2" value="" style="swimlane;startSize=0;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;" vertex="1" parent="1"><mxGeometry x="500" y="270" width="560" height="70" as="geometry"/></mxCell>
+<mxCell id="bil3" value="@MessagePattern('billing.checkout')&#xa;payload: { workspaceId, planCode }&#xa;← CheckoutResponse { url: string }  (Stripe Checkout session URL)" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="bil_z2"><mxGeometry x="10" y="10" width="540" height="50" as="geometry"/></mxCell>
+
+<!-- ANALYTICS TCP -->
+<mxCell id="an_z" value="services/analytics — TCP :3002 (port consolidated, ADR-108)" style="swimlane;startSize=28;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="500" y="360" width="560" height="180" as="geometry"/></mxCell>
+<mxCell id="an1" value="@MessagePattern('analytics.workspace-metrics')&#xa;payload: { workspaceId }&#xa;← MetricsSummaryDto { reach, impressions, likes, comments, shares }" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="an_z"><mxGeometry x="15" y="38" width="530" height="60" as="geometry"/></mxCell>
+<mxCell id="an2" value="@MessagePattern('analytics.post-metrics')&#xa;payload: { postId }&#xa;← PostMetricsDayDto[] (daily rows, oldest first; [] if no data yet)" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="an_z"><mxGeometry x="15" y="108" width="530" height="60" as="geometry"/></mxCell>
+
+<!-- AUDIT TCP -->
+<mxCell id="au_z" value="services/audit — TCP :3003 (port consolidated, ADR-108)" style="swimlane;startSize=28;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="500" y="560" width="560" height="180" as="geometry"/></mxCell>
+<mxCell id="au1" value="@MessagePattern('audit.get-logs')&#xa;payload: { workspaceId, limit? }&#xa;← AuditEvent[] (newest first, default limit 50)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="au_z"><mxGeometry x="15" y="38" width="530" height="60" as="geometry"/></mxCell>
+<mxCell id="au2" value="@MessagePattern('audit.get-log')&#xa;payload: { id }&#xa;← AuditEvent | RpcException(NOT_FOUND)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="au_z"><mxGeometry x="15" y="108" width="530" height="60" as="geometry"/></mxCell>
+
+<!-- SEARCH TCP -->
+<mxCell id="se_z" value="services/search — TCP :3004 (port consolidated, ADR-108)" style="swimlane;startSize=28;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="500" y="760" width="560" height="100" as="geometry"/></mxCell>
+<mxCell id="se1" value="@MessagePattern('search.query')&#xa;payload: { q: string, workspaceId: string, limit?, cursor? }&#xa;← { data: AlgoliaHit[], nextCursor? }" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="se_z"><mxGeometry x="15" y="32" width="530" height="58" as="geometry"/></mxCell>
+
+<!-- NOTIFICATION TCP -->
+<mxCell id="no_z" value="services/notification — TCP :3005 (port consolidated, ADR-108)" style="swimlane;startSize=28;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="500" y="880" width="560" height="180" as="geometry"/></mxCell>
+<mxCell id="no1" value="@MessagePattern('notification.list')&#xa;payload: { workspaceId, userId, limit?, cursor? }&#xa;← { data: Notification[], nextCursor? }" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="no_z"><mxGeometry x="15" y="38" width="530" height="60" as="geometry"/></mxCell>
+<mxCell id="no2" value="@MessagePattern('notification.mark-read')&#xa;payload: { notificationId, userId }&#xa;← void | RpcException(NOT_FOUND or FORBIDDEN)" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="no_z"><mxGeometry x="15" y="108" width="530" height="60" as="geometry"/></mxCell>
+
+<!-- ADAPTER notes -->
+<mxCell id="adp_box" value="Adapter Pattern (Hexagonal):&#xa;─────────────────────────────&#xa;IBillingHttpClient (port) ← BillingTcpAdapter (impl)&#xa;IAnalyticsClient (port) ← AnalyticsTcpAdapter (impl)&#xa;IAuditClient (port) ← AuditTcpAdapter (impl)&#xa;ISearchClient (port) ← SearchTcpAdapter (impl)&#xa;INotificationClient (port) ← NotificationTcpAdapter (impl)&#xa;&#xa;Controllers inject the port interface — never the adapter directly.&#xa;Swapping TCP → gRPC only touches the adapter + module registration." style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="1130" y="80" width="560" height="240" as="geometry"/></mxCell>
+
+<mxCell id="timeout_note" value="TCP_TIMEOUT_MS = 3000 ms&#xa;On timeout / connection refused → DownstreamServiceError(503)" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="1130" y="340" width="400" height="70" as="geometry"/></mxCell>
+
+<!-- TCP arrows (left side) -->
+<mxCell id="e_bil" value="billing.get-quota&#xa;billing.get-subscription&#xa;billing.checkout" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;strokeWidth=2;fontSize=9;" edge="1" source="api" target="bil_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_an" value="analytics.workspace-metrics&#xa;analytics.post-metrics" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E9E9E;strokeWidth=2;fontSize=9;" edge="1" source="api" target="an_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_au" value="audit.get-logs&#xa;audit.get-log" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#4A4A4A;strokeWidth=2;fontSize=9;" edge="1" source="api" target="au_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_se" value="search.query" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;strokeWidth=2;fontSize=9;" edge="1" source="api" target="se_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_no" value="notification.list&#xa;notification.mark-read" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#C5396B;strokeWidth=2;fontSize=9;" edge="1" source="api" target="no_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+</mxfile>
