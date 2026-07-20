@@ -61,6 +61,39 @@ on **2026-06-29**; use these as the floor and prefer the latest patch.
 > two majors one notch back avoids a broken lint pipeline while keeping
 > everything else on the newest supported release. Upgrade deliberately, not by default.
 
+## ADR-INF-03 GitHub Actions CI/CD pipeline (2026-07-20)
+
+Two workflow files live in `.github/workflows/`:
+
+| File | Trigger | Purpose |
+| --- | --- | --- |
+| `ci.yml` | `push` + `pull_request` (all branches) | Lint · TypeScript build · Vitest tests |
+| `cd.yml` | `push` to `main` | Build+push image → migrate → deploy → health gate → smoke test |
+
+**Image registry:** GitHub Container Registry (`ghcr.io`). `secrets.GITHUB_TOKEN` (auto-provided) is used for push — no separate `GHCR_TOKEN` secret is needed when the workflow runs in the same repository.
+
+**Required GitHub Secrets** (set under *Settings → Secrets and variables → Actions*):
+
+| Secret | Description |
+| --- | --- |
+| `DEPLOY_HOST` | SSH hostname or IP of the production server |
+| `DEPLOY_USER` | SSH username on the production server (e.g. `ubuntu`, `deploy`) |
+| `DEPLOY_SSH_KEY` | SSH private key (PEM) for the deploy user |
+| `API_URL` | Public base URL of the deployed API (e.g. `https://api.example.com`) |
+| `TEST_JWT` | Valid Clerk JWT for a seeded test user — used by the smoke test job |
+
+**App secrets** (`CLERK_SECRET_KEY`, `STRIPE_SECRET_KEY`, `FACEBOOK_APP_SECRET`, `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`, `RESEND_API_KEY`, `PII_ENCRYPTION_KEY`, `DATABASE_URL`, etc.) live in `/opt/fcp/.env` on the deploy host. They are never stored in GitHub Secrets and never pass through the workflow.
+
+**Deployment approach:** SSH (`appleboy/ssh-action@v1`) into the production host. The deploy script pulls the new GHCR image, retags it as `fcp-app:latest`, runs migration containers, then calls `docker compose -f docker-compose.yml up -d --no-build`. The `--no-build` flag prevents compose from rebuilding from source; it always uses the pulled image.
+
+**Health gate:** `curl` loop — polls `GET /api/v1/health` every 10 s, up to 12 attempts (120 s total). Non-200 after 12 attempts exits with code 1, failing the workflow.
+
+**Smoke test:** Artillery `test/load/smoke.yml` runs from the GHA runner against `$API_URL`. The `--record` flag is omitted (avoids Artillery Cloud dependency). The `smoke` job depends on `deploy` — if the health gate fails, the smoke job never starts.
+
+**Rules:** CD never runs on PRs; secrets are never echoed (`set -e` but no `set -x` in deploy script); the smoke test must pass for the workflow to show green.
+
+---
+
 ## Architecture decisions (mirror of CR-01 ADRs)
 - ADR-011 MikroORM (Unit of Work + Identity Map) over TypeORM
 - ADR-012 PII encryption at rest (AES-256-GCM) + log/event redaction

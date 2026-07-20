@@ -7,9 +7,18 @@
 
 - **Next task:** D-2 — Postman collection for full API flow coverage (see `docs/TASKS.md` § Documentation).
 - **Branch:** `nestjs-practice`
-- **Notes:** INF-02 complete. `docker-compose.override.yml` created; dev/prod split documented across README, apps/api/README, SETUP.md. Lint: 0 errors.
+- **Notes:** INF-03 complete. `.github/workflows/ci.yml` + `cd.yml` created; ADR-INF-03 in DECISIONS.md. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-20 — INF-03 GitHub Actions CI/CD pipeline
+
+- **`.github/workflows/ci.yml`** (new): triggers on `push` + `pull_request` (all branches); Node 25 matrix; pnpm cached; steps: install → lint → `pnpm -r build` → `pnpm test`. No secrets needed.
+- **`.github/workflows/cd.yml`** (new): triggers on `push` to `main`; three sequential jobs — `build-push` (Docker Buildx → GHCR via `secrets.GITHUB_TOKEN`), `deploy` (SSH: pull + retag + migration containers + `docker compose -f docker-compose.yml up -d --no-build` + 120s health gate), `smoke` (Artillery `test/load/smoke.yml` against `$API_URL`).
+- **`docs/DECISIONS.md`**: ADR-INF-03 entry — required secrets table (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `API_URL`, `TEST_JWT`), rationale for `GITHUB_TOKEN` vs `GHCR_TOKEN`, deployment approach, health-gate strategy, and smoke-test rules.
+- Lint: 0 errors.
+
+---
 
 ### 2026-07-20 — INF-02 Split dev/prod Docker Compose
 
