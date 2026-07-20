@@ -48,6 +48,6 @@ import { InternalFacebookController } from './internal-api.controller';
     { provide: IFacebookAccountRepository, useClass: MikroOrmFacebookAccountRepository },
     FacebookTokenExpiryScheduler,
   ],
-  exports: [FacebookService],
+  exports: [FacebookService, IFacebookAccountRepository],
 })
 export class FacebookModule {}

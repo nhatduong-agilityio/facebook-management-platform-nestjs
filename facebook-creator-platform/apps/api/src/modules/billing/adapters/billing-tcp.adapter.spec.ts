@@ -106,4 +106,5 @@ describe('BillingTcpAdapter', () => {
       ).rejects.toMatchObject({ status: 503 });
     });
   });
+
 });

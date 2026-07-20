@@ -4,14 +4,18 @@ import { IWorkspaceRepository } from './ports/workspace.repository.port';
 import { IWorkspaceMemberRepository } from './ports/workspace-member.repository.port';
 import { IInvitationRepository } from './ports/invitation.repository.port';
 import { IEventBus } from '../../common/events/event-bus.port';
+import { IPostRepository } from '../posts/ports/post.repository.port';
+import { IFacebookAccountRepository } from '../facebook/ports/facebook-account.repository.port';
 import { Workspace } from './entities/workspace.entity';
 import { WorkspaceMember } from './entities/workspace-member.entity';
 import { Invitation } from './entities/invitation.entity';
 import { MemberJoinedEvent } from './events/member-joined.event';
 import { MemberRoleChangedEvent } from './events/member-role-changed.event';
+import { WorkspaceDeletedEvent } from './events/workspace-deleted.event';
 
 const mockWorkspaceRepo = {
   findById: vi.fn(),
+  findByIdIncludingDeleted: vi.fn(),
   findAllByUserId: vi.fn(),
   existsBySlug: vi.fn(),
   save: vi.fn(),
@@ -23,6 +27,7 @@ const mockMemberRepo = {
   findByWorkspaceAndUserId: vi.fn(),
   findAllByWorkspaceId: vi.fn(),
   countOwners: vi.fn(),
+  countByWorkspace: vi.fn(),
   remove: vi.fn(),
   save: vi.fn(),
 } as unknown as IWorkspaceMemberRepository;
@@ -37,11 +42,26 @@ const mockEventBus = {
   publish: vi.fn(),
 } as unknown as IEventBus;
 
+const mockPostRepo = {
+  softDeleteNonTerminalByWorkspace: vi.fn(),
+} as unknown as IPostRepository;
+
+const mockFacebookAccountRepo = {
+  softDeleteAllByWorkspace: vi.fn(),
+} as unknown as IFacebookAccountRepository;
+
 describe('WorkspaceService', () => {
   let service: WorkspaceService;
 
   beforeEach(() => {
-    service = new WorkspaceService(mockWorkspaceRepo, mockMemberRepo, mockInvitationRepo, mockEventBus);
+    service = new WorkspaceService(
+      mockWorkspaceRepo,
+      mockMemberRepo,
+      mockInvitationRepo,
+      mockEventBus,
+      mockPostRepo,
+      mockFacebookAccountRepo,
+    );
     vi.clearAllMocks();
   });
 
@@ -501,6 +521,116 @@ describe('WorkspaceService', () => {
 
       expect(result.isOk()).toBe(true);
       expect(mockMemberRepo.countOwners).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // deleteWorkspace (W-1)
+  // ---------------------------------------------------------------------------
+
+  describe('deleteWorkspace', () => {
+    let ws: Workspace;
+    const ownerMember = Object.assign(new WorkspaceMember(), { id: 'm-1', userId: 'owner-1', role: 'owner' });
+
+    beforeEach(() => {
+      ws = Object.assign(new Workspace(), { id: 'ws-1', name: 'Acme', ownerUserId: 'owner-1' });
+    });
+
+    it('returns ok(void) and cascades soft-deletes in one flush', async () => {
+      vi.mocked(mockWorkspaceRepo.findByIdIncludingDeleted).mockResolvedValue(ws);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(ownerMember);
+      vi.mocked(mockMemberRepo.countByWorkspace).mockResolvedValue(1);
+      vi.mocked(mockPostRepo.softDeleteNonTerminalByWorkspace).mockResolvedValue(3);
+      vi.mocked(mockFacebookAccountRepo.softDeleteAllByWorkspace).mockResolvedValue(undefined);
+      vi.mocked(mockWorkspaceRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      const result = await service.deleteWorkspace('ws-1', 'owner-1');
+
+      expect(result.isOk()).toBe(true);
+      expect(mockPostRepo.softDeleteNonTerminalByWorkspace).toHaveBeenCalledWith('ws-1');
+      expect(mockFacebookAccountRepo.softDeleteAllByWorkspace).toHaveBeenCalledWith('ws-1');
+      expect(mockWorkspaceRepo.save).toHaveBeenCalledOnce();
+      expect(ws.deletedAt).toBeInstanceOf(Date);
+    });
+
+    it('publishes exactly one WorkspaceDeletedEvent with richer payload after flush', async () => {
+      vi.mocked(mockWorkspaceRepo.findByIdIncludingDeleted).mockResolvedValue(ws);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(ownerMember);
+      vi.mocked(mockMemberRepo.countByWorkspace).mockResolvedValue(1);
+      vi.mocked(mockPostRepo.softDeleteNonTerminalByWorkspace).mockResolvedValue(7);
+      vi.mocked(mockFacebookAccountRepo.softDeleteAllByWorkspace).mockResolvedValue(undefined);
+      vi.mocked(mockWorkspaceRepo.save).mockResolvedValue(undefined);
+      vi.mocked(mockEventBus.publish).mockResolvedValue(undefined);
+
+      await service.deleteWorkspace('ws-1', 'owner-1');
+
+      const publishCalls = vi.mocked(mockEventBus.publish).mock.calls;
+      expect(publishCalls).toHaveLength(1);
+      const event = publishCalls[0][0] as WorkspaceDeletedEvent;
+      expect(event).toBeInstanceOf(WorkspaceDeletedEvent);
+      expect(event.workspaceId).toBe('ws-1');
+      expect(event.workspaceName).toBe('Acme');
+      expect(event.deletedBy).toBe('owner-1');
+      expect(event.cancelledPostCount).toBe(7);
+      expect(event.memberCount).toBe(1);
+    });
+
+    it('returns ok(void) idempotently when workspace is already soft-deleted', async () => {
+      const deletedWs = Object.assign(new Workspace(), {
+        id: 'ws-1',
+        name: 'Acme',
+        deletedAt: new Date('2026-01-01'),
+      });
+      vi.mocked(mockWorkspaceRepo.findByIdIncludingDeleted).mockResolvedValue(deletedWs);
+
+      const result = await service.deleteWorkspace('ws-1', 'owner-1');
+
+      expect(result.isOk()).toBe(true);
+      // No cascade or events — workspace already gone.
+      expect(mockPostRepo.softDeleteNonTerminalByWorkspace).not.toHaveBeenCalled();
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
+    });
+
+    it('returns err(NOT_FOUND) when workspace never existed', async () => {
+      vi.mocked(mockWorkspaceRepo.findByIdIncludingDeleted).mockResolvedValue(null);
+
+      const result = await service.deleteWorkspace('missing', 'owner-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('NOT_FOUND');
+    });
+
+    it('returns err(FORBIDDEN) when caller is not a member', async () => {
+      vi.mocked(mockWorkspaceRepo.findByIdIncludingDeleted).mockResolvedValue(ws);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(null);
+
+      const result = await service.deleteWorkspace('ws-1', 'stranger');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('FORBIDDEN');
+    });
+
+    it('returns err(FORBIDDEN) when caller is a member but not owner', async () => {
+      const editorMember = Object.assign(new WorkspaceMember(), { id: 'm-2', userId: 'editor-1', role: 'editor' });
+      vi.mocked(mockWorkspaceRepo.findByIdIncludingDeleted).mockResolvedValue(ws);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(editorMember);
+
+      const result = await service.deleteWorkspace('ws-1', 'editor-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('FORBIDDEN');
+    });
+
+    it('returns err(CONFLICT) when other members still exist (BR-R02)', async () => {
+      vi.mocked(mockWorkspaceRepo.findByIdIncludingDeleted).mockResolvedValue(ws);
+      vi.mocked(mockMemberRepo.findByWorkspaceAndUserId).mockResolvedValue(ownerMember);
+      vi.mocked(mockMemberRepo.countByWorkspace).mockResolvedValue(3);
+
+      const result = await service.deleteWorkspace('ws-1', 'owner-1');
+
+      expect(result.isErr()).toBe(true);
+      expect(result._unsafeUnwrapErr().code).toBe('CONFLICT');
     });
   });
 });

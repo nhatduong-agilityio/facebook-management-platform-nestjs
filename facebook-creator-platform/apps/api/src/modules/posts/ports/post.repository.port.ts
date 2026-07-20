@@ -121,4 +121,24 @@ export abstract class IPostRepository {
    * @param post - The managed entity whose changes should be flushed.
    */
   abstract save(post: Post): Promise<void>;
+
+  /**
+   * Soft-deletes all non-terminal posts for a workspace **without flushing**.
+   *
+   * "Non-terminal" means status is `draft`, `scheduled`, or `publishing`; posts
+   * already in `published` or `failed` state are left untouched (they are immutable
+   * historical records).
+   *
+   * The entities are loaded into the current Unit of Work and marked dirty
+   * (`deletedAt = now()`). The caller is responsible for calling `em.flush()` to
+   * commit the changes atomically together with other cascade mutations (W-1, §6).
+   *
+   * Returns the count rather than the full entity list: callers only need the count
+   * for the `WorkspaceDeletedEvent` payload — emitting one event per cancelled post
+   * would produce N events for N posts (W-1 Fix 2).
+   *
+   * @param workspaceId - UUID of the workspace being deleted.
+   * @returns Number of non-terminal posts that were soft-deleted.
+   */
+  abstract softDeleteNonTerminalByWorkspace(workspaceId: string): Promise<number>;
 }

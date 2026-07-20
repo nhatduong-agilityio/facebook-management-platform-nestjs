@@ -1101,9 +1101,84 @@ port mappings and 8 fewer redundant env vars.
 
 ---
 
+## ADR-109 — W-1: Workspace soft-delete implementation decisions (2026-07-17)
+
+**Context:** `DELETE /workspaces/:id` requires domain-layer cascade before soft-deleting the
+workspace row (posts and facebook_accounts have `ON DELETE RESTRICT` FKs). Several design
+choices were needed.
+
+**Decisions:**
+
+1. **BR-R02 guard uses total member count, not owner count.** `countByWorkspace` returns ALL
+   members regardless of role. Deletion is rejected (409) if any other member exists — not just
+   other owners. Rationale: a workspace with a sole owner plus editors/viewers is not safe to
+   delete without notice; those members would lose access without warning.
+
+2. **Billing cancel is best-effort (after flush).** `billing.cancelWorkspaceSubscription` is
+   called inside a `try/catch` after `em.flush()`. A billing outage never blocks workspace
+   deletion. The subscription transitions to `cancelled` on the next reconciliation event or
+   the Stripe webhook fires on its own timeline.
+
+3. **`WorkspaceRolesGuard` not applied to DELETE endpoint.** The guard reads
+   `request.params.workspaceId` but the endpoint uses `/:id`. Applying the guard would require
+   duplicating the route param under a second name. Service-layer ownership validation is
+   sufficient (checks `member.role === 'owner'` directly).
+
+4. **Retention job uses raw SQL only, forked EM (ADR-054).** `em.getConnection().execute()`
+   bypasses the soft-delete filter (`deletedAt IS NULL`) that would hide the rows to purge.
+   Deletion order: `posts → facebook_accounts → workspace_members → invitations → workspaces`
+   (FK `ON DELETE RESTRICT` enforces this order; reversing it would fail at the DB).
+
+5. **`cancelWorkspaceSubscription` added to `IBillingHttpClient` port.** The interface already
+   covers `getPostLimit`, `getSubscription`, and `createCheckoutSession`. The deletion hook
+   fits here rather than in a new port — it is another outbound call to the billing service.
+
+---
+
+## ADR-109 Amendment — W-1 post-review: 5 architectural fixes (2026-07-20)
+
+**Context:** After W-1 was marked complete, a DDD/event-driven review identified 5 issues with
+the initial implementation. All 5 were fixed in the same session.
+
+**Decisions:**
+
+1. **Idempotency — `DELETE` on already-deleted workspace returns 204, not 404.**
+   Added `findByIdIncludingDeleted` (uses `{ filters: false }` to bypass the MikroORM soft-delete
+   filter) to the `IWorkspaceRepository` port. `WorkspaceService.deleteWorkspace` checks `deletedAt`
+   before any membership validation; returns `ok(undefined)` immediately if already deleted.
+
+2. **Count-in-event instead of N `PostCancelledEvent` messages.**
+   `softDeleteNonTerminalByWorkspace` now returns `Promise<number>` (cancelled post count). The
+   `PostCancelledEvent` file was deleted (no consumers existed). `WorkspaceDeletedEvent` carries
+   `cancelledPostCount: number` — downstream consumers use the count for accounting/notification
+   without requiring one message per cancelled post.
+
+3. **Batch hard-deletes in `WorkspacePurgeJob` (lock contention prevention).**
+   Each table's DELETE uses `WHERE id IN (SELECT id FROM … WHERE deleted_at <= now() - 90 days LIMIT 500)`.
+   PostgreSQL does not support `DELETE … LIMIT` directly. A private `batchDelete` helper loops
+   until `rowCount` returns 0. Batch size constant: `BATCH_SIZE = 500`.
+
+4. **Billing cancel moved from orchestration (TCP sync) to choreography (RMQ event consumer).**
+   `cancelWorkspaceSubscription` removed from `IBillingHttpClient` + `BillingTcpAdapter` +
+   `BillingMessageController`. `BillingModule` import removed from `WorkspaceModule`.
+   New `WorkspaceDeletedConsumer` in `services/billing` consumes `workspace.deleted` via a
+   dedicated RMQ queue (`billing_workspace_queue`) added in `billing/main.ts`. Acks on `ok()`,
+   nacks+requeue on `err()` or thrown exception. Idempotent: `cancelWorkspaceSubscription` is
+   a no-op if no subscription exists or it is already cancelled — safe under redelivery without
+   a Redis dedup key.
+
+5. **Richer `WorkspaceDeletedEvent` payload.**
+   Fields: `workspaceId`, `workspaceName`, `deletedBy` (renamed from `ownerId`), `deletedAt`,
+   `cancelledPostCount`, `memberCount`. Enables downstream consumers (notifications, audit, billing)
+   to act without additional lookups.
+
+---
+
 ## Change log
 | Date | Decision |
 |---|---|
+| 2026-07-20 | **ADR-109 amendment.** 5 post-review fixes: idempotency (`findByIdIncludingDeleted`); count-based event (drop `PostCancelledEvent`); 500-row batch purge (`WHERE id IN … LIMIT 500` subquery); billing choreography (`WorkspaceDeletedConsumer` in billing, TCP handler removed); richer `WorkspaceDeletedEvent` (`workspaceName`, `cancelledPostCount`, `memberCount`, `deletedBy`). |
+| 2026-07-17 | **ADR-109 W-1 implementation.** BR-R02 uses total member count; billing cancel best-effort after flush; `WorkspaceRolesGuard` skipped (`:id` vs `:workspaceId`); retention job raw SQL + forked EM; FK deletion order posts→accounts→members→invitations→workspaces. |
 | 2026-07-17 | **ADR-108 TM.12: `IHttpClient`/`FetchHttpClientAdapter` removed from `apps/api`; `DownstreamServiceError` moved to `common/errors/`; port consolidation for pure-TCP services (analytics/audit/search/notification collapse 400X → 300X).** |
 | 2026-07-17 | **ADR-102 Partial indexes for quota count and publish cron (M-11).** `idx_posts_workspace_active (workspace_id) WHERE deleted_at IS NULL`; `idx_posts_scheduled_due (status, scheduled_at) WHERE status='scheduled' AND deleted_at IS NULL`. Migration `Migration20260717000001_PerfIndexesV2`. |
 | 2026-07-17 | **ADR-101 Member list cursor uses `joinedAt` not `createdAt` (M-10).** `WorkspaceMember` does not extend `BaseEntity` (no `deletedAt` — hard-deleted); `joinedAt` is the creation timestamp. Members cursor: `base64url(JSON({ joinedAt, id }))` ASC. Workspaces cursor: `base64url(JSON({ createdAt, id }))` DESC, matching posts. |

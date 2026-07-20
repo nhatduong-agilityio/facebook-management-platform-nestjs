@@ -107,4 +107,18 @@ export class MikroOrmPostRepository extends IPostRepository {
   async save(_post: Post): Promise<void> {
     await this.em.flush();
   }
+
+  /** @inheritdoc */
+  async softDeleteNonTerminalByWorkspace(workspaceId: string): Promise<number> {
+    const posts = await this.repo.find({
+      workspace: workspaceId,
+      status: { $in: ['draft', 'scheduled', 'publishing'] },
+    });
+    const now = new Date();
+    for (const post of posts) {
+      post.deletedAt = now;
+    }
+    // Caller owns the single em.flush() for the cascade (W-1, §6).
+    return posts.length;
+  }
 }

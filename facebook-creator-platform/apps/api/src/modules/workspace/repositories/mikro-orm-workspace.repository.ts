@@ -31,6 +31,11 @@ export class MikroOrmWorkspaceRepository extends IWorkspaceRepository {
     return this.repo.findOne({ id });
   }
 
+  /** @inheritdoc */
+  findByIdIncludingDeleted(id: string): Promise<Workspace | null> {
+    return this.repo.findOne({ id }, { filters: false });
+  }
+
   /**
    * Returns a page of active workspaces the user belongs to, ordered `createdAt DESC, id DESC`
    * (keyset pagination — §12).

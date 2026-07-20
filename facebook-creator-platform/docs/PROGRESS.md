@@ -5,11 +5,85 @@
 
 ## Resume point
 
-- **Next task:** W-1 — Workspace soft-delete (deferred; see TASKS.md)
+- **Next task:** None queued — W-1 was the last deferred task. Check `docs/TASKS.md` for any new tasks or backlog items.
 - **Branch:** `nestjs-practice`
-- **Notes:** **Three-Transport Migration (TM.1–TM.12) complete.** 362 apps/api + 91 services tests green. Lint: 0 errors. `grep -r 'FetchHttpClientAdapter\|IHttpClient\|SERVICE_URL' apps/api/src` → 0 results. Port consolidation done (analytics/audit/search/notification TCP on 300X, not 400X).
+- **Notes:** **W-1 + 5 architectural fixes complete (ADR-109).** Choreography-based billing cancel, single richer `WorkspaceDeletedEvent`, 500-row batch purge, idempotency on already-deleted workspace. 382 apps/api + 38 billing tests green. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-20 — W-1 Post-review: 5 architectural fixes (ADR-109 amendments)
+
+**Context:** After W-1 was marked complete, a DDD/event-driven architecture review identified 5 design issues.
+
+**Fix 1 — Idempotency (`DELETE` on already-deleted → 204, not error):**
+- Added `findByIdIncludingDeleted(id)` to `IWorkspaceRepository` port + MikroORM impl (`filters: false` bypasses soft-delete filter).
+- `WorkspaceService.deleteWorkspace` returns `ok(undefined)` immediately when `workspace.deletedAt` is set.
+
+**Fix 2 — Count-based event instead of N PostCancelledEvents:**
+- `softDeleteNonTerminalByWorkspace` return type changed `Promise<Post[]>` → `Promise<number>`.
+- `PostCancelledEvent` deleted — no consumers; individual per-post events replaced by `cancelledPostCount` in `WorkspaceDeletedEvent`.
+
+**Fix 3 — Batch hard-deletes in `WorkspacePurgeJob`:**
+- `BATCH_SIZE = 500`; each table uses `WHERE id IN (SELECT id FROM … LIMIT 500)` subquery (PG has no `DELETE … LIMIT`).
+- `batchDelete` helper loops until `rowCount = 0`, summing totals per table.
+
+**Fix 4 — Choreography for billing (orchestration → choreography):**
+- Removed `cancelWorkspaceSubscription` from `IBillingHttpClient`, `BillingTcpAdapter`, `BillingMessageController`.
+- Removed `BillingModule` from `WorkspaceModule` imports.
+- Added `services/billing/src/consumers/workspace-deleted.consumer.ts` — `@EventPattern('workspace.deleted')`, acks `ok()`, nacks+requeue on `err()`/throw; `RequestContext.create` wraps the billing call.
+- Added `WorkspaceDeletedConsumer` to `BillingModule.controllers[]` and a second `connectMicroservice` in `billing/main.ts`.
+
+**Fix 5 — Richer `WorkspaceDeletedEvent`:**
+- Added `workspaceName`, `cancelledPostCount`, `memberCount`; renamed `ownerId` → `deletedBy`.
+
+**Tests:**
+- `workspace.service.spec.ts` — `ws` moved to `let` + `beforeEach` reset (prevents `deletedAt` mutation leaking across tests); idempotency test added; event assertion updated.
+- `workspace-purge.job.spec.ts` — LIMIT/batch-loop/summation tests added.
+- `billing-tcp.adapter.spec.ts` + `billing.message-controller.spec.ts` — `cancelWorkspaceSubscription` blocks removed.
+- `services/billing/src/consumers/workspace-deleted.consumer.spec.ts` (NEW) — 5 tests.
+
+**Decisions:** ADR-109 amended — see DECISIONS.md. 382 apps/api + 38 billing = 420 total. Lint: 0 errors.
+
+---
+
+### 2026-07-17 — W-1 Workspace soft-delete
+
+**New files:**
+- `apps/api/src/modules/workspace/events/workspace-deleted.event.ts` — `WorkspaceDeletedEvent` (routingKey `workspace.deleted`).
+- `apps/api/src/modules/posts/events/post-cancelled.event.ts` — `PostCancelledEvent` (routingKey `posts.cancelled`).
+- `apps/api/src/modules/workspace/jobs/workspace-purge.job.ts` — `WorkspacePurgeJob` `@Cron('0 2 * * *')`, raw SQL, FK order, 90-day retention.
+- `apps/api/src/modules/workspace/jobs/workspace-purge.job.spec.ts` — 7 tests (FK order, row counts, error swallow).
+
+**Changed files:**
+- `apps/api/src/modules/workspace/workspace.service.ts` — added `deleteWorkspace(workspaceId, userId)`: NOT_FOUND / FORBIDDEN / CONFLICT (BR-R02 countByWorkspace > 1) / cascade + single flush + best-effort billing cancel + events.
+- `apps/api/src/modules/workspace/workspace.controller.ts` — `DELETE /workspaces/:id` → 204.
+- `apps/api/src/modules/workspace/workspace.module.ts` — imports PostsModule, FacebookModule, BillingModule; adds WorkspacePurgeJob.
+- `apps/api/src/modules/workspace/ports/workspace-member.repository.port.ts` — added `countByWorkspace`.
+- `apps/api/src/modules/workspace/repositories/mikro-orm-workspace-member.repository.ts` — implemented `countByWorkspace`.
+- `apps/api/src/modules/posts/ports/post.repository.port.ts` — added `softDeleteNonTerminalByWorkspace`.
+- `apps/api/src/modules/posts/repositories/mikro-orm-post.repository.ts` — implemented `softDeleteNonTerminalByWorkspace`.
+- `apps/api/src/modules/posts/posts.module.ts` — exports `IPostRepository`.
+- `apps/api/src/modules/facebook/ports/facebook-account.repository.port.ts` — added `softDeleteAllByWorkspace`.
+- `apps/api/src/modules/facebook/repositories/mikro-orm-facebook-account.repository.ts` — implemented `softDeleteAllByWorkspace`.
+- `apps/api/src/modules/facebook/facebook.module.ts` — exports `IFacebookAccountRepository`.
+- `apps/api/src/modules/billing/ports/billing-http.client.port.ts` — added `cancelWorkspaceSubscription`.
+- `apps/api/src/modules/billing/adapters/billing-tcp.adapter.ts` — implemented `cancelWorkspaceSubscription`.
+- `apps/api/src/modules/billing/billing.module.ts` — exports `IBillingHttpClient`.
+- `services/billing/src/billing.service.ts` — added `cancelWorkspaceSubscription`.
+- `services/billing/src/billing.message-controller.ts` — added `@MessagePattern('billing.cancel-workspace')`.
+
+**Tests added (all spec files):**
+- `workspace.service.spec.ts` — 7 new `deleteWorkspace` cases.
+- `workspace.controller.spec.ts` — 4 new `deleteWorkspace` endpoint cases (204/403/404/409).
+- `billing-tcp.adapter.spec.ts` — 3 new `cancelWorkspaceSubscription` cases.
+- `billing.message-controller.spec.ts` — 2 new `cancelWorkspaceSubscription` cases.
+- `workspace-purge.job.spec.ts` — 7 cases (FK order, row counts, error handling).
+
+**Decisions:** ADR-109 — total-member BR-R02 guard; best-effort billing; WorkspaceRolesGuard skipped on `:id`; raw SQL in purge job; FK order.
+
+**Tests:** 383 apps/api + 35 billing = 418 passed. Lint: 0 errors.
+
+---
 
 ### 2026-07-17 — TM.12 Cleanup + full test pass — **Three-Transport Migration complete**
 

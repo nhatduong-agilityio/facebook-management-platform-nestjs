@@ -455,6 +455,9 @@ importers:
       '@fcp/constants':
         specifier: workspace:*
         version: link:../../libs/constants
+      '@fcp/rmq-options':
+        specifier: workspace:*
+        version: link:../../libs/rmq-options
       '@mikro-orm/core':
         specifier: ^7.1.5
         version: 7.1.5

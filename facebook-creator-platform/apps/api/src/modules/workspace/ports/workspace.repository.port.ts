@@ -51,6 +51,17 @@ export abstract class IWorkspaceRepository {
   abstract findById(id: string): Promise<Workspace | null>;
 
   /**
+   * Finds a workspace by UUID regardless of its `deletedAt` state.
+   *
+   * Used by `deleteWorkspace` to distinguish "never existed" (null) from
+   * "already soft-deleted" (workspace with deletedAt set) for idempotent 204 responses.
+   *
+   * @param id - UUID v7 of the workspace.
+   * @returns The workspace (active or deleted), or `null` if it never existed.
+   */
+  abstract findByIdIncludingDeleted(id: string): Promise<Workspace | null>;
+
+  /**
    * Returns a page of active workspaces where the given user holds any membership role,
    * ordered by `createdAt DESC, id DESC` (keyset pagination — §12).
    *

@@ -57,6 +57,16 @@ export class MikroOrmFacebookAccountRepository extends IFacebookAccountRepositor
   }
 
   /** @inheritdoc */
+  async softDeleteAllByWorkspace(workspaceId: string): Promise<void> {
+    const accounts = await this.repo.find({ workspace: workspaceId });
+    const now = new Date();
+    for (const account of accounts) {
+      account.deletedAt = now;
+    }
+    // Caller owns the single em.flush() for the cascade (W-1, §6).
+  }
+
+  /** @inheritdoc */
   async connectPage(workspaceId: string, data: FacebookPageConnectData): Promise<FacebookAccount> {
     const existing = await this.repo.findOne({ pageId: data.pageId });
 

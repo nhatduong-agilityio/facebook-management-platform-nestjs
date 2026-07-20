@@ -79,6 +79,18 @@ export abstract class IFacebookAccountRepository {
   abstract findAllByWorkspace(workspaceId: string): Promise<FacebookAccount[]>;
 
   /**
+   * Soft-deletes all active Facebook Page connections for a workspace **without flushing**.
+   *
+   * Loads all non-deleted `FacebookAccount` rows for the workspace into the current
+   * Unit of Work and marks each `deletedAt = now()`. The caller is responsible for
+   * calling `em.flush()` to commit the changes atomically together with other
+   * cascade mutations (W-1, §6).
+   *
+   * @param workspaceId - UUID of the workspace being deleted.
+   */
+  abstract softDeleteAllByWorkspace(workspaceId: string): Promise<void>;
+
+  /**
    * Creates or updates a `FacebookAccount` for the given workspace and page.
    *
    * If a record with `data.pageId` already exists, its token is refreshed via

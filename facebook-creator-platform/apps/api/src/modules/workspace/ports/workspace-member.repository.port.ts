@@ -64,12 +64,23 @@ export abstract class IWorkspaceMemberRepository {
 
   /**
    * Counts how many `owner`-role members the workspace has.
-   * Used by the sole-owner guard (BR-R02).
+   * Used by the sole-owner guard (BR-R02) in `removeMember` and `changeMemberRole`.
    *
    * @param workspaceId - UUID of the workspace.
    * @returns Count of active owner-role members.
    */
   abstract countOwners(workspaceId: string): Promise<number>;
+
+  /**
+   * Counts all members of a workspace regardless of role.
+   *
+   * Used by the workspace-deletion guard (W-1): deletion is only permitted when
+   * the requesting owner is the last (sole) member — `count <= 1`.
+   *
+   * @param workspaceId - UUID of the workspace.
+   * @returns Total number of member records for the workspace.
+   */
+  abstract countByWorkspace(workspaceId: string): Promise<number>;
 
   /**
    * Returns a page of membership records for a workspace, ordered by `joinedAt ASC, id ASC`

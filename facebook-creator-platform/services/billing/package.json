@@ -15,6 +15,7 @@
   "dependencies": {
     "@fcp/billing-contracts": "workspace:*",
     "@fcp/constants": "workspace:*",
+    "@fcp/rmq-options": "workspace:*",
     "@mikro-orm/core": "^7.1.5",
     "@mikro-orm/decorators": "^7.1.5",
     "@mikro-orm/migrations": "^7.1.5",
