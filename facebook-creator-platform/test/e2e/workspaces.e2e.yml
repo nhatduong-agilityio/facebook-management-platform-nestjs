@@ -26,8 +26,8 @@ config:
 #
 # Side-effects:
 #   Creates a test workspace (name prefixed "E2E-") and sends one invitation to
-#   an *.e2e.invalid address. Neither is cleaned up (no DELETE /workspaces endpoint).
-#   Run against a dev/staging DB, not production.
+#   an *.e2e.invalid address. The workspace is soft-deleted at the end of the flow
+#   via DELETE /workspaces/:wsId (W-1). Run against a dev/staging DB, not production.
 
 scenarios:
   - name: "workspace CRUD + member management contract tests"
@@ -82,14 +82,15 @@ scenarios:
             - notStatusCode: [500]
 
       # ── List members — creator is owner ─────────────────────────────────────
-      # hasProperty does not support JSONPath $[0].x notation on root arrays;
-      # captures serve as implicit existence assertions instead.
+      # Response shape: { data: MemberDto[], nextCursor } (keyset pagination, M-10).
+      # hasProperty does not support deep JSONPath on root objects; captures
+      # serve as implicit existence assertions instead.
       - get:
           url: "/api/v1/workspaces/{{ wsId }}/members"
           capture:
-            - json: "$[0].id"
+            - json: "$.data[0].id"
               as: "ownerMemberId"
-            - json: "$[0].role"
+            - json: "$.data[0].role"
               as: "ownerRole"
           expect:
             - statusCode: 200
@@ -157,4 +158,14 @@ scenarios:
           ifTrue: "ownerMemberId"
           expect:
             - statusCode: 403
+            - notStatusCode: [500]
+
+      # ── Soft-delete the workspace (cleanup) ──────────────────────────────────
+      # W-1 added DELETE /workspaces/:id (Owner only, 204).
+      # Idempotent — a second call also returns 204 (soft-delete is a no-op when
+      # deletedAt is already set).
+      - delete:
+          url: "/api/v1/workspaces/{{ wsId }}"
+          expect:
+            - statusCode: 204
             - notStatusCode: [500]

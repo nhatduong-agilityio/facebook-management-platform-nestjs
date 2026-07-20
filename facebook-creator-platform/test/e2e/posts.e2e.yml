@@ -28,8 +28,8 @@ config:
 #
 # Side-effects:
 #   Creates one workspace ("Posts-E2E-*") in the target DB and leaves it behind
-#   (no DELETE /workspaces endpoint). Posts created during the test are deleted
-#   within the same flow. Run against dev/staging only.
+#   (soft-deleted by the after: hook below). Posts created during the test are
+#   deleted within the same flow. Run against dev/staging only.
 
 # The `before:` hook runs once before any scenario VU starts.
 # It creates a dedicated workspace and captures its id so all steps share it.
@@ -182,3 +182,15 @@ scenarios:
           expect:
             - statusCode: 200
             - hasProperty: "data"
+
+# The `after:` hook runs once after all scenario VUs finish.
+# Soft-deletes the workspace created by the `before:` hook (W-1).
+after:
+  flow:
+    - delete:
+        url: "/api/v1/workspaces/{{ workspaceId }}"
+        headers:
+          authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+          content-type: "application/json"
+        expect:
+          - statusCode: 204

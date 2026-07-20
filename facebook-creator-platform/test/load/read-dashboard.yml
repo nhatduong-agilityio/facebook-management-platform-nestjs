@@ -61,7 +61,8 @@ scenarios:
           name: "GET /workspaces"
           url: "/api/v1/workspaces"
           capture:
-            - json: "$[0].id"
+            # Response shape: { data: WorkspaceDto[], nextCursor } (keyset pagination, M-10)
+            - json: "$.data[0].id"
               as: "workspaceId"
           expect:
             - statusCode: 200
@@ -76,6 +77,23 @@ scenarios:
       - get:
           name: "GET /workspaces/:id/members"
           url: "/api/v1/workspaces/{{ workspaceId }}/members"
+          ifTrue: "workspaceId"
+          expect:
+            - statusCode: 200
+
+      # Analytics and notifications are proxied via TCP to their respective services.
+      # Including them here verifies that the TCP adapters hold up under the same
+      # 150 rps load as the Postgres-backed read paths (NFR: p99 < 300 ms).
+      - get:
+          name: "GET /workspaces/:id/analytics"
+          url: "/api/v1/workspaces/{{ workspaceId }}/analytics"
+          ifTrue: "workspaceId"
+          expect:
+            - statusCode: 200
+
+      - get:
+          name: "GET /workspaces/:id/notifications"
+          url: "/api/v1/workspaces/{{ workspaceId }}/notifications"
           ifTrue: "workspaceId"
           expect:
             - statusCode: 200
