@@ -1,0 +1,85 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T00:00:00.000Z" agent="Claude Code" version="24.7.2" type="device">
+<diagram id="hld1" name="High-Level Design (Sketch)">
+<mxGraphModel dx="1800" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1400" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Facebook Creator Platform — High-Level Design" style="text;html=1;align=center;fontSize=26;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="600" y="14" width="1200" height="36" as="geometry"/></mxCell>
+
+<!-- EXTERNAL CLIENTS zone -->
+<mxCell id="ext_z" value="External Clients" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="70" width="300" height="320" as="geometry"/></mxCell>
+<mxCell id="browser" value="Web Browser&#xa;(React SPA)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="ext_z"><mxGeometry x="20" y="50" width="240" height="60" as="geometry"/></mxCell>
+<mxCell id="mobile" value="Mobile App&#xa;(iOS / Android)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="ext_z"><mxGeometry x="20" y="130" width="240" height="60" as="geometry"/></mxCell>
+<mxCell id="stripe_ext" value="Stripe (webhook)&#xa;POST /webhooks/stripe" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=12;" vertex="1" parent="ext_z"><mxGeometry x="20" y="210" width="240" height="60" as="geometry"/></mxCell>
+
+<!-- GATEWAY: Clerk -->
+<mxCell id="clerk" value="Clerk Auth Gateway&#xa;JWT verification" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="130" width="220" height="80" as="geometry"/></mxCell>
+
+<!-- APPS/API zone -->
+<mxCell id="api_z" value="apps/api (NestJS 11 — :3000)" style="swimlane;startSize=30;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=4;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="680" y="70" width="560" height="580" as="geometry"/></mxCell>
+<mxCell id="m_ws" value="WorkspaceModule" style="rounded=1;fillColor=#c9e5f7;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;" vertex="1" parent="api_z"><mxGeometry x="15" y="40" width="240" height="50" as="geometry"/></mxCell>
+<mxCell id="m_ps" value="PostsModule" style="rounded=1;fillColor=#c9e5f7;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;" vertex="1" parent="api_z"><mxGeometry x="275" y="40" width="240" height="50" as="geometry"/></mxCell>
+<mxCell id="m_fb" value="FacebookModule" style="rounded=1;fillColor=#c9e5f7;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;" vertex="1" parent="api_z"><mxGeometry x="15" y="110" width="240" height="50" as="geometry"/></mxCell>
+<mxCell id="m_bil" value="BillingModule" style="rounded=1;fillColor=#c9e5f7;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;" vertex="1" parent="api_z"><mxGeometry x="275" y="110" width="240" height="50" as="geometry"/></mxCell>
+<mxCell id="m_an" value="AnalyticsModule" style="rounded=1;fillColor=#c9e5f7;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;" vertex="1" parent="api_z"><mxGeometry x="15" y="180" width="240" height="50" as="geometry"/></mxCell>
+<mxCell id="m_se" value="SearchModule" style="rounded=1;fillColor=#c9e5f7;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;" vertex="1" parent="api_z"><mxGeometry x="275" y="180" width="240" height="50" as="geometry"/></mxCell>
+<mxCell id="m_no" value="NotificationModule" style="rounded=1;fillColor=#c9e5f7;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;" vertex="1" parent="api_z"><mxGeometry x="15" y="250" width="240" height="50" as="geometry"/></mxCell>
+<mxCell id="m_au" value="AuditModule" style="rounded=1;fillColor=#c9e5f7;strokeColor=#2D6CDF;strokeWidth=2;fontSize=12;" vertex="1" parent="api_z"><mxGeometry x="275" y="250" width="240" height="50" as="geometry"/></mxCell>
+
+<mxCell id="api_pg" value="PostgreSQL (api schema)&#xa;workspaces · members · posts · facebook_accounts" style="rounded=1;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=2;fontSize=11;" vertex="1" parent="api_z"><mxGeometry x="15" y="330" width="500" height="70" as="geometry"/></mxCell>
+
+<mxCell id="api_cron" value="@Cron Jobs:&#xa;PublishPostJob (*/1 * * * *)&#xa;WorkspacePurgeJob (0 2 * * *)&#xa;TokenRefreshCheckJob (0 * * * *)" style="rounded=1;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="api_z"><mxGeometry x="15" y="420" width="500" height="120" as="geometry"/></mxCell>
+
+<!-- RabbitMQ exchange -->
+<mxCell id="rmq" value="RabbitMQ&#xa;fcp.events&#xa;(topic exchange)&#xa;&#xa;16 routing keys" style="shape=mxgraph.rabbitmq.topic;fillColor=#FF6800;fontColor=#FFFFFF;strokeColor=#CC4400;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1320" y="260" width="200" height="120" as="geometry"/></mxCell>
+
+<!-- SERVICES zone -->
+<mxCell id="svc_z" value="Internal Microservices" style="swimlane;startSize=30;fillColor=#f5f5f5;strokeColor=#333333;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1600" y="70" width="760" height="840" as="geometry"/></mxCell>
+
+<mxCell id="s_bil" value="services/billing&#xa;HTTP :3001 (Stripe webhook)&#xa;TCP :4001  RMQ: billing_workspace_queue&#xa;PostgreSQL (billing schema)" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="svc_z"><mxGeometry x="15" y="50" width="340" height="90" as="geometry"/></mxCell>
+<mxCell id="s_an" value="services/analytics&#xa;TCP :3002  RMQ: analytics.posts.published&#xa;MongoDB + Redis (dedup)&#xa;HTTP reverse → apps/api /internal" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="svc_z"><mxGeometry x="15" y="160" width="340" height="90" as="geometry"/></mxCell>
+<mxCell id="s_se" value="services/search&#xa;TCP :3004  RMQ: search_posts_queue&#xa;Algolia + Redis (dedup)" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="svc_z"><mxGeometry x="15" y="270" width="340" height="80" as="geometry"/></mxCell>
+<mxCell id="s_no" value="services/notification&#xa;TCP :3005  RMQ: notification_events_queue&#xa;PostgreSQL (notification schema)" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="svc_z"><mxGeometry x="15" y="370" width="340" height="80" as="geometry"/></mxCell>
+<mxCell id="s_em" value="services/email&#xa;RMQ: email_events_queue ONLY&#xa;NestFactory.createMicroservice()&#xa;Stateless — SMTP/SES adapter" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="svc_z"><mxGeometry x="15" y="470" width="340" height="90" as="geometry"/></mxCell>
+<mxCell id="s_au" value="services/audit&#xa;TCP :3003  RMQ: audit_all_events_queue (#)&#xa;MongoDB (append-only audit log)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="svc_z"><mxGeometry x="15" y="580" width="340" height="80" as="geometry"/></mxCell>
+
+<!-- External APIs -->
+<mxCell id="ext_api" value="External APIs" style="swimlane;startSize=30;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="svc_z"><mxGeometry x="390" y="50" width="340" height="400" as="geometry"/></mxCell>
+<mxCell id="fb_api" value="Facebook Graph API&#xa;/me/feed (publish)&#xa;/me/accounts (OAuth)&#xa;/:id/insights (metrics)" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="ext_api"><mxGeometry x="15" y="40" width="300" height="90" as="geometry"/></mxCell>
+<mxCell id="stripe_api" value="Stripe API&#xa;Checkout sessions&#xa;Webhooks (HMAC verify)&#xa;Subscription lifecycle" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="ext_api"><mxGeometry x="15" y="150" width="300" height="90" as="geometry"/></mxCell>
+<mxCell id="algolia_api" value="Algolia API&#xa;posts_index (search)" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="ext_api"><mxGeometry x="15" y="260" width="300" height="70" as="geometry"/></mxCell>
+
+<!-- Transport legend -->
+<mxCell id="leg" value="Transport Legend:&#xa;━━━  HTTP (external + Stripe webhook + internal reverse HTTP)&#xa;- - -  TCP @MessagePattern (apps/api → services, sync RPC)&#xa;·····  RabbitMQ @EventPattern (async fire-and-forget)&#xa;&#xa;Key ADRs: ADR-094 (3-transport model), ADR-108 (port consolidation), ADR-109 (choreography W-1)" style="rounded=1;fillColor=#f9f9f9;strokeColor=#555555;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="30" y="680" width="600" height="160" as="geometry"/></mxCell>
+
+<!-- CONNECTION ARROWS -->
+<!-- Clients → api -->
+<mxCell id="e_ext_api" value="HTTPS :3000" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;strokeWidth=3;fontSize=10;" edge="1" source="ext_z" target="api_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_clerk" value="JWT verify" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;strokeWidth=2;dashed=1;fontSize=10;" edge="1" source="api_z" target="clerk" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- api → RMQ -->
+<mxCell id="e_api_rmq" value="emit() RMQ events" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#FF6800;strokeWidth=3;fontSize=10;" edge="1" source="api_z" target="rmq" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- RMQ → services -->
+<mxCell id="e_rmq_bil" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;strokeWidth=2;" edge="1" source="rmq" target="s_bil" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_rmq_an" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E9E9E;strokeWidth=2;" edge="1" source="rmq" target="s_an" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_rmq_se" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;strokeWidth=2;" edge="1" source="rmq" target="s_se" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_rmq_no" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#C5396B;strokeWidth=2;" edge="1" source="rmq" target="s_no" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_rmq_em" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#1565c0;strokeWidth=2;" edge="1" source="rmq" target="s_em" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_rmq_au" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#4A4A4A;strokeWidth=2;" edge="1" source="rmq" target="s_au" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- TCP: api → services (dashed) -->
+<mxCell id="e_tcp_bil" value="TCP billing.* RPC" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;dashed=1;strokeWidth=2;fontSize=9;" edge="1" source="api_z" target="s_bil" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_tcp_an" value="TCP analytics.* RPC" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E9E9E;dashed=1;strokeWidth=2;fontSize=9;" edge="1" source="api_z" target="s_an" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_tcp_se" value="TCP search.* RPC" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;dashed=1;strokeWidth=2;fontSize=9;" edge="1" source="api_z" target="s_se" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_tcp_no" value="TCP notification.* RPC" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#C5396B;dashed=1;strokeWidth=2;fontSize=9;" edge="1" source="api_z" target="s_no" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_tcp_au" value="TCP audit.* RPC" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#4A4A4A;dashed=1;strokeWidth=2;fontSize=9;" edge="1" source="api_z" target="s_au" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- Stripe → billing HTTP -->
+<mxCell id="e_stripe_bil" value="HTTP :3001 webhook" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;strokeWidth=2;fontSize=9;" edge="1" source="stripe_ext" target="s_bil" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- analytics reverse HTTP -->
+<mxCell id="e_an_api" value="HTTP /internal (reverse)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E9E9E;dashed=1;strokeWidth=2;fontSize=9;" edge="1" source="s_an" target="api_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+</mxfile>

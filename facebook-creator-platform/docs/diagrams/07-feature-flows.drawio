@@ -1,0 +1,208 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T00:00:00.000Z" agent="Claude Code" version="24.7.2" type="device">
+
+<!-- PAGE 1 — CREATE POST -->
+<diagram id="f1" name="1. Create Post">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Feature Flow — Create Post" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+
+<mxCell id="c1" value="1. Client&#xa;POST /posts" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="40" y="90" width="160" height="70" as="geometry"/></mxCell>
+<mxCell id="c2" value="2. ClerkGuard&#xa;verifies JWT&#xa;extracts userId" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="250" y="90" width="160" height="70" as="geometry"/></mxCell>
+<mxCell id="c3" value="3. PostsController&#xa;.createPost(dto, userId)" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="460" y="90" width="170" height="70" as="geometry"/></mxCell>
+<mxCell id="c4" value="4. BillingTcpAdapter&#xa;billing.get-quota&#xa;→ { postLimit }" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="680" y="90" width="170" height="70" as="geometry"/></mxCell>
+<mxCell id="c5" value="5. PostRepository&#xa;count existing posts&#xa;in billing period" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="900" y="90" width="170" height="70" as="geometry"/></mxCell>
+<mxCell id="c6" value="6. count ≥ postLimit?&#xa;→ err(QUOTA_EXCEEDED)&#xa;→ 402" style="rhombus;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1120" y="60" width="170" height="130" as="geometry"/></mxCell>
+<mxCell id="c7" value="7. new Post(uuid v7)&#xa;status=draft&#xa;createdAt=now()" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="680" y="250" width="170" height="70" as="geometry"/></mxCell>
+<mxCell id="c8" value="8. em.persist(post)&#xa;em.flush()&#xa;→ INSERT posts" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="900" y="250" width="170" height="70" as="geometry"/></mxCell>
+<mxCell id="c9" value="9. eventBus.publish()&#xa;PostCreatedEvent&#xa;→ posts.created → search + audit" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1120" y="250" width="190" height="70" as="geometry"/></mxCell>
+<mxCell id="c10" value="10. 201 Created&#xa;{ id, status, ... }" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1350" y="250" width="170" height="70" as="geometry"/></mxCell>
+
+<mxCell id="e12" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" edge="1" source="c1" target="c2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e23" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" edge="1" source="c2" target="c3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e34" value="TCP" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;strokeWidth=1;fontSize=9;" edge="1" source="c3" target="c4" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e45" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" edge="1" source="c4" target="c5" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e56" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" edge="1" source="c5" target="c6" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e67" value="ok" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;strokeWidth=1;fontSize=9;" edge="1" source="c6" target="c7" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e78" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" edge="1" source="c7" target="c8" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e89" value="RMQ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;strokeWidth=1;fontSize=9;" edge="1" source="c8" target="c9" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e910" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" edge="1" source="c9" target="c10" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 2 — DELETE WORKSPACE (W-1) -->
+<diagram id="f2" name="2. Delete Workspace (W-1)">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Feature Flow — Delete Workspace (W-1 Task)" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="350" y="14" width="900" height="34" as="geometry"/></mxCell>
+
+<!-- Guard chain -->
+<mxCell id="guard_z" value="Guard Chain (WorkspaceService.deleteWorkspace)" style="swimlane;startSize=30;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="60" width="760" height="200" as="geometry"/></mxCell>
+<mxCell id="g1" value="1. ClerkGuard JWT → userId" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;" vertex="1" parent="guard_z"><mxGeometry x="10" y="50" width="160" height="50" as="geometry"/></mxCell>
+<mxCell id="g2" value="2. WorkspaceGuard&#xa;load workspace (soft-delete filter on)&#xa;→ 404 if not found" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;" vertex="1" parent="guard_z"><mxGeometry x="190" y="40" width="160" height="70" as="geometry"/></mxCell>
+<mxCell id="g3" value="3. RoleGuard&#xa;requesterRole === OWNER?&#xa;→ 403 if not" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;fontSize=11;" vertex="1" parent="guard_z"><mxGeometry x="370" y="40" width="160" height="70" as="geometry"/></mxCell>
+<mxCell id="g4" value="4. workspace.deletedAt&#xa;already set? → 409&#xa;WORKSPACE_ALREADY_DELETED" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=1;fontSize=11;" vertex="1" parent="guard_z"><mxGeometry x="550" y="40" width="170" height="70" as="geometry"/></mxCell>
+
+<!-- Cascade flush -->
+<mxCell id="cas_z" value="Cascade within ONE em.flush() (single transaction)" style="swimlane;startSize=30;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="280" width="760" height="230" as="geometry"/></mxCell>
+<mxCell id="cas1" value="5. soft-delete WorkspaceMembers&#xa;(WHERE workspaceId = id)" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=1;fontSize=11;" vertex="1" parent="cas_z"><mxGeometry x="10" y="50" width="200" height="60" as="geometry"/></mxCell>
+<mxCell id="cas2" value="6. soft-delete Posts&#xa;(WHERE workspaceId = id)" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=1;fontSize=11;" vertex="1" parent="cas_z"><mxGeometry x="230" y="50" width="200" height="60" as="geometry"/></mxCell>
+<mxCell id="cas3" value="7. soft-delete FacebookAccounts&#xa;(WHERE workspaceId = id)" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=1;fontSize=11;" vertex="1" parent="cas_z"><mxGeometry x="450" y="50" width="200" height="60" as="geometry"/></mxCell>
+<mxCell id="cas4" value="8. soft-delete Workspace itself&#xa;workspace.deletedAt = now()" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=1;fontSize=11;" vertex="1" parent="cas_z"><mxGeometry x="10" y="140" width="200" height="60" as="geometry"/></mxCell>
+<mxCell id="cas5" value="9. em.flush()&#xa;→ all 4 UPDATEs in one TX" style="rounded=1;fillColor=#1b5e20;fontColor=#FFFFFF;strokeColor=#1b5e20;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="cas_z"><mxGeometry x="450" y="140" width="200" height="60" as="geometry"/></mxCell>
+
+<!-- Event publish -->
+<mxCell id="ev_z" value="10. After Commit — Publish Events (fire-and-forget)" style="swimlane;startSize=30;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="530" width="760" height="200" as="geometry"/></mxCell>
+<mxCell id="ev1" value="WorkspaceDeletedEvent&#xa;→ workspace.deleted&#xa;→ billing: cancel subscription" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=1;fontSize=11;" vertex="1" parent="ev_z"><mxGeometry x="10" y="50" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="ev2" value="PostDeletedEvent × N&#xa;→ posts.deleted (per post)&#xa;→ search: remove index" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=1;fontSize=11;" vertex="1" parent="ev_z"><mxGeometry x="230" y="50" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="ev3" value="WorkspaceMemberRemovedEvent × M&#xa;→ workspace.member-removed&#xa;→ notification + audit" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=1;fontSize=11;" vertex="1" parent="ev_z"><mxGeometry x="450" y="50" width="220" height="70" as="geometry"/></mxCell>
+<mxCell id="ev_all" value="All above → audit_all_events_queue (# binding) → AuditConsumer → MongoDB" style="text;html=1;fontSize=10;fontStyle=2;fontColor=#4A4A4A;" vertex="1" parent="ev_z"><mxGeometry x="10" y="150" width="700" height="30" as="geometry"/></mxCell>
+
+<!-- Async cron -->
+<mxCell id="cron_z" value="11. WorkspacePurgeJob (@Cron '0 2 * * *')" style="swimlane;startSize=30;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="750" width="760" height="140" as="geometry"/></mxCell>
+<mxCell id="cr1" value="SELECT id FROM workspaces&#xa;WHERE deletedAt &lt; now()-30d&#xa;LIMIT 500 (BATCH_SIZE)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=1;fontSize=11;" vertex="1" parent="cron_z"><mxGeometry x="10" y="50" width="220" height="70" as="geometry"/></mxCell>
+<mxCell id="cr2" value="Hard-delete in FK order:&#xa;posts, members, facebook_accounts&#xa;→ finally workspaces" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=1;fontSize=11;" vertex="1" parent="cron_z"><mxGeometry x="260" y="50" width="220" height="70" as="geometry"/></mxCell>
+<mxCell id="cr3" value="Loops until batch empty&#xa;Jitter: random delay between batches&#xa;to avoid DB spike" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=1;fontSize=11;" vertex="1" parent="cron_z"><mxGeometry x="510" y="50" width="220" height="70" as="geometry"/></mxCell>
+
+<mxCell id="resp" value="204 No Content (immediate — cron is async)" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="870" y="60" width="300" height="60" as="geometry"/></mxCell>
+
+<!-- Flow arrows -->
+<mxCell id="fg_cas" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;" edge="1" source="guard_z" target="cas_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="fcas_ev" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;" edge="1" source="cas_z" target="ev_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="fev_cr" value="(nightly, async)" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeWidth=2;fontSize=9;" edge="1" source="ev_z" target="cron_z" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="fguard_resp" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=2;strokeColor=#6c8ebf;" edge="1" source="guard_z" target="resp" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 3 — INVITE MEMBER -->
+<diagram id="f3" name="3. Invite Member">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="800" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Feature Flow — Invite Member" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+
+<mxCell id="s1" value="1. POST /workspaces/:id/members&#xa;{ email, role }" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="30" y="90" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s2" value="2. ClerkGuard + WorkspaceGuard&#xa;+ RoleGuard (OWNER or ADMIN)" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="260" y="90" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s3" value="3. WorkspaceService&#xa;.inviteMember(id, email, role)" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="490" y="90" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s4" value="4. BillingTcpAdapter&#xa;billing.get-quota&#xa;member seat check" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="720" y="90" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="s5" value="5. Check email not already member&#xa;→ 409 if duplicate" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="930" y="90" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s6" value="6. new WorkspaceMember(uuid v7)&#xa;status=PENDING&#xa;inviteToken=uuid v7" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="490" y="250" width="200" height="80" as="geometry"/></mxCell>
+<mxCell id="s7" value="7. em.persist(member)&#xa;em.flush()" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="720" y="250" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="s8" value="8. workspace.member-invited&#xa;→ notification (in-app)&#xa;→ email (invite link)&#xa;→ audit" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="930" y="240" width="200" height="90" as="geometry"/></mxCell>
+<mxCell id="s9" value="9. 201 { inviteToken }" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1160" y="250" width="180" height="70" as="geometry"/></mxCell>
+
+<mxCell id="s10" value="10. Invitee clicks email link&#xa;POST /workspaces/:id/accept&#xa;{ inviteToken }" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="30" y="430" width="200" height="90" as="geometry"/></mxCell>
+<mxCell id="s11" value="11. Verify token + not expired&#xa;member.status = ACTIVE" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="260" y="450" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s12" value="12. em.flush()" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="490" y="450" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="s13" value="13. workspace.member-joined&#xa;→ notification + audit" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="700" y="450" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s14" value="14. 200 OK" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="930" y="450" width="160" height="70" as="geometry"/></mxCell>
+
+<mxCell id="e12" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" edge="1" source="s1" target="s2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e23" value="" style="edgeStyle=orthogonalEdgeStyle;strokeWidth=1;" edge="1" source="s2" target="s3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e34" value="TCP" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;fontSize=9;" edge="1" source="s3" target="s4" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e45" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="s4" target="s5" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e56" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="s5" target="s6" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e67" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="s6" target="s7" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e78" value="RMQ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;fontSize=9;" edge="1" source="s7" target="s8" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e89" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="s8" target="s9" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e1011" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="s10" target="s11" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e1112" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="s11" target="s12" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e1213" value="RMQ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;fontSize=9;" edge="1" source="s12" target="s13" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e1314" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="s13" target="s14" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 4 — BILLING CHECKOUT -->
+<diagram id="f4" name="4. Billing Checkout">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="800" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Feature Flow — Billing Checkout (Stripe)" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+
+<mxCell id="b1" value="1. POST /billing/checkout&#xa;{ planCode }" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="30" y="90" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="b2" value="2. BillingTcpAdapter&#xa;billing.checkout TCP&#xa;→ { url }" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="260" y="90" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="b3" value="3. BillingService&#xa;create Stripe Checkout Session&#xa;→ returns session URL" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="490" y="90" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="b4" value="4. Stripe API&#xa;hosted checkout page" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="740" y="90" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="b5" value="5. 200 { url }&#xa;Client redirects to Stripe" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="970" y="90" width="180" height="70" as="geometry"/></mxCell>
+
+<mxCell id="b6" value="6. User pays on Stripe&#xa;checkout.session.completed" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="30" y="280" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="b7" value="7. Stripe → POST /webhooks/stripe&#xa;BillingWebhookController (HTTP :3001)" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="280" y="280" width="220" height="70" as="geometry"/></mxCell>
+<mxCell id="b8" value="8. Stripe signature verify&#xa;(rawBody required)" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="550" y="280" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="b9" value="9. BillingService&#xa;subscription state → active&#xa;em.flush()" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="800" y="280" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="b10" value="10. billing.subscription_activated&#xa;→ RMQ → notification + audit" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1050" y="280" width="220" height="70" as="geometry"/></mxCell>
+
+<mxCell id="e12" value="TCP" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;fontSize=9;" edge="1" source="b1" target="b2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e23" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="b2" target="b3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e34" value="Stripe API" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;fontSize=9;" edge="1" source="b3" target="b4" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e45" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="b4" target="b5" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e67" value="HTTP webhook" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;fontSize=9;" edge="1" source="b6" target="b7" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e78" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="b7" target="b8" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e89" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="b8" target="b9" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e910" value="RMQ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;fontSize=9;" edge="1" source="b9" target="b10" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 5 — PUBLISH POST (CRON) -->
+<diagram id="f5" name="5. Publish Post (Cron)">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="800" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Feature Flow — Publish Post (@Cron every minute)" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="300" y="14" width="1000" height="34" as="geometry"/></mxCell>
+
+<mxCell id="p1" value="1. @Cron('*/1 * * * *')&#xa;PublishPostJob fires" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="30" y="90" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="p2" value="2. PostRepository&#xa;findScheduledDue()&#xa;WHERE status=scheduled&#xa;AND scheduledAt ≤ now()" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="270" y="80" width="200" height="90" as="geometry"/></mxCell>
+<mxCell id="p3" value="3. For each post:&#xa;status → publishing&#xa;em.flush()" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="510" y="90" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="p4" value="4. FacebookAccountRepository&#xa;findById(post.facebookAccountId)&#xa;decrypt access token (AES-256-GCM)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="730" y="80" width="220" height="90" as="geometry"/></mxCell>
+<mxCell id="p5" value="5. Facebook Graph API&#xa;POST /me/feed&#xa;{ message, access_token }" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1000" y="80" width="200" height="90" as="geometry"/></mxCell>
+
+<mxCell id="p6a" value="6a. Success&#xa;status → published&#xa;facebookPostId saved&#xa;em.flush()" style="rounded=1;fillColor=#1b5e20;fontColor=#FFFFFF;strokeColor=#1b5e20;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="510" y="280" width="180" height="90" as="geometry"/></mxCell>
+<mxCell id="p6b" value="6b. Failure&#xa;status → failed&#xa;errorMessage saved&#xa;em.flush()" style="rounded=1;fillColor=#b71c1c;fontColor=#FFFFFF;strokeColor=#b71c1c;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="730" y="280" width="180" height="90" as="geometry"/></mxCell>
+
+<mxCell id="p7a" value="7a. posts.published&#xa;→ search + notification&#xa;+ email + analytics + audit" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="510" y="430" width="200" height="80" as="geometry"/></mxCell>
+<mxCell id="p7b" value="7b. posts.failed&#xa;→ search + notification&#xa;+ email + audit" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="730" y="430" width="200" height="80" as="geometry"/></mxCell>
+
+<mxCell id="e12" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="p1" target="p2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e23" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="p2" target="p3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e34" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="p3" target="p4" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e45" value="FB Graph API" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;fontSize=9;" edge="1" source="p4" target="p5" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_ok" value="200 OK" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;fontSize=9;" edge="1" source="p5" target="p6a" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_fail" value="error" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b71c1c;fontSize=9;" edge="1" source="p5" target="p6b" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e6a7a" value="RMQ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;fontSize=9;" edge="1" source="p6a" target="p7a" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e6b7b" value="RMQ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#9673a6;fontSize=9;" edge="1" source="p6b" target="p7b" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 6 — FACEBOOK OAUTH CONNECT -->
+<diagram id="f6" name="6. Facebook OAuth Connect">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="700" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Feature Flow — Facebook OAuth Connect" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+
+<mxCell id="o1" value="1. GET /facebook/auth&#xa;→ redirect to FB OAuth" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="30" y="90" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="o2" value="2. User grants permission&#xa;Facebook redirects to&#xa;GET /facebook/callback?code=..." style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="270" y="80" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="o3" value="3. Exchange code → access_token&#xa;Facebook Graph API /oauth/token" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="520" y="80" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="o4" value="4. Fetch page list&#xa;GET /me/accounts&#xa;→ pages[] with page tokens" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="770" y="80" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="o5" value="5. EncryptedText.encrypt(pageToken)&#xa;AES-256-GCM&#xa;Never logged (PII)" style="rounded=1;fillColor=#fff9c4;strokeColor=#f9a825;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1020" y="80" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="o6" value="6. new FacebookAccount(uuid v7)&#xa;em.persist() em.flush()&#xa;→ INSERT facebook_accounts" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="770" y="260" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="o7" value="7. facebook.token_expiring scheduled&#xa;(cron token-refresh check)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="1020" y="260" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="o8" value="8. 201 { facebookAccountId }" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontSize=12;" vertex="1" parent="1"><mxGeometry x="520" y="260" width="210" height="70" as="geometry"/></mxCell>
+
+<mxCell id="e12" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="o1" target="o2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e23" value="FB OAuth" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;fontSize=9;" edge="1" source="o2" target="o3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e34" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="o3" target="o4" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e45" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="o4" target="o5" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e56" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="o5" target="o6" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e67" value="cron watch" style="edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#4A4A4A;fontSize=9;" edge="1" source="o6" target="o7" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e68" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="o6" target="o8" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+</mxfile>

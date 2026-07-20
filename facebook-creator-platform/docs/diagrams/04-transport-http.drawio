@@ -1,0 +1,84 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T00:00:00.000Z" agent="Claude Code" version="24.7.2" type="device">
+
+<!-- PAGE 1 — EXTERNAL HTTP (client → api) -->
+<diagram id="http1" name="1. External HTTP">
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1000" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="HTTP Transport — External Clients → apps/api" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="300" y="16" width="1000" height="34" as="geometry"/></mxCell>
+<mxCell id="rule" value="Rule (ADR-094): HTTP is ONLY for external clients and inbound webhooks.  apps/api never calls internal services over HTTP (use TCP)." style="text;html=1;align=center;fontSize=11;fontColor=#b85450;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="100" y="50" width="1400" height="22" as="geometry"/></mxCell>
+
+<!-- Caller boxes -->
+<mxCell id="c_browser" value="Browser&#xa;Next.js Client" style="rounded=1;fillColor=#dae8fc;strokeColor=#2D6CDF;strokeWidth=3;fontSize=13;" vertex="1" parent="1"><mxGeometry x="30" y="110" width="160" height="70" as="geometry"/></mxCell>
+<mxCell id="c_stripe" value="Stripe&#xa;(inbound webhook)" style="rounded=1;fillColor=#EEEDFF;strokeColor=#635BFF;strokeWidth=3;fontSize=13;" vertex="1" parent="1"><mxGeometry x="30" y="250" width="160" height="70" as="geometry"/></mxCell>
+<mxCell id="c_fb" value="Facebook&#xa;(inbound webhook)" style="rounded=1;fillColor=#dae8fc;strokeColor=#3A5BD9;strokeWidth=3;fontSize=13;" vertex="1" parent="1"><mxGeometry x="30" y="390" width="160" height="70" as="geometry"/></mxCell>
+<mxCell id="c_clerk" value="Clerk&#xa;(inbound webhook)" style="rounded=1;fillColor=#fff3e0;strokeColor=#E08A1E;strokeWidth=3;fontSize=13;" vertex="1" parent="1"><mxGeometry x="30" y="530" width="160" height="70" as="geometry"/></mxCell>
+
+<!-- apps/api routes -->
+<mxCell id="api_box" value="apps/api :3000 — HTTP Routes" style="swimlane;startSize=30;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="340" y="90" width="900" height="680" as="geometry"/></mxCell>
+
+<mxCell id="r1" value="GET /api/v1/workspaces&#xa;GET /api/v1/workspaces/:id&#xa;POST /api/v1/workspaces&#xa;DELETE /api/v1/workspaces/:id" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="20" y="40" width="300" height="80" as="geometry"/></mxCell>
+<mxCell id="r2" value="POST /api/v1/workspaces/:id/members/invite&#xa;DELETE /api/v1/workspaces/:id/members/:mid&#xa;PATCH /api/v1/workspaces/:id/members/:uid/role&#xa;POST /api/v1/workspaces/:id/invitations/:tok/accept" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="340" y="40" width="400" height="80" as="geometry"/></mxCell>
+<mxCell id="r3" value="POST /api/v1/workspaces/:wid/posts&#xa;GET /api/v1/workspaces/:wid/posts&#xa;GET /api/v1/workspaces/:wid/posts/:pid&#xa;PATCH /api/v1/workspaces/:wid/posts/:pid&#xa;DELETE /api/v1/workspaces/:wid/posts/:pid&#xa;PATCH /api/v1/workspaces/:wid/posts/:pid/status" style="rounded=1;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="20" y="140" width="380" height="110" as="geometry"/></mxCell>
+<mxCell id="r4" value="GET /api/v1/facebook/pages&#xa;POST /api/v1/facebook/connect&#xa;DELETE /api/v1/facebook/accounts/:id&#xa;GET /api/v1/facebook/accounts/:id&#xa;GET /api/v1/facebook/callback (OAuth redirect)" style="rounded=1;fillColor=#dae8fc;strokeColor=#3A5BD9;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="420" y="140" width="350" height="110" as="geometry"/></mxCell>
+<mxCell id="r5" value="GET /api/v1/billing/subscription&#xa;POST /api/v1/billing/checkout&#xa;GET /api/v1/billing/return (redirect)" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="20" y="270" width="300" height="80" as="geometry"/></mxCell>
+<mxCell id="r6" value="GET /api/v1/analytics/workspaces/:wid/metrics&#xa;GET /api/v1/analytics/posts/:pid/metrics" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="340" y="270" width="380" height="80" as="geometry"/></mxCell>
+<mxCell id="r7" value="GET /api/v1/search?q=&amp;workspaceId=" style="rounded=1;fillColor=#EAF1FE;strokeColor=#1E47C8;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="20" y="370" width="300" height="50" as="geometry"/></mxCell>
+<mxCell id="r8" value="GET /api/v1/notifications&#xa;PATCH /api/v1/notifications/:id/read" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="340" y="370" width="300" height="50" as="geometry"/></mxCell>
+<mxCell id="r9" value="GET /api/v1/audit/workspaces/:wid/logs&#xa;GET /api/v1/audit/events/:id (Owner role only)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="660" y="370" width="220" height="50" as="geometry"/></mxCell>
+<!-- Webhook routes -->
+<mxCell id="r_wh_stripe" value="POST /api/v1/webhooks/stripe&#xa;→ BillingWebhookController → services/billing HTTP&#xa;(svix signature on req.rawBody)" style="rounded=1;fillColor=#EEEDFF;strokeColor=#635BFF;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="20" y="440" width="360" height="70" as="geometry"/></mxCell>
+<mxCell id="r_wh_fb" value="POST /api/v1/webhooks/facebook&#xa;→ FacebookWebhookController&#xa;→ X-Hub-Signature-256 verify" style="rounded=1;fillColor=#dae8fc;strokeColor=#3A5BD9;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="400" y="440" width="300" height="70" as="geometry"/></mxCell>
+<mxCell id="r_wh_clerk" value="POST /api/v1/webhooks/clerk&#xa;→ ClerkWebhookController&#xa;→ svix verify on rawBody" style="rounded=1;fillColor=#fff3e0;strokeColor=#E08A1E;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="720" y="440" width="160" height="70" as="geometry"/></mxCell>
+<!-- Internal routes -->
+<mxCell id="r_int" value="GET /api/v1/internal/facebook-accounts/:id  — x-internal-secret header&#xa;GET /api/v1/internal/workspaces/:id/members  — used by notification svc bootstrap" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="20" y="530" width="860" height="60" as="geometry"/></mxCell>
+<mxCell id="r_auth" value="Middleware chain on ALL routes:&#xa;ClerkAuthGuard → WorkspaceRolesGuard → ValidationPipe" style="rounded=1;fillColor=#fff3e0;strokeColor=#E08A1E;strokeWidth=2;fontSize=10;align=left;" vertex="1" parent="api_box"><mxGeometry x="20" y="610" width="860" height="50" as="geometry"/></mxCell>
+
+<!-- HTTP edges from callers -->
+<mxCell id="e1" value="HTTPS + Bearer JWT" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2D6CDF;strokeWidth=3;fontSize=10;" edge="1" source="c_browser" target="api_box" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e2" value="HTTP + Stripe-Signature" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#635BFF;strokeWidth=3;fontSize=10;" edge="1" source="c_stripe" target="api_box" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e3" value="HTTP + X-Hub-Signature-256" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;strokeWidth=3;fontSize=10;" edge="1" source="c_fb" target="api_box" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e4" value="HTTP + svix-signature" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E08A1E;strokeWidth=3;fontSize=10;" edge="1" source="c_clerk" target="api_box" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 2 — STRIPE WEBHOOK FLOW (billing) -->
+<diagram id="http2" name="2. Stripe Webhook Flow">
+<mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="800" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="title" value="Stripe Webhook → Billing Service HTTP — State Transition Flow" style="text;html=1;align=center;fontSize=20;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="200" y="16" width="1200" height="32" as="geometry"/></mxCell>
+
+<mxCell id="stripe" value="Stripe&#xa;Platform" style="rounded=1;fillColor=#EEEDFF;strokeColor=#635BFF;strokeWidth=3;fontSize=14;" vertex="1" parent="1"><mxGeometry x="30" y="200" width="160" height="80" as="geometry"/></mxCell>
+<mxCell id="bil_wh" value="services/billing&#xa;BillingWebhookController&#xa;POST /api/v1/webhooks/stripe&#xa;&#xa;1. stripe.webhooks.constructEvent(rawBody, sig)&#xa;2. switch(event.type)&#xa;   invoice.paid → ACTIVE&#xa;   invoice.payment_failed → PAST_DUE&#xa;   customer.subscription.deleted → CANCELLED" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=3;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="280" y="140" width="440" height="200" as="geometry"/></mxCell>
+<mxCell id="bil_svc" value="BillingService&#xa;changeState(workspaceId, newState)&#xa;&#xa;→ load Subscription&#xa;→ guard: validate transition&#xa;→ UPDATE billing.subscriptions&#xa;→ INSERT billing_events row&#xa;→ em.flush()" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="780" y="140" width="300" height="200" as="geometry"/></mxCell>
+<mxCell id="rmq_out" value="BillingRabbitMqAdapter&#xa;ClientProxy.emit()&#xa;→ fcp.events&#xa;&#xa;billing.subscription_activated&#xa;billing.subscription_past_due&#xa;billing.subscription_cancelled&#xa;billing.payment_failed" style="rounded=1;fillColor=#FF8000;fontColor=#FFFFFF;strokeColor=#CC6600;strokeWidth=3;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="1150" y="140" width="280" height="200" as="geometry"/></mxCell>
+
+<mxCell id="e1" value="POST /webhooks/stripe&#xa;Stripe-Signature header" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#635BFF;strokeWidth=3;fontSize=10;" edge="1" source="stripe" target="bil_wh" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e2" value="call" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;strokeWidth=2;fontSize=10;" edge="1" source="bil_wh" target="bil_svc" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e3" value="emit event" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#CC6600;strokeWidth=2;fontSize=10;" edge="1" source="bil_svc" target="rmq_out" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="note" value="services/billing keeps its HTTP server (:3001) ONLY for:&#xa;• Stripe inbound webhooks (signature verification requires raw HTTP body)&#xa;• Checkout return redirect (user browser redirect from Stripe)&#xa;All other billing calls from apps/api use TCP @MessagePattern" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="30" y="420" width="1000" height="90" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 3 — INTERNAL HTTP (analytics → api) -->
+<diagram id="http3" name="3. Internal HTTP (reverse)">
+<mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="700" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="title" value="Internal HTTP — services/analytics → apps/api (reverse direction)" style="text;html=1;align=center;fontSize=20;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="100" y="16" width="1200" height="32" as="geometry"/></mxCell>
+<mxCell id="rule" value="WHY HTTP (not TCP)? — services/analytics needs data owned by apps/api's PostgreSQL. The pattern is: service calls the gateway's &quot;internal&quot; HTTP endpoint. The gateway enforces access with x-internal-secret header. This is the EXCEPTION — not the rule." style="text;html=1;align=center;fontSize=11;fontColor=#b85450;" vertex="1" parent="1"><mxGeometry x="30" y="50" width="1340" height="36" as="geometry"/></mxCell>
+
+<mxCell id="an_con" value="services/analytics&#xa;PostPublishedConsumer&#xa;onPostPublished(@Payload data)" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=3;fontSize=12;" vertex="1" parent="1"><mxGeometry x="30" y="180" width="260" height="80" as="geometry"/></mxCell>
+<mxCell id="int_adp" value="InternalApiHttpAdapter&#xa;IInternalApiClient&#xa;&#xa;getFacebookAccount(id)&#xa;→ fetch(`${APPS_API_INTERNAL_URL}/internal/facebook-accounts/${id}`)&#xa;   headers: { 'x-internal-secret': INTERNAL_API_SECRET }" style="rounded=1;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="360" y="150" width="460" height="140" as="geometry"/></mxCell>
+<mxCell id="api_int" value="apps/api&#xa;InternalApiController&#xa;GET /api/v1/internal/facebook-accounts/:id&#xa;&#xa;Guard: InternalSecretGuard (x-internal-secret)&#xa;→ facebookService.getDecryptedAccount(id)&#xa;→ returns { id, pageToken(decrypted), pageId }" style="rounded=1;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=3;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="900" y="150" width="440" height="140" as="geometry"/></mxCell>
+
+<mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E9E9E;strokeWidth=2;" edge="1" source="an_con" target="int_adp" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e2" value="GET + x-internal-secret" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#666666;strokeWidth=2;fontSize=10;dashed=1;" edge="1" source="int_adp" target="api_int" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="notif_note" value="notification service also calls apps/api HTTP on startup:&#xa;WorkspaceMemberReconciler.onModuleInit() → GET /internal/workspaces/:id/members&#xa;Purpose: cold-start reconciliation of workspace_members_projection" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="1"><mxGeometry x="30" y="380" width="800" height="90" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+</mxfile>

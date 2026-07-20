@@ -1,0 +1,113 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T00:00:00.000Z" agent="Claude Code" version="24.7.2" type="device">
+
+<!-- PAGE 1 — EVENT ROUTING MATRIX -->
+<diagram id="rmq1" name="1. Event Routing Matrix">
+<mxGraphModel dx="2200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1400" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="RabbitMQ @EventPattern — All Events × All Consumers" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="600" y="14" width="1200" height="34" as="geometry"/></mxCell>
+<mxCell id="rule" value="Rule (ADR-094): emit() = fire-and-forget async events via topic exchange 'fcp.events'. Routing key = event name. Service subscribes to a queue bound to routing key(s). Audit consumer uses '#' (wildcard — every event)." style="text;html=1;align=center;fontSize=11;fontColor=#CC6600;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="200" y="50" width="2000" height="22" as="geometry"/></mxCell>
+
+<!-- EXCHANGE -->
+<mxCell id="exch" value="RabbitMQ&#xa;fcp.events (topic exchange)" style="shape=mxgraph.rabbitmq.topic;fillColor=#FF6800;fontColor=#FFFFFF;strokeColor=#CC4400;strokeWidth=2;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1070" y="90" width="260" height="80" as="geometry"/></mxCell>
+
+<!-- PUBLISHERS (LEFT COLUMN) -->
+<mxCell id="pub_hdr" value="Publishers (emit after commit)" style="text;html=1;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="90" width="500" height="24" as="geometry"/></mxCell>
+
+<mxCell id="pub_ws" value="WorkspaceService&#xa;workspace.member-invited&#xa;workspace.member-joined&#xa;workspace.member-removed&#xa;workspace.role-changed&#xa;workspace.deleted" style="rounded=1;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="130" width="340" height="120" as="geometry"/></mxCell>
+
+<mxCell id="pub_ps" value="PostsService&#xa;posts.created&#xa;posts.updated&#xa;posts.published&#xa;posts.failed&#xa;posts.deleted" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="270" width="340" height="120" as="geometry"/></mxCell>
+
+<mxCell id="pub_bil" value="BillingService&#xa;billing.subscription_activated&#xa;billing.subscription_cancelled&#xa;billing.subscription_past_due&#xa;billing.payment_failed" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="410" width="340" height="100" as="geometry"/></mxCell>
+
+<mxCell id="pub_fb" value="FacebookService&#xa;facebook.token_expiring" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="40" y="530" width="340" height="60" as="geometry"/></mxCell>
+
+<!-- Exchange arrows from publishers -->
+<mxCell id="ews" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2D6CDF;strokeWidth=2;" edge="1" source="pub_ws" target="exch" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="eps" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;strokeWidth=2;" edge="1" source="pub_ps" target="exch" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ebil" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;strokeWidth=2;" edge="1" source="pub_bil" target="exch" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="efb" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#4A4A4A;strokeWidth=2;" edge="1" source="pub_fb" target="exch" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- CONSUMERS (RIGHT COLUMN) -->
+<mxCell id="con_hdr" value="Consumers (@EventPattern)" style="text;html=1;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1500" y="90" width="500" height="24" as="geometry"/></mxCell>
+
+<!-- Search consumer -->
+<mxCell id="con_se" value="SearchConsumer&#xa;Queue: search_posts_queue&#xa;─────────────────────&#xa;posts.created → index post&#xa;posts.updated → update index&#xa;posts.published → update status + metrics&#xa;posts.failed → update status&#xa;posts.deleted → remove from index" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1500" y="100" width="400" height="140" as="geometry"/></mxCell>
+
+<!-- Notification consumer -->
+<mxCell id="con_no" value="NotificationConsumer&#xa;Queue: notification_events_queue&#xa;─────────────────────&#xa;workspace.member-invited → invite notification&#xa;workspace.member-joined → joined notification&#xa;workspace.member-removed → removed notification&#xa;workspace.role-changed → role notification&#xa;posts.published → publish success notification&#xa;posts.failed → publish failure notification&#xa;billing.subscription_activated → plan activated&#xa;billing.subscription_cancelled → plan cancelled&#xa;billing.subscription_past_due → payment warning&#xa;billing.payment_failed → payment failed&#xa;facebook.token_expiring → token warning" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1500" y="260" width="400" height="270" as="geometry"/></mxCell>
+
+<!-- Email consumer -->
+<mxCell id="con_em" value="EmailConsumer&#xa;Queue: email_events_queue&#xa;─────────────────────&#xa;workspace.member-invited → invite email&#xa;posts.published → success email (optional)&#xa;posts.failed → failure email&#xa;billing.payment_failed → payment failed email&#xa;facebook.token_expiring → token expiry email" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1500" y="550" width="400" height="140" as="geometry"/></mxCell>
+
+<!-- Analytics consumer -->
+<mxCell id="con_an" value="PostPublishedConsumer (analytics)&#xa;Queue: analytics.posts.published&#xa;─────────────────────&#xa;posts.published → fetch FB metrics&#xa;→ Redis dedup (event-id)&#xa;→ InternalApiHttp to apps/api&#xa;→ Facebook Graph API&#xa;→ upsert PostMetrics (MongoDB)" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1500" y="710" width="400" height="140" as="geometry"/></mxCell>
+
+<!-- Billing consumer (workspace.deleted) -->
+<mxCell id="con_bil" value="WorkspaceDeletedConsumer (billing)&#xa;Queue: billing_workspace_queue&#xa;─────────────────────&#xa;workspace.deleted → cancelWorkspaceSubscription()&#xa;Idempotent: ok() if already cancelled&#xa;(ADR-109 / W-1 Fix 4 — choreography)" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1500" y="870" width="400" height="110" as="geometry"/></mxCell>
+
+<!-- Audit consumer -->
+<mxCell id="con_au" value="AuditConsumer&#xa;Queue: audit_all_events_queue&#xa;─────────────────────&#xa;Binding: # (ALL routing keys)&#xa;→ write AuditEvent to MongoDB&#xa;(append-only, never deleted)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=11;align=left;spacingLeft=8;" vertex="1" parent="1"><mxGeometry x="1500" y="1000" width="400" height="130" as="geometry"/></mxCell>
+
+<!-- Exchange to consumers -->
+<mxCell id="ecs" value="posts.*" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;strokeWidth=2;fontSize=9;dashed=0;" edge="1" source="exch" target="con_se" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ecn" value="workspace.* + posts.* + billing.* + facebook.*" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#C5396B;strokeWidth=2;fontSize=9;" edge="1" source="exch" target="con_no" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ece" value="workspace.member-invited + posts.* + billing.payment_failed + facebook.token_expiring" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#1565c0;strokeWidth=2;fontSize=9;" edge="1" source="exch" target="con_em" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="eca" value="posts.published" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E9E9E;strokeWidth=2;fontSize=9;" edge="1" source="exch" target="con_an" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ecb" value="workspace.deleted" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E0A21E;strokeWidth=2;fontSize=9;" edge="1" source="exch" target="con_bil" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ecau" value="# (all)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#4A4A4A;strokeWidth=2;fontSize=9;" edge="1" source="exch" target="con_au" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- Legend -->
+<mxCell id="leg" value="Total unique routing keys: 16&#xa;consumers: 6 (search, notification, email, analytics, billing, audit)&#xa;Exchange: topic — any consumer can bind to any key; audit binds # = all&#xa;Message delivery: at-least-once. Idempotency via Redis dedup key (event-id)." style="rounded=1;fillColor=#f9f9f9;strokeColor=#999999;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="40" y="640" width="900" height="100" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 2 — ACK / NACK SEQUENCE -->
+<diagram id="rmq2" name="2. Consumer Ack-Nack Pattern">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Consumer Ack / Nack Pattern" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+<mxCell id="rule2" value="All consumers use manual ack. noAck: false. Prefetch: 1. Pattern from analytics PostPublishedConsumer (same shape in all consumers)." style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="200" y="50" width="1200" height="22" as="geometry"/></mxCell>
+
+<!-- Swimlane columns -->
+<mxCell id="lane_rmq" value="RabbitMQ" style="swimlane;startSize=30;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="40" y="90" width="200" height="700" as="geometry"/></mxCell>
+<mxCell id="lane_con" value="Consumer Handler" style="swimlane;startSize=30;fillColor=#E8F5E9;strokeColor=#2e7d32;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="280" y="90" width="300" height="700" as="geometry"/></mxCell>
+<mxCell id="lane_redis" value="Redis (dedup)" style="swimlane;startSize=30;fillColor=#FFEBEE;strokeColor=#b71c1c;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="620" y="90" width="200" height="700" as="geometry"/></mxCell>
+<mxCell id="lane_db" value="Downstream (DB/API)" style="swimlane;startSize=30;fillColor=#E8EAF6;strokeColor=#303F9F;strokeWidth=3;fontSize=14;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="860" y="90" width="260" height="700" as="geometry"/></mxCell>
+
+<!-- Steps -->
+<mxCell id="s1" value="deliver msg" style="rounded=1;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="60" y="120" width="160" height="36" as="geometry"/></mxCell>
+<mxCell id="s2" value="@EventPattern handler fires&#xa;extract data + eventId from msg" style="rounded=1;fillColor=#E8F5E9;strokeColor=#2e7d32;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="295" y="120" width="270" height="50" as="geometry"/></mxCell>
+<mxCell id="s3" value="SET eventId NX EX 86400" style="rounded=1;fillColor=#FFEBEE;strokeColor=#b71c1c;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="635" y="120" width="170" height="36" as="geometry"/></mxCell>
+
+<mxCell id="s4a" value="key EXISTS (duplicate)" style="rounded=1;fillColor=#FFEBEE;strokeColor=#b71c1c;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="635" y="200" width="170" height="36" as="geometry"/></mxCell>
+<mxCell id="s4b" value="new key — process" style="rounded=1;fillColor=#FFEBEE;strokeColor=#b71c1c;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="635" y="280" width="170" height="36" as="geometry"/></mxCell>
+
+<mxCell id="s5" value="channel.ack(msg)&#xa;(dedup fast-path)" style="rounded=1;fillColor=#E8F5E9;strokeColor=#2e7d32;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="295" y="200" width="270" height="46" as="geometry"/></mxCell>
+
+<mxCell id="s6" value="perform domain logic&#xa;(fetch / write / upsert)" style="rounded=1;fillColor=#E8F5E9;strokeColor=#2e7d32;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="295" y="290" width="270" height="50" as="geometry"/></mxCell>
+<mxCell id="s7" value="write to DB / call API" style="rounded=1;fillColor=#E8EAF6;strokeColor=#303F9F;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="875" y="290" width="230" height="36" as="geometry"/></mxCell>
+
+<mxCell id="s8_ok" value="success → channel.ack(msg)" style="rounded=1;fillColor=#E8F5E9;strokeColor=#2e7d32;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="295" y="400" width="270" height="40" as="geometry"/></mxCell>
+<mxCell id="s8_err" value="error → channel.nack(msg, false, true)&#xa;requeue=true → back to queue&#xa;(dead-letter after N retries)" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="295" y="480" width="270" height="60" as="geometry"/></mxCell>
+
+<mxCell id="s9_dl" value="Dead-letter queue (DLQ)&#xa;after max retries" style="rounded=1;fillColor=#FFF3E0;strokeColor=#E65100;strokeWidth=2;dashed=1;fontSize=10;" vertex="1" parent="1"><mxGeometry x="60" y="510" width="160" height="50" as="geometry"/></mxCell>
+
+<!-- Edges between steps -->
+<mxCell id="e12" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=1;" edge="1" source="s1" target="s2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e23" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=1;" edge="1" source="s2" target="s3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e3a" value="EXISTS" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b71c1c;strokeWidth=1;fontSize=9;" edge="1" source="s3" target="s4a" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e3b" value="NEW" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;strokeWidth=1;fontSize=9;" edge="1" source="s3" target="s4b" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e4a5" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b71c1c;strokeWidth=1;" edge="1" source="s4a" target="s5" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e4b6" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;strokeWidth=1;" edge="1" source="s4b" target="s6" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e67" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#303F9F;strokeWidth=1;" edge="1" source="s6" target="s7" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_ok" value="success" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;strokeWidth=1;fontSize=9;" edge="1" source="s6" target="s8_ok" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_err" value="error" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;strokeWidth=1;fontSize=9;" edge="1" source="s6" target="s8_err" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_dl" value="DLQ" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#E65100;dashed=1;strokeWidth=1;fontSize=9;" edge="1" source="s8_err" target="s9_dl" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+</mxfile>

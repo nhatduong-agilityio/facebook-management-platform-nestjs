@@ -1,0 +1,198 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T00:00:00.000Z" agent="Claude Code" version="24.7.2" type="device">
+
+<!-- PAGE 1 — BILLING SERVICE -->
+<diagram id="svc_bil" name="1. Billing Service">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="950" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Service Internal Flow — services/billing" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+<mxCell id="sub" value="Transports: HTTP :3001 (Stripe webhooks) + TCP :4001 (internal RPC) + RabbitMQ billing_workspace_queue (async events)" style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="200" y="50" width="1200" height="22" as="geometry"/></mxCell>
+
+<!-- Inbound: Stripe Webhook -->
+<mxCell id="wh_z" value="HTTP :3001 — Stripe Webhook Inbound" style="swimlane;startSize=30;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="80" width="700" height="200" as="geometry"/></mxCell>
+<mxCell id="wh1" value="POST /webhooks/stripe&#xa;BillingWebhookController" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="wh_z"><mxGeometry x="15" y="40" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="wh2" value="Stripe.constructEvent()&#xa;signature verify (rawBody)" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="wh_z"><mxGeometry x="250" y="40" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="wh3" value="BillingService.handleWebhook()&#xa;→ state machine transition&#xa;→ em.flush()&#xa;→ emit RMQ event" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="wh_z"><mxGeometry x="470" y="30" width="200" height="90" as="geometry"/></mxCell>
+<mxCell id="e_wh" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="wh1" target="wh2" parent="wh_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="e_wh2" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="wh2" target="wh3" parent="wh_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- Inbound: TCP -->
+<mxCell id="tcp_z" value="TCP :4001 — @MessagePattern (internal RPC from apps/api)" style="swimlane;startSize=30;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="300" width="700" height="240" as="geometry"/></mxCell>
+<mxCell id="tcp1" value="billing.get-quota&#xa;→ BillingService.getPostLimit()&#xa;← { postLimit }" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="15" y="45" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="tcp2" value="billing.get-subscription&#xa;→ BillingService.getSubscription()&#xa;← SubscriptionResponse" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="240" y="45" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="tcp3" value="billing.checkout&#xa;→ BillingService.createCheckoutSession()&#xa;← { url: stripe_checkout_url }" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="460" y="45" width="220" height="70" as="geometry"/></mxCell>
+<mxCell id="tcp_db" value="All queries read from billing_subscriptions table (PostgreSQL billing schema)" style="text;html=1;fontSize=10;fontStyle=2;" vertex="1" parent="tcp_z"><mxGeometry x="15" y="160" width="650" height="30" as="geometry"/></mxCell>
+
+<!-- RMQ consumer -->
+<mxCell id="rmq_z" value="RabbitMQ — billing_workspace_queue consumer" style="swimlane;startSize=30;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="560" width="700" height="200" as="geometry"/></mxCell>
+<mxCell id="rmq1" value="@EventPattern('workspace.deleted')&#xa;WorkspaceDeletedConsumer" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="rmq_z"><mxGeometry x="15" y="40" width="230" height="70" as="geometry"/></mxCell>
+<mxCell id="rmq2" value="BillingService&#xa;.cancelWorkspaceSubscription()&#xa;Idempotent: ok() if already cancelled" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="rmq_z"><mxGeometry x="265" y="40" width="230" height="70" as="geometry"/></mxCell>
+<mxCell id="rmq3" value="em.flush()&#xa;state → cancelled&#xa;emit billing.subscription_cancelled" style="rounded=1;fillColor=#fff8e1;strokeColor=#E0A21E;strokeWidth=2;fontSize=12;" vertex="1" parent="rmq_z"><mxGeometry x="510" y="40" width="175" height="70" as="geometry"/></mxCell>
+<mxCell id="rmq_note" value="ADR-109 / W-1 Fix 4: moved from sync TCP orchestration to async choreography" style="text;html=1;fontSize=10;fontStyle=2;fontColor=#CC6600;" vertex="1" parent="rmq_z"><mxGeometry x="15" y="145" width="650" height="30" as="geometry"/></mxCell>
+<mxCell id="er1" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="rmq1" target="rmq2" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="er2" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="rmq2" target="rmq3" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- Data stores -->
+<mxCell id="ds" value="Data Stores:&#xa;PostgreSQL (billing schema): billing_subscriptions, billing_events, billing_plans&#xa;Stripe API: customer, subscription, checkout session&#xa;No Redis / No MongoDB" style="rounded=1;fillColor=#f9f9f9;strokeColor=#999999;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="800" y="80" width="740" height="120" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 2 — ANALYTICS SERVICE -->
+<diagram id="svc_an" name="2. Analytics Service">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="950" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Service Internal Flow — services/analytics" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+<mxCell id="sub" value="No HTTP server. Transports: TCP :3002 (RPC) + RabbitMQ analytics.posts.published (event consumer)" style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="200" y="50" width="1200" height="22" as="geometry"/></mxCell>
+
+<!-- RMQ Consumer flow -->
+<mxCell id="rmq_z" value="RabbitMQ Consumer — analytics.posts.published" style="swimlane;startSize=30;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="80" width="1100" height="360" as="geometry"/></mxCell>
+<mxCell id="a1" value="posts.published event&#xa;PostPublishedConsumer" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;" vertex="1" parent="rmq_z"><mxGeometry x="15" y="45" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="a2" value="Redis dedup&#xa;SET eventId NX EX 86400&#xa;→ skip if EXISTS" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;" vertex="1" parent="rmq_z"><mxGeometry x="220" y="45" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="a3" value="InternalApiHttpAdapter&#xa;GET /internal/facebook-accounts/:id&#xa;x-internal-secret header" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;" vertex="1" parent="rmq_z"><mxGeometry x="420" y="45" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="a4" value="apps/api InternalApiController&#xa;decrypts page token&#xa;returns { accessToken }" style="rounded=1;fillColor=#e8f4ff;strokeColor=#2D6CDF;strokeWidth=2;fontSize=11;" vertex="1" parent="rmq_z"><mxGeometry x="640" y="45" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="a5" value="Facebook Graph API&#xa;GET /:postId/insights&#xa;?metric=reach,impressions..." style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=11;" vertex="1" parent="rmq_z"><mxGeometry x="860" y="45" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="a6" value="RequestContext.create(em)&#xa;→ PostMetricsRepository.upsert()&#xa;→ MongoDB write" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;" vertex="1" parent="rmq_z"><mxGeometry x="420" y="210" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="a7_ok" value="channel.ack(msg)" style="rounded=1;fillColor=#2e7d32;fontColor=#FFFFFF;strokeColor=#2e7d32;strokeWidth=2;fontSize=11;" vertex="1" parent="rmq_z"><mxGeometry x="220" y="270" width="180" height="60" as="geometry"/></mxCell>
+<mxCell id="a7_err" value="channel.nack(msg, false, true)&#xa;requeue — retries up to DLQ" style="rounded=1;fillColor=#b71c1c;fontColor=#FFFFFF;strokeColor=#b71c1c;strokeWidth=2;fontSize=11;" vertex="1" parent="rmq_z"><mxGeometry x="640" y="270" width="200" height="60" as="geometry"/></mxCell>
+
+<mxCell id="ea12" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="a1" target="a2" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ea23" value="NEW" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E9E9E;fontSize=9;" edge="1" source="a2" target="a3" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ea34" value="HTTP internal" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2D6CDF;fontSize=9;" edge="1" source="a3" target="a4" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ea45" value="FB Graph API" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#3A5BD9;fontSize=9;" edge="1" source="a4" target="a5" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ea56" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="a5" target="a6" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ea6ok" value="success" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;fontSize=9;" edge="1" source="a6" target="a7_ok" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ea6err" value="error" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b71c1c;fontSize=9;" edge="1" source="a6" target="a7_err" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ea2ok" value="dedup hit" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2E9E9E;dashed=1;fontSize=9;" edge="1" source="a2" target="a7_ok" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- TCP RPC -->
+<mxCell id="tcp_z" value="TCP :3002 — @MessagePattern (read queries)" style="swimlane;startSize=30;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="460" width="700" height="200" as="geometry"/></mxCell>
+<mxCell id="t1" value="analytics.workspace-metrics&#xa;→ MetricsService.getWorkspaceSummary()&#xa;← MetricsSummaryDto (MongoDB aggregate)" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="15" y="40" width="300" height="80" as="geometry"/></mxCell>
+<mxCell id="t2" value="analytics.post-metrics&#xa;→ MetricsService.getPostDaily()&#xa;← PostMetricsDayDto[] (daily rows, MongoDB)" style="rounded=1;fillColor=#E0F7F7;strokeColor=#2E9E9E;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="360" y="40" width="300" height="80" as="geometry"/></mxCell>
+
+<!-- Data stores -->
+<mxCell id="ds" value="Data Stores:&#xa;MongoDB (analytics): post_metrics collection (append-heavy, one doc per post-per-day)&#xa;Redis: dedup key (SET eventId NX EX 86400 — prevents double-processing of posts.published)&#xa;No PostgreSQL in this service" style="rounded=1;fillColor=#f9f9f9;strokeColor=#999999;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="800" y="80" width="740" height="130" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 3 — SEARCH SERVICE -->
+<diagram id="svc_se" name="3. Search Service">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="800" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Service Internal Flow — services/search" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+<mxCell id="sub" value="Transports: TCP :3004 (RPC) + RabbitMQ search_posts_queue (events). No HTTP server (ADR-108)." style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="200" y="50" width="1200" height="22" as="geometry"/></mxCell>
+
+<!-- RMQ consumers -->
+<mxCell id="con_z" value="RabbitMQ — search_posts_queue (5 event consumers)" style="swimlane;startSize=30;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="80" width="1100" height="300" as="geometry"/></mxCell>
+<mxCell id="sc1" value="posts.created&#xa;→ Algolia.saveObject()&#xa;index new post" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="15" y="45" width="180" height="80" as="geometry"/></mxCell>
+<mxCell id="sc2" value="posts.updated&#xa;→ Algolia.partialUpdateObject()&#xa;update title/content" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="215" y="45" width="180" height="80" as="geometry"/></mxCell>
+<mxCell id="sc3" value="posts.published&#xa;→ Algolia.partialUpdateObject()&#xa;update status + metrics" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="415" y="45" width="180" height="80" as="geometry"/></mxCell>
+<mxCell id="sc4" value="posts.failed&#xa;→ Algolia.partialUpdateObject()&#xa;update status" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="615" y="45" width="180" height="80" as="geometry"/></mxCell>
+<mxCell id="sc5" value="posts.deleted&#xa;→ Algolia.deleteObject()&#xa;remove from index" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="815" y="45" width="180" height="80" as="geometry"/></mxCell>
+<mxCell id="algolia_note" value="All Algolia calls: idempotent by objectID = post.id. Redis dedup key per event. ack on success, nack+requeue on Algolia error." style="text;html=1;fontSize=10;fontStyle=2;" vertex="1" parent="con_z"><mxGeometry x="15" y="200" width="1050" height="30" as="geometry"/></mxCell>
+
+<!-- TCP RPC -->
+<mxCell id="tcp_z" value="TCP :3004 — @MessagePattern" style="swimlane;startSize=30;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="400" width="700" height="180" as="geometry"/></mxCell>
+<mxCell id="st1" value="search.query&#xa;payload: { q, workspaceId, limit, cursor }&#xa;→ SearchService.query()&#xa;→ Algolia.search() with workspaceId filter&#xa;← { data: AlgoliaHit[], nextCursor }" style="rounded=1;fillColor=#EAF1FE;strokeColor=#3A5BD9;strokeWidth=2;fontSize=11;align=left;" vertex="1" parent="tcp_z"><mxGeometry x="15" y="40" width="650" height="120" as="geometry"/></mxCell>
+
+<!-- Data stores -->
+<mxCell id="ds" value="Data Stores:&#xa;Algolia: posts_index (per-workspace filterable). objectID = post.id&#xa;Redis: dedup keys only. No PostgreSQL, No MongoDB in this service." style="rounded=1;fillColor=#f9f9f9;strokeColor=#999999;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="800" y="80" width="740" height="110" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 4 — NOTIFICATION SERVICE -->
+<diagram id="svc_no" name="4. Notification Service">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Service Internal Flow — services/notification" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+<mxCell id="sub" value="Transports: TCP :3005 (RPC) + RabbitMQ notification_events_queue (11 event consumers). No HTTP (ADR-108)." style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="200" y="50" width="1200" height="22" as="geometry"/></mxCell>
+
+<!-- RMQ consumers grid -->
+<mxCell id="con_z" value="RabbitMQ — notification_events_queue (11 event bindings)" style="swimlane;startSize=30;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="80" width="1100" height="430" as="geometry"/></mxCell>
+
+<mxCell id="nc1" value="workspace.member-invited&#xa;→ NotificationService.create()&#xa;→ Persist + push (WS/Slack?)" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="10" y="50" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="nc2" value="workspace.member-joined" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="215" y="50" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="nc3" value="workspace.member-removed" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="420" y="50" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="nc4" value="workspace.role-changed" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="625" y="50" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="nc5" value="posts.published" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="830" y="50" width="190" height="80" as="geometry"/></mxCell>
+
+<mxCell id="nc6" value="posts.failed" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="10" y="160" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="nc7" value="billing.subscription_activated" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="215" y="160" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="nc8" value="billing.subscription_cancelled" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="420" y="160" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="nc9" value="billing.subscription_past_due" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="625" y="160" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="nc10" value="billing.payment_failed" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="830" y="160" width="190" height="80" as="geometry"/></mxCell>
+
+<mxCell id="nc11" value="facebook.token_expiring" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=1;fontSize=10;" vertex="1" parent="con_z"><mxGeometry x="10" y="270" width="190" height="80" as="geometry"/></mxCell>
+<mxCell id="all_note" value="All 11 consumers → NotificationService.create(userId, type, payload) → em.persist() em.flush() → PostgreSQL notifications table" style="text;html=1;fontSize=10;fontStyle=2;" vertex="1" parent="con_z"><mxGeometry x="10" y="380" width="1060" height="30" as="geometry"/></mxCell>
+
+<!-- TCP -->
+<mxCell id="tcp_z" value="TCP :3005 — @MessagePattern" style="swimlane;startSize=30;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="530" width="700" height="200" as="geometry"/></mxCell>
+<mxCell id="nt1" value="notification.list&#xa;{ workspaceId, userId, limit, cursor }&#xa;← { data: Notification[], nextCursor }" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="15" y="40" width="300" height="80" as="geometry"/></mxCell>
+<mxCell id="nt2" value="notification.mark-read&#xa;{ notificationId, userId }&#xa;← void | RpcException(NOT_FOUND | FORBIDDEN)" style="rounded=1;fillColor=#FDEAF1;strokeColor=#C5396B;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="355" y="40" width="300" height="80" as="geometry"/></mxCell>
+
+<!-- DS -->
+<mxCell id="ds" value="Data Stores: PostgreSQL (notification schema): notifications table. No Redis, No MongoDB." style="rounded=1;fillColor=#f9f9f9;strokeColor=#999999;strokeWidth=2;fontSize=11;" vertex="1" parent="1"><mxGeometry x="800" y="80" width="740" height="70" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 5 — EMAIL SERVICE -->
+<diagram id="svc_em" name="5. Email Service">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="700" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Service Internal Flow — services/email" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+<mxCell id="sub" value="Pure RabbitMQ consumer. NestFactory.createMicroservice() — single transport. No HTTP, No TCP. Simplest service." style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="200" y="50" width="1200" height="22" as="geometry"/></mxCell>
+
+<!-- RMQ consumers -->
+<mxCell id="con_z" value="RabbitMQ — email_events_queue (5 event consumers)" style="swimlane;startSize=30;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="80" width="1100" height="350" as="geometry"/></mxCell>
+<mxCell id="em1" value="workspace.member-invited&#xa;→ EmailService.sendInvite(email, token)&#xa;→ SMTP / SES template" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="10" y="50" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="em2" value="posts.published&#xa;→ EmailService.sendPublishSuccess()&#xa;(optional — configurable)" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="240" y="50" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="em3" value="posts.failed&#xa;→ EmailService.sendPublishFailed()&#xa;→ error details in email" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="470" y="50" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="em4" value="billing.payment_failed&#xa;→ EmailService.sendPaymentFailed()&#xa;→ retry link in email" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="700" y="50" width="210" height="90" as="geometry"/></mxCell>
+<mxCell id="em5" value="facebook.token_expiring&#xa;→ EmailService.sendTokenExpiry()&#xa;→ re-auth link in email" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=1;fontSize=11;" vertex="1" parent="con_z"><mxGeometry x="870" y="50" width="210" height="90" as="geometry"/></mxCell>
+
+<mxCell id="em_flow" value="All consumers: extract data → render Handlebars/Mustache template → send via SMTP adapter (AWS SES or SMTP) → ack on success, nack+requeue on SMTP error." style="text;html=1;fontSize=10;fontStyle=2;" vertex="1" parent="con_z"><mxGeometry x="10" y="180" width="1060" height="30" as="geometry"/></mxCell>
+
+<mxCell id="factory_note" value="NestFactory.createMicroservice() vs NestFactory.create():&#xa;• Email uses createMicroservice() — single transport, no DI container for HTTP adapter&#xa;• All other services use create() + connectMicroservice() for multi-transport support&#xa;(analytics: TCP + RMQ; billing: HTTP + TCP + RMQ)" style="rounded=1;fillColor=#fff2cc;strokeColor=#f9a825;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="30" y="460" width="900" height="120" as="geometry"/></mxCell>
+
+<mxCell id="ds" value="Data Stores: None (stateless — sends email and acks). No DB, No Redis, No MongoDB." style="rounded=1;fillColor=#f9f9f9;strokeColor=#999999;strokeWidth=2;fontSize=11;" vertex="1" parent="1"><mxGeometry x="970" y="460" width="580" height="70" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 6 — AUDIT SERVICE -->
+<diagram id="svc_au" name="6. Audit Service">
+<mxGraphModel dx="1600" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="800" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Service Internal Flow — services/audit" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="400" y="14" width="800" height="34" as="geometry"/></mxCell>
+<mxCell id="sub" value="Transports: TCP :3003 (read queries) + RabbitMQ audit_all_events_queue (# wildcard — ALL events). No HTTP (ADR-108)." style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="200" y="50" width="1200" height="22" as="geometry"/></mxCell>
+
+<!-- RMQ consumer -->
+<mxCell id="rmq_z" value="RabbitMQ — audit_all_events_queue (binding: # — wildcard, all routing keys)" style="swimlane;startSize=30;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="80" width="900" height="280" as="geometry"/></mxCell>
+<mxCell id="au1" value="Any event (ALL routing keys)&#xa;AuditConsumer @EventPattern('#')" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=12;" vertex="1" parent="rmq_z"><mxGeometry x="15" y="50" width="260" height="80" as="geometry"/></mxCell>
+<mxCell id="au2" value="Extract: eventType, workspaceId,&#xa;userId, payload (strip PII)&#xa;Attach: correlationId, timestamp" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=12;" vertex="1" parent="rmq_z"><mxGeometry x="310" y="50" width="260" height="80" as="geometry"/></mxCell>
+<mxCell id="au3" value="MongoDB insert&#xa;audit_events collection&#xa;(append-only, never deleted)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=12;" vertex="1" parent="rmq_z"><mxGeometry x="610" y="50" width="260" height="80" as="geometry"/></mxCell>
+<mxCell id="au_note" value="Idempotent: check eventId before insert to avoid duplicates on nack+requeue.&#xa;No Redis needed — MongoDB upsert with eventId as unique index." style="text;html=1;fontSize=10;fontStyle=2;" vertex="1" parent="rmq_z"><mxGeometry x="15" y="200" width="850" height="40" as="geometry"/></mxCell>
+<mxCell id="ea12" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="au1" target="au2" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="ea23" value="" style="edgeStyle=orthogonalEdgeStyle;" edge="1" source="au2" target="au3" parent="rmq_z"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- TCP -->
+<mxCell id="tcp_z" value="TCP :3003 — @MessagePattern (read-only, Owner role only via apps/api RBAC)" style="swimlane;startSize=30;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=3;fontSize=13;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="380" width="900" height="200" as="geometry"/></mxCell>
+<mxCell id="at1" value="audit.get-logs&#xa;{ workspaceId, limit? }&#xa;← AuditEvent[] (newest first, limit 50)&#xa;MongoDB find().sort(-timestamp)" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="15" y="40" width="380" height="100" as="geometry"/></mxCell>
+<mxCell id="at2" value="audit.get-log&#xa;{ id }&#xa;← AuditEvent | RpcException(NOT_FOUND)&#xa;MongoDB findById" style="rounded=1;fillColor=#EEEEEE;strokeColor=#4A4A4A;strokeWidth=2;fontSize=11;" vertex="1" parent="tcp_z"><mxGeometry x="430" y="40" width="380" height="100" as="geometry"/></mxCell>
+
+<!-- DS + design note -->
+<mxCell id="ds" value="Data Stores:&#xa;MongoDB (audit): audit_events collection. Index: { workspaceId: 1, timestamp: -1 }, { eventId: 1, unique: true }&#xa;No PostgreSQL, No Redis (MongoDB unique index serves as dedup)." style="rounded=1;fillColor=#f9f9f9;strokeColor=#999999;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="980" y="80" width="570" height="120" as="geometry"/></mxCell>
+<mxCell id="design" value="Design note (CLAUDE.md §7):&#xa;Audit trail is NOT a PostgreSQL table.&#xa;Exposed read-only via apps/api (Owner role).&#xa;The # wildcard binding means this service&#xa;receives a copy of EVERY event in the system&#xa;— natural write-ahead log for compliance." style="rounded=1;fillColor=#fff2cc;strokeColor=#f9a825;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="980" y="220" width="570" height="170" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+</mxfile>

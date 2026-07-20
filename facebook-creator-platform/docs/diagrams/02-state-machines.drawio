@@ -1,0 +1,95 @@
+<mxfile host="app.diagrams.net" modified="2026-07-20T00:00:00.000Z" agent="Claude Code" version="24.7.2" type="device">
+
+<!-- PAGE 1 — POST STATUS STATE MACHINE -->
+<diagram id="sm_post" name="1. Post Status SM">
+<mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="860" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Post Status State Machine — apps/api PostsService" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="200" y="20" width="1000" height="36" as="geometry"/></mxCell>
+<mxCell id="sub" value="All transitions guarded · illegal transition → err(INVALID_STATE_TRANSITION) → 409 · every status change calls em.flush() then optionally emits a domain event" style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="100" y="54" width="1200" height="22" as="geometry"/></mxCell>
+
+<!-- START -->
+<mxCell id="start" value="" style="ellipse;fillColor=#333333;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="100" y="170" width="30" height="30" as="geometry"/></mxCell>
+
+<!-- STATES -->
+<mxCell id="s_draft" value="draft" style="rounded=1;fillColor=#fff9c4;strokeColor=#f9a825;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="240" y="150" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="s_sched" value="scheduled" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="560" y="150" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="s_pub" value="publishing" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="880" y="150" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="s_done" value="published" style="rounded=1;fillColor=#1b5e20;fontColor=#FFFFFF;strokeColor=#1b5e20;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1140" y="270" width="180" height="70" as="geometry"/></mxCell>
+<mxCell id="s_fail" value="failed" style="rounded=1;fillColor=#b71c1c;fontColor=#FFFFFF;strokeColor=#b71c1c;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1140" y="420" width="180" height="70" as="geometry"/></mxCell>
+
+<!-- CANCEL (soft-deleted) -->
+<mxCell id="s_cancel" value="[soft-deleted]&#xa;(deletedAt ≠ null)" style="rounded=1;fillColor=#eeeeee;strokeColor=#777777;strokeWidth=2;fontSize=13;fontStyle=2;dashed=1;" vertex="1" parent="1"><mxGeometry x="240" y="400" width="180" height="70" as="geometry"/></mxCell>
+
+<!-- TRANSITIONS -->
+<mxCell id="t_start" value="POST /posts&#xa;creates draft" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=2;fontSize=10;" edge="1" source="start" target="s_draft" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t_ds" value="PATCH /status {status:'scheduled', scheduledAt}&#xa;guard: scheduledAt must be future (BR-F06)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#1565c0;strokeWidth=2;fontSize=10;" edge="1" source="s_draft" target="s_sched" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t_sd" value="PATCH /status {status:'draft'}&#xa;unschedule" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#f9a825;strokeWidth=2;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=1;" edge="1" source="s_sched" target="s_draft" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="650" y="310"/><mxPoint x="330" y="310"/></Array></mxGeometry></mxCell>
+
+<mxCell id="t_sp" value="PublishJob (@Cron)&#xa;scheduledAt ≤ now()" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;strokeWidth=2;fontSize=10;" edge="1" source="s_sched" target="s_pub" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t_pp" value="Facebook Graph API&#xa;POST /me/feed OK" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#1b5e20;strokeWidth=2;fontSize=10;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" edge="1" source="s_pub" target="s_done" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t_pf" value="Facebook API error&#xa;or timeout" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b71c1c;strokeWidth=2;fontSize=10;exitX=0.5;exitY=1;entryX=0;entryY=0.5;" edge="1" source="s_pub" target="s_fail" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t_del1" value="DELETE /posts/:id (soft-delete)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#777777;strokeWidth=2;dashed=1;fontSize=10;exitX=0;exitY=1;entryX=0;entryY=0;" edge="1" source="s_draft" target="s_cancel" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="t_del2" value="workspace.deleted (cascade)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#777777;strokeWidth=2;dashed=1;fontSize=10;exitX=0;exitY=1;entryX=0.3;entryY=0;" edge="1" source="s_sched" target="s_cancel" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- EVENTS EMITTED -->
+<mxCell id="ev_box" value="Domain Events Emitted&#xa;─────────────────────&#xa;draft created → PostCreatedEvent (posts.created)&#xa;scheduled → (status stored, no event)&#xa;publishing → (status stored, no event)&#xa;published → PostPublishedEvent (posts.published)&#xa;→ fans out: search + notification + email + analytics + audit&#xa;failed → PostFailedEvent (posts.failed)&#xa;→ fans out: search + notification + email + audit&#xa;soft-deleted → PostDeletedEvent (posts.deleted)&#xa;→ fans out: search + audit" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="100" y="530" width="700" height="200" as="geometry"/></mxCell>
+
+<!-- GUARDS -->
+<mxCell id="gd_box" value="State Machine Guards&#xa;─────────────────────&#xa;draft → scheduled: scheduledAt required + must be future (BR-F06)&#xa;scheduled → publishing: only PublishJob, not user API&#xa;publishing → published/failed: only PublishJob callback&#xa;published / failed: TERMINAL — no further transitions allowed&#xa;Any other transition: err(INVALID_STATE_TRANSITION)" style="rounded=1;fillColor=#fff2cc;strokeColor=#f9a825;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="820" y="530" width="560" height="160" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+<!-- PAGE 2 — BILLING SUBSCRIPTION STATE MACHINE -->
+<diagram id="sm_bill" name="2. Billing Subscription SM">
+<mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="860" math="0" shadow="0">
+<root><mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="title" value="Subscription State Machine — services/billing (Stripe)" style="text;html=1;align=center;fontSize=22;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="200" y="20" width="1000" height="36" as="geometry"/></mxCell>
+<mxCell id="sub" value="Guarded transitions · every transition writes billing_events row · emits RMQ event after commit" style="text;html=1;align=center;fontSize=11;" vertex="1" parent="1"><mxGeometry x="200" y="56" width="1000" height="22" as="geometry"/></mxCell>
+
+<mxCell id="start" value="" style="ellipse;fillColor=#333333;strokeColor=#333333;" vertex="1" parent="1"><mxGeometry x="100" y="190" width="30" height="30" as="geometry"/></mxCell>
+
+<!-- States -->
+<mxCell id="s_trial" value="trialing" style="rounded=1;fillColor=#e3f2fd;strokeColor=#1565c0;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="240" y="170" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s_active" value="active" style="rounded=1;fillColor=#e8f5e9;strokeColor=#2e7d32;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="620" y="170" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s_grace" value="grace_period&#xa;(PAST_DUE)" style="rounded=1;fillColor=#fff9c4;strokeColor=#f57f17;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="620" y="380" width="200" height="70" as="geometry"/></mxCell>
+<mxCell id="s_cancel" value="cancelled&#xa;(TERMINAL)" style="rounded=1;fillColor=#b71c1c;fontColor=#FFFFFF;strokeColor=#b71c1c;strokeWidth=3;fontSize=16;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="240" y="380" width="200" height="70" as="geometry"/></mxCell>
+
+<mxCell id="end" value="" style="ellipse;fillColor=#FFFFFF;strokeColor=#333333;strokeWidth=3;" vertex="1" parent="1"><mxGeometry x="100" y="400" width="30" height="30" as="geometry"/></mxCell>
+
+<!-- Transitions -->
+<mxCell id="t0" value="checkout.completed&#xa;or free signup" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=2;fontSize=10;" edge="1" source="start" target="s_trial" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t1" value="invoice.paid" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;strokeWidth=2;fontSize=10;" edge="1" source="s_trial" target="s_active" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t2" value="invoice.payment_failed&#xa;→ sets grace_period_end" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#f57f17;strokeWidth=2;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" source="s_active" target="s_grace" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t3" value="invoice.paid (recovered)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#2e7d32;strokeWidth=2;fontSize=10;exitX=0.2;exitY=0;entryX=0.2;entryY=1;" edge="1" source="s_grace" target="s_active" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t4" value="trial expired, no payment" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#f57f17;strokeWidth=2;fontSize=10;exitX=0.5;exitY=1;entryX=0;entryY=0.4;" edge="1" source="s_trial" target="s_grace" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t5" value="grace_period expired" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b71c1c;strokeWidth=2;fontSize=10;" edge="1" source="s_grace" target="s_cancel" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t6" value="customer.subscription.deleted&#xa;(Stripe webhook)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b71c1c;strokeWidth=2;fontSize=10;exitX=0.25;exitY=1;entryX=0.75;entryY=0;" edge="1" source="s_active" target="s_cancel" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<mxCell id="t7" value="workspace.deleted event&#xa;(WorkspaceDeletedConsumer — W-1)" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;strokeWidth=2;dashed=1;fontSize=10;exitX=0;exitY=0.6;entryX=0;entryY=0.4;" edge="1" source="s_active" target="s_cancel" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="150" y="222"/><mxPoint x="150" y="402"/></Array></mxGeometry></mxCell>
+
+<mxCell id="t8" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#333333;strokeWidth=2;" edge="1" source="s_cancel" target="end" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+<!-- Events emitted -->
+<mxCell id="evs" value="RabbitMQ Events Emitted after each transition:&#xa;─────────────────────────────────────────&#xa;→ active  :  billing.subscription_activated&#xa;→ grace    :  billing.subscription_past_due&#xa;→ cancelled:  billing.subscription_cancelled&#xa;→ (no event on trialing entry — free plan)&#xa;&#xa;Consumers: notification (in-app + Slack) · audit (#)" style="rounded=1;fillColor=#f3eafb;strokeColor=#9673a6;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="900" y="170" width="440" height="200" as="geometry"/></mxCell>
+
+<!-- Guards -->
+<mxCell id="gds" value="Guards (BillingService.changeState):&#xa;─────────────────────────────────&#xa;FREE plan (code='free'): grace_period / cancelled transitions DISABLED&#xa;   grace_period_end stays NULL; no Stripe customer exists&#xa;Already cancelled: any transition → err(INVALID_STATE_TRANSITION)&#xa;workspace.deleted consumer: idempotent — ok() if no subscription or already cancelled" style="rounded=1;fillColor=#fff2cc;strokeColor=#f57f17;strokeWidth=2;fontSize=11;align=left;spacingLeft=10;" vertex="1" parent="1"><mxGeometry x="900" y="390" width="440" height="160" as="geometry"/></mxCell>
+</root>
+</mxGraphModel>
+</diagram>
+
+</mxfile>
