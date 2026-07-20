@@ -92,6 +92,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Migration (one-shot, runs before any app service) ───────────────────────
+  # Runs all MikroORM migrations across the 5 Postgres schemas in order.
+  # Exits 0 on success; any non-zero exit stops the entire compose stack.
+  # Skips already-applied migrations (idempotent).
+
+  migration:
+    <<: *app
+    command: >
+      sh -c "node apps/api/dist/database/run-migrations.js &&
+             node services/billing/dist/database/run-migrations.js &&
+             node services/analytics/dist/database/run-migrations.js &&
+             node services/notification/dist/database/run-migrations.js &&
+             node services/email/dist/database/run-migrations.js"
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # ── Application services ─────────────────────────────────────────────────────
 
   billing:
@@ -107,6 +127,8 @@ services:
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
+      migration:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       rabbitmq:
@@ -128,6 +150,8 @@ services:
       DATABASE_URL: postgres://fcp:fcp@postgres:5432/fcp
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
+      migration:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       rabbitmq:
@@ -192,6 +216,8 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
+      migration:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -213,6 +239,8 @@ services:
       REDIS_URL: redis://redis:6379
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
     depends_on:
+      migration:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -246,6 +274,8 @@ services:
       BILLING_SUCCESS_URL: http://localhost:3000/api/v1/billing/success
       BILLING_CANCEL_URL: http://localhost:3000/api/v1/billing/cancel
     depends_on:
+      migration:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       mongodb:
@@ -272,12 +302,10 @@ services:
       start_period: 30s
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Migrations (run once after `docker compose up -d`):
+# Migrations run automatically via the `migration` service above.
+# `docker compose up -d` runs all pending migrations before any app starts.
 #
-#   docker compose run --rm --no-deps api node -e \
-#     "require('./apps/api/dist/database/run-migrations').runMigrations()"
-#
-# Or from the host with pnpm (faster for dev):
+# To run migrations manually (dev, outside Docker):
 #   pnpm migration              # core schema (apps/api)
 #   pnpm migration:billing      # billing schema
 #   pnpm migration:analytics    # analytics schema
