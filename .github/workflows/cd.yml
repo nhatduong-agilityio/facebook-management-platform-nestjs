@@ -10,6 +10,9 @@
 #                      • Health gate: poll /api/v1/health until 200 (120s max)
 #   3. smoke       — Run Artillery smoke test from GHA runner against live API.
 #
+# NOTE: the NestJS project lives in the facebook-creator-platform/ subdirectory.
+# The Dockerfile and docker-compose.yml are relative to that subdirectory.
+#
 # Required GitHub Secrets (see docs/DECISIONS.md § ADR-INF-03):
 #   DEPLOY_HOST      — SSH hostname or IP of production server
 #   DEPLOY_USER      — SSH username (e.g. ubuntu, deploy)
@@ -62,7 +65,8 @@ jobs:
       - name: Build and push (production runner stage)
         uses: docker/build-push-action@v6
         with:
-          context: .
+          # Dockerfile lives inside the facebook-creator-platform/ subdirectory.
+          context: ./facebook-creator-platform
           # No --target = defaults to the final (runner) stage in the Dockerfile.
           push: true
           tags: |
@@ -139,6 +143,10 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: facebook-creator-platform
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -153,6 +161,7 @@ jobs:
         with:
           node-version: "25"
           cache: "pnpm"
+          cache-dependency-path: facebook-creator-platform/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

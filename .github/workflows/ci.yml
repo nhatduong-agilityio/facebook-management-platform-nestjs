@@ -3,6 +3,9 @@
 #
 # Steps: install → lint → build (TypeScript) → test (Vitest).
 # No Docker build; no secrets required.
+#
+# NOTE: the NestJS project lives in the facebook-creator-platform/ subdirectory.
+# All run steps use that as the working directory.
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: CI
@@ -17,6 +20,10 @@ jobs:
   ci:
     name: Lint · Build · Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: facebook-creator-platform
 
     strategy:
       matrix:
@@ -37,6 +44,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: "pnpm"
+          cache-dependency-path: facebook-creator-platform/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
