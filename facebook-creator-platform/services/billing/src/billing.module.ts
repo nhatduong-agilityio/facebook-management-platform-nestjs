@@ -20,6 +20,7 @@ import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
 import { BillingWebhookController } from './billing.webhook.controller';
 import { BillingMessageController } from './billing.message-controller';
+import { WorkspaceDeletedConsumer } from './consumers/workspace-deleted.consumer';
 
 /**
  * Core billing module: Plans, Subscriptions, Stripe Checkout, and state machine (T3.2).
@@ -27,6 +28,7 @@ import { BillingMessageController } from './billing.message-controller';
  * Owns the `billing` Postgres schema. Exposes:
  * - HTTP endpoints for the Stripe webhook and browser redirect (Stripe → billing directly).
  * - TCP `@MessagePattern` handlers for synchronous RPC from `apps/api` (ADR-094).
+ * - RMQ `@EventPattern('workspace.deleted')`: cancels subscriptions via choreography (ADR-109).
  *
  * Port bindings:
  * - `IPlanRepository`          → `MikroOrmPlanRepository`
@@ -59,7 +61,7 @@ import { BillingMessageController } from './billing.message-controller';
       },
     ]),
   ],
-  controllers: [BillingController, BillingWebhookController, BillingMessageController],
+  controllers: [BillingController, BillingWebhookController, BillingMessageController, WorkspaceDeletedConsumer],
   providers: [
     BillingService,
     { provide: IPlanRepository, useClass: MikroOrmPlanRepository },

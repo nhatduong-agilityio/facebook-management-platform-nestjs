@@ -54,6 +54,6 @@ import { BillingSubscriptionConsumer } from './consumers/billing-subscription.co
     { provide: IBillingHttpClient, useClass: BillingTcpAdapter },
     { provide: IPostQuotaProvider, useClass: BillingQuotaAdapter },
   ],
-  exports: [IPostQuotaProvider],
+  exports: [IPostQuotaProvider, IBillingHttpClient],
 })
 export class BillingModule {}

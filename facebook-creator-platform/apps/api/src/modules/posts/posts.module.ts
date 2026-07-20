@@ -38,5 +38,6 @@ import { FacebookGraphApiAdapter } from '../facebook/adapters/facebook-graph-api
     PublishJob,
     PublishFallbackPollJob,
   ],
+  exports: [IPostRepository],
 })
 export class PostsModule {}

@@ -2,8 +2,10 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { Transport } from '@nestjs/microservices';
+import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
+import { getRmqOptions } from '@fcp/rmq-options';
 import { AppModule } from './app.module';
 
 /**
@@ -11,6 +13,8 @@ import { AppModule } from './app.module';
  *
  * - HTTP on `BILLING_PORT` (default 3001): Stripe webhooks + redirect controller.
  * - TCP on `BILLING_TCP_PORT` (default 4001): internal RPC from `apps/api` (ADR-094).
+ * - RabbitMQ `billing_workspace_queue`: consumes `workspace.deleted` events to cancel
+ *   subscriptions via choreography (ADR-109 Fix 4).
  */
 async function bootstrap(): Promise<void> {
   // rawBody: true is required for Stripe webhook signature verification (T3.2).
@@ -23,6 +27,10 @@ async function bootstrap(): Promise<void> {
       port: parseInt(process.env.BILLING_TCP_PORT ?? '4001', 10),
     },
   });
+
+  // Choreography consumer: react to WorkspaceDeletedEvent and cancel the subscription.
+  const configService = app.get(ConfigService);
+  app.connectMicroservice(getRmqOptions('billing_workspace_queue', configService));
 
   app.useLogger(app.get(Logger));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

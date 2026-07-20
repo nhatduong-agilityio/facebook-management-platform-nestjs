@@ -84,4 +84,5 @@ export class BillingMessageController {
       (e) => { throw new RpcException({ code: e.code, message: e.message }); },
     );
   }
+
 }

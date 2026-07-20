@@ -119,4 +119,5 @@ describe('BillingMessageController', () => {
       ).rejects.toThrow(RpcException);
     });
   });
+
 });

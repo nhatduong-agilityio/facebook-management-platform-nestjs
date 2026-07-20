@@ -642,7 +642,7 @@ For blocked tasks always append an inline note on the same line:
 
 ## Deferred — Workspace Lifecycle
 
-- [ ] **W-1 Workspace soft-delete (delete endpoint + cascade + retention job)** (~2d)
+- [x] **W-1 Workspace soft-delete (delete endpoint + cascade + retention job)** (~2d)
   - Implement `DELETE /workspaces/:id` that soft-deletes the workspace and cascades
     domain-layer soft-deletes to all child aggregates. The `posts` and `facebook_accounts`
     tables use `ON DELETE RESTRICT` FKs — the DB will reject the workspace soft-delete unless

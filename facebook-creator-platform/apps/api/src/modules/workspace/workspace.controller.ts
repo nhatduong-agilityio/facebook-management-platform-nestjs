@@ -300,6 +300,38 @@ export class WorkspaceController {
   }
 
   // ---------------------------------------------------------------------------
+  // Workspace deletion (W-1, ADR-105)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Soft-deletes the workspace and all its dependent aggregates in one transaction.
+   *
+   * Restricted to the workspace **Owner**. Returns 409 when other members still
+   * exist (BR-R02 — remove all members first), 403 when the caller is not the owner,
+   * and 404 when the workspace is not found or already deleted.
+   *
+   * The response is 204 No Content on success (the workspace is gone).
+   *
+   * @param id   - UUID of the workspace to delete.
+   * @param user - Authenticated owner user, injected by `@CurrentUser()`.
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Soft-delete a workspace and all its children (Owner only)' })
+  @ApiNoContentResponse({ description: 'Workspace deleted' })
+  @ApiNotFoundResponse({ description: 'Workspace not found or already deleted' })
+  @ApiForbiddenResponse({ description: 'Caller is not the workspace owner' })
+  @ApiConflictResponse({ description: 'Other members still exist (BR-R02) — remove them first' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid Bearer token' })
+  async deleteWorkspace(@Param('id') id: string, @CurrentUser() user: User): Promise<void> {
+    const result = await this.workspaceService.deleteWorkspace(id, user.id);
+    result.match(
+      () => undefined,
+      (e) => { throw toHttpException(e); },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Private mappers
   // ---------------------------------------------------------------------------
 

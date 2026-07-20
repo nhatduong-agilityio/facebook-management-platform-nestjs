@@ -461,6 +461,54 @@ export class BillingService {
   }
 
   /**
+   * Cancels the active subscription for a workspace triggered by workspace deletion (W-1).
+   *
+   * Idempotent: if the workspace has no subscription (free tier) or the subscription
+   * is already `cancelled`, this method is a no-op. Free-plan subscriptions are also
+   * skipped because they have no Stripe subscription to cancel (BR-F10).
+   *
+   * Uses a synthetic UUID v7 as the `stripeEventId` in `billing_events` (no real Stripe
+   * event triggers this path). In production the eventual `customer.subscription.deleted`
+   * webhook will hit `handleSubscriptionDeleted` which will be a no-op.
+   *
+   * @param workspaceId - UUID of the workspace being deleted.
+   * @returns ok(void) on success, or err(AppError) on unexpected domain failure.
+   */
+  async cancelWorkspaceSubscription(workspaceId: string): Promise<Result<void, AppError>> {
+    const sub = await this.subscriptions.findByWorkspaceId(workspaceId);
+
+    if (!sub) return ok(undefined);
+    if (sub.status === 'cancelled') return ok(undefined);
+
+    const planCode = unref(sub.plan).code;
+    if (planCode === 'free') return ok(undefined);
+
+    const syntheticEventId = uuidv7();
+    const transResult = this.transitionSubscription(
+      sub,
+      'cancelled',
+      syntheticEventId,
+      'workspace.deleted',
+    );
+    if (transResult.isErr()) return err(transResult.error);
+
+    await this.em.flush();
+
+    const payload: SubscriptionCancelledPayload = {
+      eventId: uuidv7(),
+      workspaceId: sub.workspaceId,
+      planCode,
+      occurredAt: new Date().toISOString(),
+    };
+    await this.eventBus.publish(
+      'billing.subscription_cancelled',
+      payload as unknown as Record<string, unknown>,
+    );
+
+    return ok(undefined);
+  }
+
+  /**
    * Handles `customer.subscription.deleted` — transitions the subscription to `cancelled`.
    *
    * Publishes `billing.subscription_cancelled` after commit.

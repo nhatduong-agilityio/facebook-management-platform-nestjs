@@ -40,6 +40,11 @@ export class MikroOrmWorkspaceMemberRepository extends IWorkspaceMemberRepositor
   }
 
   /** @inheritdoc */
+  countByWorkspace(workspaceId: string): Promise<number> {
+    return this.repo.count({ workspace: workspaceId });
+  }
+
+  /** @inheritdoc */
   async findAllByWorkspaceId(workspaceId: string, query: ListMembersQuery = {}): Promise<MembersPage> {
     const limit = Math.min(query.limit ?? 50, 100);
     const where: FilterQuery<WorkspaceMember> = { workspace: workspaceId };

@@ -60,6 +60,7 @@ describe('WorkspaceController', () => {
       removeMember: vi.fn(),
       acceptInvitation: vi.fn(),
       changeMemberRole: vi.fn(),
+      deleteWorkspace: vi.fn(),
     } as unknown as WorkspaceService;
     controller = new WorkspaceController(service);
   });
@@ -266,6 +267,43 @@ describe('WorkspaceController', () => {
       await expect(
         controller.changeMemberRole('ws-1', 'user-1', { role: 'viewer' } as never, mockUser),
       ).rejects.toMatchObject({ response: { code: 'FORBIDDEN' } });
+    });
+  });
+
+  describe('deleteWorkspace', () => {
+    it('resolves void (204) on success', async () => {
+      vi.mocked(service.deleteWorkspace).mockResolvedValue(ok(undefined));
+
+      await expect(controller.deleteWorkspace('ws-1', mockUser)).resolves.toBeUndefined();
+      expect(service.deleteWorkspace).toHaveBeenCalledWith('ws-1', 'user-1');
+    });
+
+    it('throws 404 when workspace not found', async () => {
+      vi.mocked(service.deleteWorkspace).mockResolvedValue(err(AppError.notFound('Workspace')));
+
+      await expect(controller.deleteWorkspace('ws-1', mockUser)).rejects.toMatchObject({
+        response: { code: 'NOT_FOUND' },
+      });
+    });
+
+    it('throws 403 when caller is not the owner', async () => {
+      vi.mocked(service.deleteWorkspace).mockResolvedValue(
+        err(AppError.forbidden('Only the workspace owner can delete the workspace')),
+      );
+
+      await expect(controller.deleteWorkspace('ws-1', mockUser)).rejects.toMatchObject({
+        response: { code: 'FORBIDDEN' },
+      });
+    });
+
+    it('throws 409 when other members still exist (BR-R02)', async () => {
+      vi.mocked(service.deleteWorkspace).mockResolvedValue(
+        err(AppError.conflict('Cannot delete a workspace with other members')),
+      );
+
+      await expect(controller.deleteWorkspace('ws-1', mockUser)).rejects.toMatchObject({
+        response: { code: 'CONFLICT' },
+      });
     });
   });
 });
