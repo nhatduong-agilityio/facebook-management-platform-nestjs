@@ -949,7 +949,7 @@ For blocked tasks always append an inline note on the same line:
     `docker compose -f docker-compose.yml up` starts production-mode from built image;
     `DevAuthModule` is active in dev compose, absent in prod compose; `README.md` updated.
 
-- [ ] **INF-03 GitHub Actions CI/CD pipeline** (~4h)
+- [x] **INF-03 GitHub Actions CI/CD pipeline** (~4h)
   - Two workflow files. **CI** runs on every push and PR. **CD** runs on merge to `main`
     and drives the full build → migrate → health → smoke sequence. Both live in
     `.github/workflows/`.
