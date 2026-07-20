@@ -1,0 +1,250 @@
+config:
+  # Default: local Docker stack. Override for other envs:
+  #   artillery run --target http://staging.example.com test/e2e/services.e2e.yml
+  target: "http://localhost:3000"
+  phases:
+    - duration: 1
+      arrivalCount: 1
+  plugins:
+    expect:
+      outputFormat: prettyError
+      reportFailuresAsErrors: true
+  defaults:
+    headers:
+      authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+      content-type: "application/json"
+
+# E2E contract tests for the six service-backed route groups:
+# facebook connect-url, billing, analytics, search, notifications, audit-logs.
+#
+# Run:
+#   TEST_JWT=<owner-jwt> artillery run test/e2e/services.e2e.yml
+#
+# Required env:
+#   TEST_JWT — a Clerk JWT with Owner role on the workspace created by before:.
+#              Obtain via:
+#                curl -s -X POST http://localhost:3000/api/v1/dev-auth/token \
+#                  -H 'content-type: application/json' \
+#                  -d '{"email":"you@example.com"}' | jq -r '.accessToken'
+#              (NODE_ENV must NOT be production for dev-auth to be mounted)
+#
+# Requires the full stack to be running:
+#   apps/api + services/billing, analytics, audit, search, notification
+#   Run `docker compose up -d` then start all 7 processes before executing.
+#
+# Side-effects:
+#   Creates one workspace ("Services-E2E-*") and one draft post via before:.
+#   Both are soft-deleted by the after: hook. Run against dev/staging only.
+
+before:
+  flow:
+    # Create a dedicated workspace so every assertion is isolated.
+    - post:
+        url: "/api/v1/workspaces"
+        headers:
+          authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+          content-type: "application/json"
+        json:
+          name: "Services-E2E-{{ $uuid }}"
+          description: "Auto-created for services e2e tests — safe to delete"
+        capture:
+          - json: "$.id"
+            as: "workspaceId"
+        expect:
+          - statusCode: 201
+
+    # Create a draft post — needed for per-post analytics assertions.
+    - post:
+        url: "/api/v1/workspaces/{{ workspaceId }}/posts"
+        headers:
+          authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+          content-type: "application/json"
+        json:
+          content: "Services e2e test post {{ $uuid }}"
+          title: "E2E services post"
+        capture:
+          - json: "$.id"
+            as: "postId"
+        expect:
+          - statusCode: 201
+
+scenarios:
+  - name: "service-backed endpoints contract tests"
+    flow:
+      # ── Facebook: connect-url ─────────────────────────────────────────────────
+      # Does not require a live Facebook app — constructs the OAuth URL locally
+      # using FACEBOOK_APP_ID and FACEBOOK_REDIRECT_URI from env.
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/facebook/connect-url"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "url"
+            - hasProperty: "state"
+
+      # ── Facebook: connect-url — unknown workspace returns 404 ────────────────
+      - get:
+          url: "/api/v1/workspaces/00000000-0000-0000-0000-000000000000/facebook/connect-url"
+          expect:
+            - statusCode: 404
+            - notStatusCode: [500]
+
+      # ── Facebook: pages list — empty array on a fresh workspace ──────────────
+      # Returns ConnectedPageResponseDto[]. Tokens are never included (BR-F11).
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/facebook/pages"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # ── Billing: subscription read ───────────────────────────────────────────
+      # A freshly created workspace has no Stripe subscription → 404 (NOT_FOUND).
+      # After a successful Stripe checkout the status would be 200 with
+      # { id, workspaceId, status, plan, postLimit }.
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/billing/subscription"
+          expect:
+            - statusCode: 404
+            - notStatusCode: [500]
+
+      # ── Billing: checkout — Stripe Checkout URL ──────────────────────────────
+      # Requires services/billing running with a valid STRIPE_SECRET_KEY (test mode).
+      # Returns { url } where url is a Stripe-hosted checkout page.
+      # planCode must be 'pro' or 'team' (free plan has no checkout flow).
+      - post:
+          url: "/api/v1/workspaces/{{ workspaceId }}/billing/checkout"
+          json:
+            planCode: "pro"
+          capture:
+            - json: "$.url"
+              as: "checkoutUrl"
+          expect:
+            - statusCode: 201
+            - contentType: json
+            - hasProperty: "url"
+
+      # ── Billing: checkout — invalid planCode returns 400 ─────────────────────
+      - post:
+          url: "/api/v1/workspaces/{{ workspaceId }}/billing/checkout"
+          json:
+            planCode: "free"
+          expect:
+            - statusCode: 400
+            - notStatusCode: [500]
+
+      # ── Analytics: workspace-level metrics ───────────────────────────────────
+      # Owner role required. Returns MetricsSummaryDto — zeros on a fresh workspace.
+      # Fields: reach, impressions, likes, comments, shares.
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/analytics"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "reach"
+            - hasProperty: "impressions"
+
+      # ── Analytics: per-post metrics ──────────────────────────────────────────
+      # Owner role required. Returns PostMetricsDayDto[] — empty until Graph API
+      # fetches metrics after a post is published (posts.published consumer in
+      # services/analytics). A fresh post returns 200 with an empty array.
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/posts/{{ postId }}/analytics"
+          ifTrue: "postId"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # ── Analytics: non-owner role returns 403 ────────────────────────────────
+      # (Skipped: requires a second JWT with viewer/editor role)
+
+      # ── Search: full-text query ───────────────────────────────────────────────
+      # Owner / Editor / Viewer may search. Returns SearchResultDto[].
+      # Results may be empty — Algolia indexes posts via the posts.created consumer
+      # in services/search; event delivery is async.
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/search?q=e2e"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # ── Search: empty q defaults to blank search — still 200 ─────────────────
+      # q param is optional (default ''); an empty string returns all indexed posts.
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/search"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # ── Notifications: list ───────────────────────────────────────────────────
+      # Any workspace member may call this. Returns NotificationResponseDto[].
+      # Empty on a fresh workspace — notifications are created by event consumers
+      # in services/notification (e.g. posts.published, billing.subscription_*).
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/notifications"
+          capture:
+            - json: "$[0].id"
+              as: "notificationId"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # ── Notifications: mark-read ─────────────────────────────────────────────
+      # BR-F08: read_status is one-way (false → true only). A repeated call is
+      # idempotent (returns 200, does not error). Skipped when list is empty.
+      - patch:
+          url: "/api/v1/notifications/{{ notificationId }}/read"
+          ifTrue: "notificationId"
+          expect:
+            - statusCode: 200
+            - notStatusCode: [500]
+
+      # ── Notifications: mark-read idempotency (BR-F08) ────────────────────────
+      # Second call on the same notificationId must not fail.
+      - patch:
+          url: "/api/v1/notifications/{{ notificationId }}/read"
+          ifTrue: "notificationId"
+          expect:
+            - statusCode: 200
+            - notStatusCode: [500]
+
+      # ── Audit logs: list ──────────────────────────────────────────────────────
+      # Owner role required. Returns AuditLogResponseDto[] from MongoDB via
+      # services/audit (TCP). The workspace.member-invited and posts.created events
+      # from the before: hook may already appear depending on consumer latency.
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/audit-logs"
+          capture:
+            - json: "$[0]._id"
+              as: "auditId"
+          expect:
+            - statusCode: 200
+            - contentType: json
+
+      # ── Audit logs: single event ─────────────────────────────────────────────
+      # Skipped when the list returned no documents (auditId not captured).
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/audit-logs/{{ auditId }}"
+          ifTrue: "auditId"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "_id"
+            - hasProperty: "workspaceId"
+
+      # ── Audit logs: non-existent id returns 404 ───────────────────────────────
+      - get:
+          url: "/api/v1/workspaces/{{ workspaceId }}/audit-logs/00000000-0000-0000-0000-000000000000"
+          expect:
+            - statusCode: 404
+            - notStatusCode: [500]
+
+# Soft-delete the workspace (and its post) created by the before: hook.
+after:
+  flow:
+    - delete:
+        url: "/api/v1/workspaces/{{ workspaceId }}"
+        headers:
+          authorization: "Bearer {{ $processEnvironment.TEST_JWT }}"
+          content-type: "application/json"
+        expect:
+          - statusCode: 204
