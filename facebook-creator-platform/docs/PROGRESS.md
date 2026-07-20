@@ -5,11 +5,19 @@
 
 ## Resume point
 
-- **Next task:** None queued — W-1 was the last deferred task. Check `docs/TASKS.md` for any new tasks or backlog items.
+- **Next task:** D-2 — Postman collection for full API flow coverage (see `docs/TASKS.md` § Documentation).
 - **Branch:** `nestjs-practice`
-- **Notes:** **W-1 + 5 architectural fixes complete (ADR-109).** Choreography-based billing cancel, single richer `WorkspaceDeletedEvent`, 500-row batch purge, idempotency on already-deleted workspace. 382 apps/api + 38 billing tests green. Lint: 0 errors.
+- **Notes:** D-1 complete. `README.md` + `apps/api/README.md` created. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-20 — D-1 README files
+
+- **`README.md`** (new at repo root): 8 sections — Features table (all 7 apps/services), Project Structure tree, Requirements (Node 25 / pnpm 10), Installation (7-step including per-service migrations), Environment Variables (key vars table + pointer to `.env.example`), API Reference (all route groups), Architecture & Design (Three-Transport Model summary + links to `docs/`), Code Quality commands.
+- **`apps/api/README.md`** (new): 9 sections — Features table (12 areas), Project Structure tree of `src/` with canonical module layout pattern, Requirements + Installation, Environment Variables (full table — all 25 vars consumed by `apps/api`), API Reference (per-group roles), Jobs/Background Workers (all 5 jobs with cron schedules and one-line purpose), Database & Migrations, Testing.
+- No code changes. Lint: 0 errors (warnings are pre-existing `any` in unrelated files).
+
+---
 
 ### 2026-07-20 — W-1 Post-review: 5 architectural fixes (ADR-109 amendments)
 

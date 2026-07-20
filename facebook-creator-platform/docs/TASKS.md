@@ -673,6 +673,196 @@ For blocked tasks always append an inline note on the same line:
 
 ---
 
+## Documentation
+
+- [x] **D-1 README files — root monorepo + apps/api** (~2h)
+  - Create `README.md` at the repo root and `apps/api/README.md`. Both files must reflect
+    the **actual stack** (NestJS 11, MikroORM 7, pnpm 10, Node 25 — not Fastify/TypeORM).
+    Use the structure below as a template guide; adapt every section to match what is
+    actually implemented.
+
+  **Root `README.md`** — minimum sections:
+  - **Header**: project name + one-line description.
+  - **Table of Contents**.
+  - **Features**: table mapping app/area to description — `apps/api` (NestJS REST + Swagger),
+    background jobs (`PublishJob`, `OutboxRelayJob`, `WorkspacePurgeJob`), Auth (Clerk JWT),
+    Billing (Stripe state machine), Facebook integration (OAuth + Graph API),
+    services roster (`billing`, `analytics`, `audit`, `search`, `notification`, `email`).
+  - **Project Structure**: tree covering `apps/`, `services/`, `libs/`, `docs/`, `test/`;
+    note per-service schemas and the Three-Transport Model (HTTP / TCP / RabbitMQ).
+  - **Requirements**: Node 25, pnpm 10.
+  - **Installation**: `pnpm install`, copy `.env.example`, `docker compose up -d`, migrations
+    (`pnpm mikro-orm migration:up`), start commands per service.
+  - **Environment Variables**: pointer to each app's `.env.example`; table of the most
+    important vars (`DATABASE_URL`, `REDIS_*`, `RABBITMQ_URL`, `CLERK_SECRET_KEY`,
+    `FACEBOOK_*`, `STRIPE_*`, `ALGOLIA_*`, `RESEND_*`).
+  - **API Reference**: base URL, all route groups under `/api/v1`, Swagger at `/api/docs`,
+    health at `/api/v1/health`.
+  - **Architecture & Design**: brief note on modular monolith (`apps/api`) + event-driven
+    services; Three-Transport Model; link to `docs/reference/` and `docs/DECISIONS.md`.
+  - **Code Quality**: `pnpm lint`, `pnpm format`, `pnpm build`, `pnpm test`, `pnpm load:smoke`.
+
+  **`apps/api/README.md`** — minimum sections:
+  - **Header**: "API (NestJS)" + one-line description.
+  - **Table of Contents**.
+  - **Features**: same area table as root but focused on API internals (modules, jobs,
+    webhooks, Swagger).
+  - **Project Structure**: tree of `src/` with `modules/`, `infrastructure/`, `common/`,
+    `health/`, `migrations/`; include the canonical module layout pattern
+    (`contracts/`, `controller/`, `service/`, `repository/`, `entity/`, `providers/`, `ports/`).
+  - **Requirements** and **Installation** (from monorepo root context).
+  - **Environment Variables**: full table matching `apps/api/.env.example` — include
+    `PORT`, `DATABASE_URL`, `REDIS_*`, `RABBITMQ_URL`, `CLERK_*`, `FACEBOOK_*`, `STRIPE_*`,
+    `ALGOLIA_*`, `RESEND_*`, `TCP_*` ports, `ALLOWED_ORIGINS`, `HTTP_CLIENT_TIMEOUT_MS`.
+  - **API Reference**: route group table; Swagger UI + health URLs; auth header note.
+  - **Jobs / Background Workers**: list `PublishJob`, `PublishFallbackPollJob`,
+    `FacebookTokenExpiryScheduler`, `OutboxRelayJob`, `WorkspacePurgeJob` with cron
+    schedules and one-line purpose each.
+  - **Database & Migrations**: `docker compose up -d`; `pnpm mikro-orm migration:create/up/down`.
+  - **Testing**: `pnpm test`, `pnpm test:watch`, `pnpm test:cov`; Artillery load tests.
+
+  Rules:
+  - Do not copy Fastify/TypeORM/BullMQ wording from the example template — the project uses
+    NestJS, MikroORM, and native `@Cron` / `@nestjs/schedule`, not BullMQ.
+  - Do not add a service-level README for each `services/*` package unless the DoD is
+    extended; keep scope to root + `apps/api` only.
+  - No JSDoc required in Markdown files; standard Markdown only.
+  - `pnpm lint` must still pass after adding the files (Markdown is not linted; verify no
+    accidental `.ts` changes).
+
+  DoD: `README.md` exists at repo root; `apps/api/README.md` exists; both reflect the
+  real stack and pass a manual review against `CLAUDE.md` stack list; `pnpm lint` clean.
+
+- [ ] **D-2 Postman collection — full API flow coverage** (~4h)
+  - Create a single Postman collection file `test/postman/fcp-api.postman_collection.json`
+    that covers every public endpoint and the key end-to-end flows. Export format: Postman
+    Collection v2.1. Also create `test/postman/fcp-local.postman_environment.json` with
+    all required environment variables.
+
+  **Environment variables** (`fcp-local` environment):
+
+  | Variable | Example value | Notes |
+  | --- | --- | --- |
+  | `baseUrl` | `http://localhost:3000/api/v1` | API base |
+  | `token` | *(from DevAuth step)* | Set by pre-request script in Auth folder |
+  | `workspaceId` | *(set after workspace create)* | Set by test script |
+  | `memberId` | *(set after member list)* | |
+  | `invitationToken` | *(set from email / dev response)* | |
+  | `postId` | *(set after post create)* | |
+  | `notificationId` | *(set after notification list)* | |
+  | `auditId` | *(set after audit list)* | |
+  | `facebookAccountId` | *(set after page connect)* | |
+
+  **Collection folders and requests** — implement in this order (each folder = one flow):
+
+  1. **Auth**
+     - `GET /auth/me` → 200 with user payload; assert `userId` is present.
+     - `GET /auth/me` (no token) → 401.
+
+  2. **Workspace — lifecycle**
+     - `POST /workspaces` → 201; save `workspaceId` to env via test script.
+     - `GET /workspaces` → 200 array; assert length ≥ 1.
+     - `GET /workspaces/:workspaceId` → 200 with matching `id`.
+     - `GET /workspaces/:workspaceId` (wrong ID) → 404.
+     - `DELETE /workspaces/:workspaceId` → 204 (run last in suite or use a
+       dedicated `tempWorkspaceId` for delete test to avoid breaking subsequent requests).
+
+  3. **Workspace — members & invitations**
+     - `GET /workspaces/:workspaceId/members` → 200 page; save first `memberId`.
+     - `GET /workspaces/:workspaceId/members/:memberId` → 200.
+     - `POST /workspaces/:workspaceId/members/invite` (valid email) → 201.
+     - `POST /workspaces/:workspaceId/members/invite` (same email twice) → 409 (CONFLICT).
+     - `POST /workspaces/:workspaceId/invitations/:token/accept` → 201 (requires a real
+       pending invitation token; document as a manual step or skip with a note in the
+       request description).
+     - `PATCH /workspaces/:workspaceId/members/:memberId/role` → 200.
+     - `DELETE /workspaces/:workspaceId/members/:memberId` → 204.
+     - `DELETE /workspaces/:workspaceId/members/:memberId` (sole owner) → 409 (BR-R02).
+
+  4. **Facebook — OAuth & pages**
+     - `GET /workspaces/:workspaceId/facebook/connect-url` → 200 with `url` field.
+     - `POST /workspaces/:workspaceId/facebook/pages` (mock callback payload) → note
+       that a real OAuth code is required; mark request as "requires live Facebook OAuth"
+       in description; include a sample body for documentation purposes.
+     - `GET /workspaces/:workspaceId/facebook/pages` → 200 array (empty if no real OAuth).
+     - `POST /workspaces/:workspaceId/facebook/pages/:accountId/refresh-token` → document
+       as "requires connected page"; mark optional in description.
+
+  5. **Posts — CRUD**
+     - `POST /workspaces/:workspaceId/posts` (draft, no `scheduledAt`) → 201; save `postId`.
+     - `POST /workspaces/:workspaceId/posts` (invalid content length > limit, BR-F02) → 422.
+     - `GET /workspaces/:workspaceId/posts` → 200 page; assert `data` array.
+     - `GET /workspaces/:workspaceId/posts` (with `?limit=5`) → 200 page; assert `data.length ≤ 5`.
+     - `GET /workspaces/:workspaceId/posts/:postId` → 200.
+     - `PATCH /workspaces/:workspaceId/posts/:postId` → 200 with updated fields.
+     - `DELETE /workspaces/:workspaceId/posts/:postId` → 204; subsequent GET → 404.
+
+  6. **Posts — state machine**
+     - `PATCH /workspaces/:workspaceId/posts/:postId/status` body `{ "status": "scheduled", "scheduledAt": "<future ISO 8601 UTC>" }` → 200.
+     - `PATCH /workspaces/:workspaceId/posts/:postId/status` with `scheduledAt` missing
+       timezone offset (BR-F06) → 400 (`VALIDATION_ERROR`).
+     - `PATCH /workspaces/:workspaceId/posts/:postId/status` illegal transition
+       (e.g. `scheduled → draft`) → 409 (`INVALID_STATE_TRANSITION`).
+
+  7. **Billing**
+     - `GET /workspaces/:workspaceId/billing/subscription` → 200 with `planCode` + `status`.
+     - `POST /workspaces/:workspaceId/billing/checkout` → 200 with `url` (Stripe URL);
+       assert `url` starts with `https://checkout.stripe.com` or is non-empty.
+
+  8. **Search**
+     - `GET /workspaces/:workspaceId/search?q=test` → 200 array (may be empty; assert status).
+     - `GET /workspaces/:workspaceId/search` (missing `q`) → 400.
+
+  9. **Notifications**
+     - `GET /workspaces/:workspaceId/notifications` → 200 array.
+     - `PATCH /notifications/:notificationId/read` → 200 (requires a real notification row;
+       mark as "run after a publish event triggers a notification"; save `notificationId`
+       from the list step).
+     - `PATCH /notifications/:notificationId/read` (repeat call, BR-F08 one-way) → assert
+       idempotent 200 (not an error).
+
+  10. **Analytics**
+      - `GET /workspaces/:workspaceId/analytics` → 200 (may be empty; assert status 200).
+      - `GET /workspaces/:workspaceId/posts/:postId/analytics` → 200 or 404 (document both).
+
+  11. **Audit logs** (Owner role required)
+      - `GET /workspaces/:workspaceId/audit-logs` → 200 array; save first `auditId`.
+      - `GET /workspaces/:workspaceId/audit-logs/:auditId` → 200.
+      - `GET /workspaces/:workspaceId/audit-logs` (non-Owner token) → 403.
+
+  12. **Health**
+      - `GET /health` (no auth) → 200 `{ status: 'ok', ... }`.
+
+  **Auth setup**: All authenticated folders must include a folder-level pre-request script
+  that reads `{{token}}` from the environment. Document in the collection description that
+  `token` is obtained via `DevAuthModule` (`POST /dev-auth/token` with a seeded user ID —
+  available in `NODE_ENV !== 'production'` only) or a real Clerk JWT.
+
+  **Test scripts**: Every request must have at minimum a status-code assertion
+  (`pm.response.to.have.status(...)`) and, where applicable, a `pm.environment.set(...)` to
+  chain IDs into subsequent requests.
+
+  **What to exclude**: Internal routes (`/internal/*`), webhook endpoints (`/webhooks/*`),
+  and Stripe redirect (`/billing/redirect`) — these are inbound/server-triggered and cannot
+  be exercised from Postman directly. Add a dedicated "Excluded — inbound only" folder with
+  stub entries and a description explaining why.
+
+  **Output location**: `test/postman/` (create directory). Add a `test/postman/README.md`
+  explaining how to import and which environment to select; no other content.
+
+  Rules:
+  - Collection must be valid Postman Collection v2.1 JSON (importable without errors).
+  - Do not hardcode tokens or secrets — use `{{variable}}` placeholders throughout.
+  - No code changes to `apps/api` — this is a test artefact only.
+  - `pnpm lint` must still pass (no `.ts` changes).
+
+  DoD: `test/postman/fcp-api.postman_collection.json` imports into Postman without error;
+  `test/postman/fcp-local.postman_environment.json` contains all variables listed above;
+  `test/postman/README.md` describes import steps; all 12 flow folders present with correct
+  request counts; no hardcoded secrets; `pnpm lint` clean.
+
+---
+
 ## Adding a task
 
 Append under the right week with: a one-line scope, the relevant business
