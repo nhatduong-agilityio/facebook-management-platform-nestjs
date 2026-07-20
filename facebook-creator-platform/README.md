@@ -115,17 +115,26 @@ pnpm install
 cp .env.example .env
 # Edit .env — fill in CLERK_*, STRIPE_*, FACEBOOK_*, ALGOLIA_*, RESEND_* keys
 
-# 3. Start all datastores (Postgres, MongoDB, Redis, RabbitMQ)
-docker compose up -d
+# 3. Build the Docker image (first time only)
+docker compose build
 
-# 4. Run migrations for each service that owns a Postgres schema
+# 4. Start everything — migrations run automatically before any app service starts
+docker compose up -d
+# The `migration` service runs all 5 Postgres schema migrations in order,
+# then exits. All app services wait for it to complete before starting.
+
+# ── Dev: run processes locally instead of Docker ─────────────────────────────
+# Start datastores only:
+docker compose up -d postgres mongodb redis rabbitmq
+
+# Run migrations from the host (faster for iterative dev):
 pnpm migration                  # apps/api  → core schema
 pnpm migration:billing          # services/billing
 pnpm migration:analytics        # services/analytics
 pnpm migration:notification     # services/notification
 pnpm migration:email            # services/email
 
-# 5. Start all processes (7 terminals or a process manager)
+# Start all 7 processes (7 terminals or a process manager):
 pnpm start:dev          # apps/api          → :3000
 pnpm start:billing      # services/billing  → :3001 (HTTP) + :4001 (TCP)
 pnpm start:analytics    # services/analytics → :3002 (TCP)

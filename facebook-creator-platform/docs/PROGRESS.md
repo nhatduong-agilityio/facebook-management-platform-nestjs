@@ -7,9 +7,19 @@
 
 - **Next task:** D-2 — Postman collection for full API flow coverage (see `docs/TASKS.md` § Documentation).
 - **Branch:** `nestjs-practice`
-- **Notes:** D-1 complete. `README.md` + `apps/api/README.md` created. Lint: 0 errors.
+- **Notes:** INF-01 complete. Docker migration service in `docker-compose.yml`; 5 `run-migrations.ts` files compiled as part of normal build. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-20 — INF-01 Docker migration service
+
+- **`apps/api/src/database/run-migrations.ts`** (new): exports `runMigrations()` for the `core` schema; uses `orm.migrator.up()` (MikroORM 7 API); `if (require.main === module)` guard prevents double-execution when required.
+- **`services/{billing,analytics,notification,email}/src/database/run-migrations.ts`** (4 new): same pattern for `billing`, `analytics`, `notification`, `email` schemas.
+- **`docker-compose.yml`**: added `migration` one-shot service (`restart: "no"`, depends on `postgres: service_healthy`); runs all 5 scripts in order via `sh -c "node ... && node ..."`. All five Postgres-owning services (`api`, `billing`, `analytics`, `notification`, `email`) gain `depends_on: migration: condition: service_completed_successfully`. Old manual migration comment replaced.
+- **`README.md`** + **`apps/api/README.md`**: Installation section updated — `docker compose up -d` is now self-contained; manual `pnpm migration:*` steps moved under a "Dev: run locally" subsection.
+- Lint: 0 errors (cSpell warnings on `MikroORM` are pre-existing across the whole repo).
+
+---
 
 ### 2026-07-20 — D-1 README files
 

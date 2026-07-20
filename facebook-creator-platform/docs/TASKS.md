@@ -863,6 +863,187 @@ For blocked tasks always append an inline note on the same line:
 
 ---
 
+## Infrastructure
+
+> These tasks are backlog items — do not start until all domain features are complete.
+> They are infrastructure / deployment concerns, not business features, and are tracked
+> separately so the domain backlog stays readable.
+> Work order: INF-01 → INF-02 → INF-03 → INF-04 → INF-05.
+> INF-01 and INF-02 are prerequisites for INF-03.
+
+- [x] **INF-01 Docker migration service** (~2h)
+  - Replace the manual `pnpm migration:*` step with a one-shot `migration` service in
+    `docker-compose.yml`. Every app service that owns a schema adds
+    `depends_on: migration: condition: service_completed_successfully` so Docker Compose
+    guarantees migrations finish before any app process starts.
+
+  **Implementation:**
+  - Add a `migration` service to `docker-compose.yml`:
+    ```yaml
+    migration:
+      <<: *app
+      command: >
+        sh -c "
+          node -e \"require('./apps/api/dist/database/run-migrations').runMigrations()\" &&
+          node -e \"require('./services/billing/dist/database/run-migrations').runMigrations()\" &&
+          node -e \"require('./services/analytics/dist/database/run-migrations').runMigrations()\" &&
+          node -e \"require('./services/notification/dist/database/run-migrations').runMigrations()\" &&
+          node -e \"require('./services/email/dist/database/run-migrations').runMigrations()\"
+        "
+      restart: "no"
+      depends_on:
+        postgres:
+          condition: service_healthy
+    ```
+  - Verify each service exposes a `runMigrations()` export from its compiled entry; add
+    thin wrapper files if needed (e.g. `apps/api/src/database/run-migrations.ts` calling
+    `orm.getMigrator().up()`).
+  - Add `depends_on: migration: condition: service_completed_successfully` to `api`,
+    `billing`, `analytics`, `notification`, `email`.
+  - Remove the manual migration commands from the docker-compose.yml comment block and
+    from `README.md` installation steps; replace with "migrations run automatically on
+    `docker compose up`."
+  - Rules: migration is a deployment concern, not an application concern — do NOT use
+    `onModuleInit()`. The migration container exits with code 0 on success, non-zero on
+    failure, which stops the entire compose stack immediately.
+  - DoD: `docker compose up -d` runs all migrations before any app service starts;
+    intentionally broken migration stops the stack with a non-zero exit; no manual
+    `pnpm migration:*` step needed; `README.md` updated.
+
+- [ ] **INF-02 Split dev/prod Docker Compose** (~2h)
+  - Create `docker-compose.override.yml` for local development. Docker Compose
+    auto-merges it on plain `docker compose up`; production uses
+    `docker compose -f docker-compose.yml up` (no override). This removes all
+    `if NODE_ENV` branching from application code and makes the two workflows explicit.
+
+  **`docker-compose.yml` (production — unchanged topology):**
+  - `ENV NODE_ENV=production` from Dockerfile remains.
+  - All services use the built image (`node dist/main.js`).
+  - No source-code volume mounts.
+
+  **`docker-compose.override.yml` (dev additions):**
+  ```yaml
+  services:
+    api:
+      command: pnpm --filter @fcp/api start:dev
+      environment:
+        NODE_ENV: development   # enables DevAuthModule + dev-auth/token endpoint
+      volumes:
+        - ./apps/api/src:/app/apps/api/src:ro
+        - ./libs:/app/libs:ro
+
+    billing:
+      command: pnpm --filter @fcp/billing start:dev
+      environment:
+        NODE_ENV: development
+
+    # repeat for analytics, audit, search, notification, email
+  ```
+  - Add `docker-compose.override.yml` to `.gitignore`? No — commit it. It contains no
+    secrets and is useful for every contributor.
+  - Update `README.md` and `apps/api/README.md` installation sections to distinguish
+    the two workflows explicitly.
+  - Update `SETUP.md` with the same distinction.
+  - Rules: no secrets in `override.yml`; all secret values remain in `.env` (gitignored).
+  - DoD: `docker compose up` starts all services in dev mode with hot-reload;
+    `docker compose -f docker-compose.yml up` starts production-mode from built image;
+    `DevAuthModule` is active in dev compose, absent in prod compose; `README.md` updated.
+
+- [ ] **INF-03 GitHub Actions CI/CD pipeline** (~4h)
+  - Two workflow files. **CI** runs on every push and PR. **CD** runs on merge to `main`
+    and drives the full build → migrate → health → smoke sequence. Both live in
+    `.github/workflows/`.
+
+  **`.github/workflows/ci.yml`** — runs on `push` + `pull_request` to any branch:
+  1. `pnpm install --frozen-lockfile`
+  2. `pnpm lint`
+  3. `pnpm -r build` (catches TypeScript errors across all packages)
+  4. `pnpm test` (Vitest — all packages)
+  - Matrix: `node: [25]`. Cache pnpm store between runs.
+  - No Docker build, no secrets needed.
+  - DoD: PR checks show lint + build + test; fails correctly on TypeScript or test errors.
+
+  **`.github/workflows/cd.yml`** — runs on `push` to `main` (merge):
+  1. **Build & push image** — Docker Buildx, push to GitHub Container Registry
+     (`ghcr.io/<org>/fcp-app:<sha>`).
+  2. **Run migrations** — `docker run --rm --network host ghcr.io/.../fcp-app:<sha>`
+     with the migration command from INF-01; fail fast on non-zero exit.
+  3. **Start services** — `docker compose -f docker-compose.yml up -d` (prod compose,
+     no override); pull the new image tag.
+  4. **Health gate** — poll `GET /api/v1/health` until `status: ok` or timeout 120s.
+  5. **Smoke test** — `pnpm load:smoke` against the deployed stack; fail the pipeline
+     if error rate > 1% or p99 > 300ms.
+  - GitHub Secrets needed: `GHCR_TOKEN`, `DEPLOY_HOST`, `DEPLOY_SSH_KEY`,
+    `TEST_JWT` (for smoke), plus all app secrets (`CLERK_SECRET_KEY`, etc.).
+  - Record all required secret names in `docs/DECISIONS.md` (ADR entry).
+  - Rules: CD never runs on PRs — only on merge to `main`; smoke test must pass before
+    the workflow is marked green; secrets are never echoed in logs.
+  - DoD: CI green on every PR; CD builds image, runs migrations, health-gates, and
+    smoke-tests on every merge to `main`; failed migration or smoke test marks the
+    workflow red and does not proceed.
+
+- [ ] **INF-04 Health and readiness strategy** (~2h)
+  - The current `GET /api/v1/health` (Terminus) covers liveness (Postgres + Redis +
+    heap). For production deployment — especially if Kubernetes is adopted later — a
+    separate readiness probe is needed: "is this instance ready to receive traffic?"
+    A pod that has started but whose TCP connections to `services/billing` are not yet
+    established should not receive traffic.
+
+  **Changes:**
+  - Split the existing health endpoint into two:
+    - `GET /api/v1/health/live` — lightweight liveness: process up + heap < limit.
+      Returns 200 immediately after boot. Used as Kubernetes `livenessProbe`.
+    - `GET /api/v1/health/ready` — full readiness: Postgres + Redis + all five TCP
+      client pings (billing, analytics, audit, search, notification). Returns 200 only
+      when all dependencies are reachable. Used as Kubernetes `readinessProbe` and as
+      Docker Compose `healthcheck`.
+  - Keep `GET /api/v1/health` as an alias for `/ready` for backwards compatibility
+    (Docker Compose healthcheck currently uses it).
+  - Update `docker-compose.yml` healthcheck to use `/health/ready`.
+  - Add TCP ping health indicators for each `ClientProxy` (NestJS TCP client exposes
+    no built-in ping — implement via a `client.send('*.ping', {}).pipe(timeout(2000))`
+    pattern or a simple TCP socket open check).
+  - Record liveness vs. readiness distinction in `docs/DECISIONS.md` (ADR entry).
+  - DoD: `/health/live` returns 200 immediately after boot with no dependency checks;
+    `/health/ready` returns 503 when any TCP service is unreachable; Docker Compose
+    healthcheck uses `/health/ready`; `pnpm test` green; ADR appended.
+
+- [ ] **INF-05 Observability — OpenTelemetry traces + Prometheus metrics** (~6h)
+  - Add structured distributed tracing and a Prometheus metrics scrape endpoint so
+    performance regressions are visible across the full request path
+    (HTTP → TCP → RabbitMQ consumer chain) without relying solely on Artillery reports.
+
+  **Tracing (`@opentelemetry/sdk-node`):**
+  - Instrument `apps/api` with the OpenTelemetry NestJS auto-instrumentation package.
+    Traces propagate `traceId` (already on `DomainEvent` from M-9) into OTLP spans.
+  - Export to an OTLP collector (Jaeger or Grafana Tempo). Add `jaeger` or `tempo`
+    service to `docker-compose.override.yml` (dev only — no tracing overhead in prod
+    unless opted in via `OTEL_EXPORTER_OTLP_ENDPOINT` env var).
+  - Decision: evaluate overhead before enabling in production. Record in
+    `docs/DECISIONS.md` (ADR entry — M-9 noted "do not add OTel without measuring").
+
+  **Metrics (`prom-client` + `@willsoto/nestjs-prometheus`):**
+  - Expose `GET /metrics` (Prometheus scrape endpoint, unauthenticated, not under
+    `/api/v1`). Default Node.js metrics + custom counters:
+    - `fcp_http_requests_total` (labels: method, route, status_code)
+    - `fcp_post_publish_total` (labels: outcome: published|failed)
+    - `fcp_outbox_relay_total` (labels: outcome: processed|failed)
+    - `fcp_rabbitmq_consumer_errors_total` (labels: routing_key)
+  - Add `prometheus` + `grafana` services to `docker-compose.override.yml` with a
+    pre-built `grafana/provisioning/` directory containing a dashboard JSON for the
+    four counters above and the Artillery NFR thresholds (150 rps, p99 < 300ms) as
+    reference lines.
+  - Rules: `CLAUDE.md` guardrail — do NOT add Redis caching logic as part of this task;
+    metrics are read-only observability. `docs/CODING-STANDARDS.md` §9 (JSDoc on any
+    new interceptors or collectors). Record OTel + Prometheus decisions in
+    `docs/DECISIONS.md`.
+  - DoD: `GET /metrics` returns valid Prometheus text format; custom counters increment
+    on publish success/failure; Grafana dashboard visible at `localhost:3006` in dev
+    compose; OTel traces visible in Jaeger UI for a sample `POST /workspaces/:id/posts`
+    request; `pnpm lint` clean; ADR appended.
+
+---
+
 ## Adding a task
 
 Append under the right week with: a one-line scope, the relevant business

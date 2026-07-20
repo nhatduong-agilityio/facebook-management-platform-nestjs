@@ -123,13 +123,20 @@ pnpm install
 # Copy and configure env
 cp .env.example .env
 
-# Start datastores
+# Build the Docker image (first time only)
+docker compose build
+
+# Start everything — migrations run automatically via the migration service
 docker compose up -d
 
-# Run core schema migrations
-pnpm migration
+# ── Dev: run locally instead of Docker ──────────────────────────────────────
+# Start datastores only:
+docker compose up -d postgres mongodb redis rabbitmq
 
-# Start API in watch mode
+# Run migrations manually (dev, outside Docker):
+pnpm migration          # core schema only (see repo root for all services)
+
+# Start API in watch mode:
 pnpm start:dev
 ```
 

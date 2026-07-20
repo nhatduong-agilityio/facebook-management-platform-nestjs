@@ -1,0 +1,36 @@
+import 'reflect-metadata';
+import path from 'path';
+import { MikroORM } from '@mikro-orm/postgresql';
+import { Migrator } from '@mikro-orm/migrations';
+
+/**
+ * Runs all pending MikroORM migrations for the `notification` schema.
+ * Called by the `migration` service in docker-compose before any app service starts.
+ */
+export async function runMigrations(): Promise<void> {
+  const orm = await MikroORM.init({
+    clientUrl: process.env.DATABASE_URL ?? 'postgres://fcp:fcp@localhost:5432/fcp',
+    schema: 'notification',
+    entities: [],
+    discovery: { warnWhenNoEntities: false },
+    migrations: {
+      path: path.resolve(__dirname, '../migrations'),
+      glob: '!(*.d).{js,ts}',
+      transactional: true,
+    },
+    extensions: [Migrator],
+  });
+  try {
+    await orm.migrator.up();
+    console.log('[notification] migrations complete');
+  } finally {
+    await orm.close(true);
+  }
+}
+
+if (require.main === module) {
+  runMigrations().catch((err: unknown) => {
+    console.error('[notification] migration failed:', err);
+    process.exit(1);
+  });
+}
