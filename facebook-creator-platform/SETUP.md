@@ -86,39 +86,58 @@ test/load/                    # Artillery smoke + load scenarios
 - Add new repeated chores as skills; add new work as tasks (keep them ≤ ~1 day).
 - Run a `/finish-task` before context gets large; long sessions degrade quality.
 
-## Current project state (as of T5.7)
+## Current project state (as of INF-02)
 
-All 5 weeks of tasks are complete. The full `apps/api` NestJS monolith and 6
-supporting microservices are implemented. To bring up the stack locally:
+The full `apps/api` NestJS monolith and 6 supporting microservices are
+implemented. Two Docker workflows are available:
+
+### Dev mode (hot-reload, DevAuthModule active)
 
 ```bash
-# 1. Start infrastructure
+# 1. Build the dev image (Dockerfile builder stage — has pnpm + compiled dist/)
+docker compose build
+
+# 2. Start everything — migrations run automatically before any app service
 docker compose up -d
 
-# 2. Apply all migrations (each service has its own MikroORM config)
-pnpm mikro-orm migration:up                                    # apps/api
-cd services/billing  && pnpm mikro-orm migration:up && cd ../..
-cd services/analytics && pnpm mikro-orm migration:up && cd ../..
-cd services/email    && pnpm mikro-orm migration:up && cd ../..
-cd services/notification && pnpm mikro-orm migration:up && cd ../..
+# 3. Obtain a dev JWT (NODE_ENV=development enables this endpoint)
+curl -s -X POST http://localhost:3000/api/v1/dev-auth/token \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com"}' | jq -r '.accessToken'
 
-# 3. Start all services (separate terminals or use a process manager)
-pnpm start:dev                        # apps/api  :3000
-cd services/billing  && pnpm start:dev  # billing   :3001
-cd services/analytics && pnpm start:dev # analytics :3002
-cd services/audit    && pnpm start:dev  # audit     :3003
-cd services/search   && pnpm start:dev  # search    :3004
-cd services/notification && pnpm start:dev # notification :3005
-cd services/email    && pnpm start:dev  # email     :3006
+# 4. Run contract and load tests
+export TEST_JWT=<token-from-step-3>
+pnpm e2e          # Artillery e2e contract tests (all flows)
+pnpm load:smoke   # 20 s smoke gate
+pnpm load:read    # 150 rps read dashboard
+pnpm load:write   # 30 wps write burst
+pnpm load:fanout  # publish fan-out + DLQ check
+```
 
-# 4. Run load tests (requires a Clerk JWT and seeded workspace)
-export API_URL=http://localhost:3000
-export TEST_JWT=<clerk-jwt>
-export TEST_WORKSPACE_ID=<uuid>
-pnpm load:smoke    # 20 s smoke gate
-pnpm load:read     # 150 rps read dashboard
-pnpm load:write    # 30 wps write burst
-pnpm load:fanout   # publish fan-out + DLQ check
+### Production mode (compiled runner image, no DevAuthModule)
+
+```bash
+docker compose -f docker-compose.yml build
+docker compose -f docker-compose.yml up -d
+```
+
+### Local processes (infra in Docker, services on host)
+
+```bash
+docker compose up -d postgres mongodb redis rabbitmq
+
+# Migrations (once per DB):
+pnpm migration && pnpm migration:billing && pnpm migration:analytics \
+  && pnpm migration:notification && pnpm migration:email
+
+# Start all 7 services in separate terminals:
+pnpm start:dev          # apps/api          :3000
+pnpm start:billing      # services/billing  :3001 (HTTP) + :4001 (TCP)
+pnpm start:analytics    # services/analytics :3002 (TCP)
+pnpm start:audit        # services/audit    :3003 (TCP)
+pnpm start:search       # services/search   :3004 (TCP)
+pnpm start:notification # services/notification :3005 (TCP)
+pnpm start:email        # services/email    pure RabbitMQ microservice
 ```
 
 To resume adding tasks or debugging: check `docs/PROGRESS.md` for the current

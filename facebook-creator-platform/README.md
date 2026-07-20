@@ -107,34 +107,51 @@ See the app-level README:
 
 ## Installation
 
-```bash
-# 1. Install dependencies
-pnpm install
+### Prerequisites
 
-# 2. Copy and configure environment
+```bash
+pnpm install
 cp .env.example .env
 # Edit .env — fill in CLERK_*, STRIPE_*, FACEBOOK_*, ALGOLIA_*, RESEND_* keys
+```
 
-# 3. Build the Docker image (first time only)
-docker compose build
+### Option A — Docker (recommended, full stack in containers)
 
-# 4. Start everything — migrations run automatically before any app service starts
-docker compose up -d
-# The `migration` service runs all 5 Postgres schema migrations in order,
-# then exits. All app services wait for it to complete before starting.
+Two modes share the same `docker-compose.yml`. The dev mode auto-merges
+`docker-compose.override.yml`; production passes the file explicitly.
 
-# ── Dev: run processes locally instead of Docker ─────────────────────────────
-# Start datastores only:
+**Dev mode** — hot-reload, `NODE_ENV=development`, `DevAuthModule` active:
+
+```bash
+docker compose build          # builds fcp-app-dev (Dockerfile builder stage)
+docker compose up -d          # migrations run automatically, then all services start
+                              # Each service mounts its src/ for live reload via nest --watch
+```
+
+**Production mode** — compiled runner image, `NODE_ENV=production`, no DevAuthModule:
+
+```bash
+docker compose -f docker-compose.yml build   # builds fcp-app (lean runner stage)
+docker compose -f docker-compose.yml up -d   # migrations run automatically
+```
+
+In both modes the `migration` service runs all 5 Postgres schema migrations
+before any app service starts — no manual migration step required.
+
+### Option B — Local processes (infra in Docker, services on host)
+
+```bash
+# Start only the four datastores
 docker compose up -d postgres mongodb redis rabbitmq
 
-# Run migrations from the host (faster for iterative dev):
+# Run migrations once
 pnpm migration                  # apps/api  → core schema
 pnpm migration:billing          # services/billing
 pnpm migration:analytics        # services/analytics
 pnpm migration:notification     # services/notification
 pnpm migration:email            # services/email
 
-# Start all 7 processes (7 terminals or a process manager):
+# Start all 7 processes (7 terminals or a process manager)
 pnpm start:dev          # apps/api          → :3000
 pnpm start:billing      # services/billing  → :3001 (HTTP) + :4001 (TCP)
 pnpm start:analytics    # services/analytics → :3002 (TCP)

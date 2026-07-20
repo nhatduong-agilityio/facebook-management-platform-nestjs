@@ -910,7 +910,7 @@ For blocked tasks always append an inline note on the same line:
     intentionally broken migration stops the stack with a non-zero exit; no manual
     `pnpm migration:*` step needed; `README.md` updated.
 
-- [ ] **INF-02 Split dev/prod Docker Compose** (~2h)
+- [x] **INF-02 Split dev/prod Docker Compose** (~2h)
   - Create `docker-compose.override.yml` for local development. Docker Compose
     auto-merges it on plain `docker compose up`; production uses
     `docker compose -f docker-compose.yml up` (no override). This removes all

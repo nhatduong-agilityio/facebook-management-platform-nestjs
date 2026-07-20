@@ -1,15 +1,24 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Facebook Creator Platform — Docker Compose
+# Facebook Creator Platform — Docker Compose (production topology)
 #
-# Usage:
-#   docker compose up -d                # start everything
-#   docker compose up -d postgres redis rabbitmq mongodb   # infra only (local dev)
-#   docker compose logs -f api          # tail a specific service
+# Two workflows:
 #
-# Before first run:
-#   1. Copy .env.example → .env and fill in secrets (Clerk, Stripe, Facebook, etc.)
-#   2. Build the app image once: docker compose build
-#   3. Run migrations (see bottom of this file for commands)
+#   DEV  (auto-merges docker-compose.override.yml):
+#     docker compose build               # builds fcp-app-dev (builder stage)
+#     docker compose up -d               # hot-reload, NODE_ENV=development,
+#                                        # DevAuthModule + dev-auth/token active
+#
+#   PROD (explicit file, no override):
+#     docker compose -f docker-compose.yml build   # builds fcp-app (runner stage)
+#     docker compose -f docker-compose.yml up -d   # NODE_ENV=production,
+#                                                  # DevAuthModule absent
+#
+# In both modes the `migration` service runs all Postgres schema migrations
+# before any app service starts (`depends_on: service_completed_successfully`).
+#
+# Other useful commands:
+#   docker compose up -d postgres redis rabbitmq mongodb   # infra only
+#   docker compose logs -f api                             # tail a service
 # ─────────────────────────────────────────────────────────────────────────────
 
 x-app: &app

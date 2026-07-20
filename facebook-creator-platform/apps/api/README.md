@@ -119,25 +119,30 @@ From the monorepo root:
 
 ```bash
 pnpm install
+cp .env.example .env   # fill in CLERK_*, FACEBOOK_*, STRIPE_*, ALGOLIA_*, RESEND_*
+```
 
-# Copy and configure env
-cp .env.example .env
+**Docker — dev mode** (hot-reload, `DevAuthModule` active, `NODE_ENV=development`):
 
-# Build the Docker image (first time only)
-docker compose build
+```bash
+docker compose build    # builds fcp-app-dev (Dockerfile builder stage)
+docker compose up -d    # migrations run automatically, then all services start
+                        # apps/api/src/ is mounted for live reload via nest --watch
+```
 
-# Start everything — migrations run automatically via the migration service
-docker compose up -d
+**Docker — production mode** (compiled runner image, no DevAuthModule):
 
-# ── Dev: run locally instead of Docker ──────────────────────────────────────
-# Start datastores only:
+```bash
+docker compose -f docker-compose.yml build
+docker compose -f docker-compose.yml up -d
+```
+
+**Local processes** (infra in Docker, API on host):
+
+```bash
 docker compose up -d postgres mongodb redis rabbitmq
-
-# Run migrations manually (dev, outside Docker):
-pnpm migration          # core schema only (see repo root for all services)
-
-# Start API in watch mode:
-pnpm start:dev
+pnpm migration          # run core schema migrations
+pnpm start:dev          # apps/api → :3000, hot-reload
 ```
 
 ---
