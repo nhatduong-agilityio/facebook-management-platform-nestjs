@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# CI — runs on every push and pull request (all branches).
+# CI — runs on pull requests targeting nestjs-practice and on push to nestjs-practice.
 #
 # Steps: install → lint → build (TypeScript) → test (Vitest).
 # No Docker build; no secrets required.
@@ -11,10 +11,12 @@
 name: CI
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
-    branches: ["**"]
+    branches:
+      - nestjs-practice
+  push:
+    branches:
+      - nestjs-practice
 
 jobs:
   ci:
