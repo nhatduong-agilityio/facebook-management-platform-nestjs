@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Facebook Creator Platform — Dev override
+#
+# Docker Compose auto-merges this file on plain `docker compose up`.
+# Production workflow (no override):
+#   docker compose -f docker-compose.yml up -d
+#
+# What this file does:
+#   - Switches every app service from the lean runner stage to the `builder`
+#     stage, which has pnpm, TypeScript, and the compiled dist/ present.
+#   - Sets NODE_ENV=development so DevAuthModule is mounted and the
+#     dev-auth/token endpoint is available (never present in production).
+#   - Replaces each app service command with `pnpm start:dev` (nest watch).
+#   - Mounts each service's src/ directory read-only so hot-reload picks up
+#     edits made on the host without a full image rebuild.
+#
+# Rules:
+#   - No secrets here. All secret values live in .env (gitignored).
+#   - Commit this file — it contains no sensitive data and is useful for every
+#     contributor.
+#   - For production deployments use: docker compose -f docker-compose.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Shared dev overrides — applied to every app service below.
+x-dev: &dev
+  build:
+    target: builder     # builder stage has pnpm + compiled dist/ + full source
+  image: fcp-app-dev
+  environment:
+    NODE_ENV: development
+
+services:
+  # ── Migration ────────────────────────────────────────────────────────────────
+  # Use the builder image so pnpm + dist/ are available (dist/ is built by the
+  # builder stage via `pnpm -r build`). The migration command is unchanged.
+  migration:
+    <<: *dev
+
+  # ── API gateway ──────────────────────────────────────────────────────────────
+  # Mount src/ and libs/ so nest --watch picks up changes on the host.
+  api:
+    <<: *dev
+    command: pnpm --filter @fcp/api start:dev
+    volumes:
+      - ./apps/api/src:/app/apps/api/src:ro
+      - ./libs:/app/libs:ro
+
+  # ── Services ─────────────────────────────────────────────────────────────────
+
+  billing:
+    <<: *dev
+    command: pnpm --filter @fcp/billing start:dev
+    volumes:
+      - ./services/billing/src:/app/services/billing/src:ro
+
+  analytics:
+    <<: *dev
+    command: pnpm --filter @fcp/analytics start:dev
+    volumes:
+      - ./services/analytics/src:/app/services/analytics/src:ro
+
+  audit:
+    <<: *dev
+    command: pnpm --filter @fcp/audit start:dev
+    volumes:
+      - ./services/audit/src:/app/services/audit/src:ro
+
+  search:
+    <<: *dev
+    command: pnpm --filter @fcp/search start:dev
+    volumes:
+      - ./services/search/src:/app/services/search/src:ro
+
+  notification:
+    <<: *dev
+    command: pnpm --filter @fcp/notification start:dev
+    volumes:
+      - ./services/notification/src:/app/services/notification/src:ro
+
+  email:
+    <<: *dev
+    command: pnpm --filter @fcp/email start:dev
+    volumes:
+      - ./services/email/src:/app/services/email/src:ro

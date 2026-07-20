@@ -7,9 +7,20 @@
 
 - **Next task:** D-2 — Postman collection for full API flow coverage (see `docs/TASKS.md` § Documentation).
 - **Branch:** `nestjs-practice`
-- **Notes:** INF-01 complete. Docker migration service in `docker-compose.yml`; 5 `run-migrations.ts` files compiled as part of normal build. Lint: 0 errors.
+- **Notes:** INF-02 complete. `docker-compose.override.yml` created; dev/prod split documented across README, apps/api/README, SETUP.md. Lint: 0 errors.
 
 ## Log
+
+### 2026-07-20 — INF-02 Split dev/prod Docker Compose
+
+- **`docker-compose.override.yml`** (new): `x-dev` anchor sets `build.target: builder`, `image: fcp-app-dev`, `NODE_ENV: development`. Overrides `migration` (build only, command unchanged — `dist/` exists in builder stage) + all 7 app services (`pnpm start:dev` + read-only `src/` volume mounts). No secrets.
+- **`docker-compose.yml`**: header comment updated to document both workflows (`docker compose up` for dev, `docker compose -f docker-compose.yml up` for prod).
+- **`README.md`**: Installation restructured into Prerequisites + Option A (Docker dev / prod) + Option B (local processes).
+- **`apps/api/README.md`**: Installation updated with same three-option structure.
+- **`SETUP.md`**: "Current project state" replaced with current dev workflow (`docker compose build` + `docker compose up -d`), prod workflow, and local-process fallback.
+- Lint: 0 errors.
+
+---
 
 ### 2026-07-20 — INF-01 Docker migration service
 
