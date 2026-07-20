@@ -42,6 +42,9 @@ COPY --from=builder /app/node_modules           ./node_modules
 COPY --from=builder /app/package.json           ./package.json
 COPY --from=builder /app/pnpm-workspace.yaml    ./pnpm-workspace.yaml
 
+# Migration helper — called by the migration container on every deployment.
+COPY --from=builder /app/scripts                ./scripts
+
 COPY --from=builder /app/apps/api/dist          ./apps/api/dist
 COPY --from=builder /app/apps/api/node_modules  ./apps/api/node_modules
 

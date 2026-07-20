@@ -4,10 +4,12 @@
 # Three sequential jobs:
 #   1. build-push  — Build Docker image (runner stage) → push to GHCR.
 #   2. deploy      — SSH into production host:
+#                      • Capture previous image ID for rollback
 #                      • Pull new image + retag as fcp-app:latest
-#                      • Run all schema migrations (fail fast on error)
+#                      • Run scripts/run-all-migrations.sh (--network fcp, fail fast)
 #                      • docker compose -f docker-compose.yml up -d --no-build
 #                      • Health gate: poll /api/v1/health until 200 (120s max)
+#                      • Rollback (retag + restart old image) on health gate failure
 #   3. smoke       — Run Artillery smoke test from GHA runner against live API.
 #
 # NOTE: the NestJS project lives in the facebook-creator-platform/ subdirectory.
@@ -97,6 +99,11 @@ jobs:
 
             IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
 
+            echo "==> Capturing previous image for rollback"
+            # Capture the image ID (not the tag) so the reference stays valid
+            # even after fcp-app:latest is repointed to the new build.
+            PREV_IMAGE=$(docker inspect --format='{{.Id}}' fcp-app:latest 2>/dev/null || true)
+
             echo "==> Pulling new image: $IMAGE"
             docker pull "$IMAGE"
 
@@ -104,19 +111,14 @@ jobs:
             docker tag "$IMAGE" fcp-app:latest
 
             echo "==> Running schema migrations"
-            # --network host lets the container reach postgres:5432 via localhost.
+            # --network fcp joins the named bridge network (name: fcp in compose)
+            # so the container can reach postgres:5432 by hostname.
             # --env-file passes DATABASE_URL and other vars from the host .env.
             docker run --rm \
-              --network host \
+              --network fcp \
               --env-file /opt/fcp/.env \
               "$IMAGE" \
-              sh -c "
-                node apps/api/dist/database/run-migrations.js &&
-                node services/billing/dist/database/run-migrations.js &&
-                node services/analytics/dist/database/run-migrations.js &&
-                node services/notification/dist/database/run-migrations.js &&
-                node services/email/dist/database/run-migrations.js
-              "
+              sh scripts/run-all-migrations.sh
 
             echo "==> Starting services (production compose, no override)"
             cd /opt/fcp
@@ -124,18 +126,32 @@ jobs:
             docker compose -f docker-compose.yml up -d --no-build
 
             echo "==> Health gate (max 120 s)"
+            HEALTHY=0
             for i in $(seq 1 12); do
               STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
                 http://localhost:3000/api/v1/health 2>/dev/null || echo "000")
               if [ "$STATUS" = "200" ]; then
                 echo "Health gate passed on attempt $i"
-                exit 0
+                HEALTHY=1
+                break
               fi
               echo "Attempt $i/12: status=$STATUS — waiting 10 s..."
               sleep 10
             done
-            echo "ERROR: health gate failed after 120 s"
-            exit 1
+
+            if [ "$HEALTHY" = "0" ]; then
+              echo "ERROR: health gate failed after 120 s — rolling back app"
+              # Restore previous image and restart. Applied migrations are NOT
+              # reverted (MikroORM migrations are forward-only by design).
+              if [ -n "$PREV_IMAGE" ]; then
+                docker tag "$PREV_IMAGE" fcp-app:latest
+                docker compose -f docker-compose.yml up -d --no-build
+                echo "Rollback complete. Investigate migration/app incompatibility before re-deploying."
+              else
+                echo "No previous image captured — cannot roll back automatically."
+              fi
+              exit 1
+            fi
 
   # ── Job 3: Smoke test against the live deployment ──────────────────────────
   smoke:

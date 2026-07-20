@@ -324,6 +324,10 @@ services:
 
 networks:
   fcp:
+    # Explicit name avoids the default "{project}_fcp" prefix so that
+    # one-shot containers (migration runner, smoke tests) can join with
+    # --network fcp without knowing the compose project name.
+    name: fcp
     driver: bridge
 
 volumes:
